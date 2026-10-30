@@ -17,17 +17,40 @@ function wrap(client: PGlite | Transaction): Queryable {
   };
 }
 
+function toDb(pg: PGlite): Db {
+  return { ...wrap(pg), transaction: (fn) => pg.transaction((tx) => fn(wrap(tx))) };
+}
+
+// PGlite runs initdb on every create, which takes over 2 s on the sandbox's one CPU.
+// Each test file runs it once per variant and loads a copy of the data dir instead.
+const snapshots = new Map<boolean, Promise<Blob>>();
+
+function snapshot(migrated: boolean): Promise<Blob> {
+  let blob = snapshots.get(migrated);
+  if (!blob) {
+    blob = (async () => {
+      const pg = await PGlite.create();
+      try {
+        if (migrated) await migrate(toDb(pg), await loadMigrations(migrationsDir));
+        return await pg.dumpDataDir('none');
+      } finally {
+        await pg.close();
+      }
+    })();
+    snapshots.set(migrated, blob);
+  }
+  return blob;
+}
+
 /**
- * In-memory Postgres, so unit tests run with no network. Closed when the test ends:
- * each instance holds a few hundred MB, and the 1 GB agent sandbox (#5) can't keep
- * one per test alive.
+ * In-memory Postgres, so unit tests run with no network. Each call gets its own copy.
+ * Closed when the test ends: each instance holds a few hundred MB, and the 1 GB agent
+ * sandbox (#5) can't keep one per test alive.
  */
 export async function createTestDb({ migrated = true } = {}): Promise<Db> {
-  const pg = await PGlite.create();
+  const pg = await PGlite.create({ loadDataDir: await snapshot(migrated) });
   onTestFinished(() => pg.close());
-  const db: Db = { ...wrap(pg), transaction: (fn) => pg.transaction((tx) => fn(wrap(tx))) };
-  if (migrated) await migrate(db, await loadMigrations(migrationsDir));
-  return db;
+  return toDb(pg);
 }
 
 /**
