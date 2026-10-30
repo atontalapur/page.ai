@@ -1,0 +1,7 @@
+{
+  "name": "@page/node",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Daemon that claims fix jobs and runs agent sandboxes",
+  "type": "module"
+}

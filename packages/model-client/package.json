@@ -1,0 +1,7 @@
+{
+  "name": "@page/model-client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "LLM client used by the agent and triage",
+  "type": "module"
+}
