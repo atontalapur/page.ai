@@ -1,4 +1,8 @@
 {
   "extends": "@page/config/tsconfig/react.json",
-  "include": ["src"]
+  "compilerOptions": {
+    "types": ["node"],
+    "plugins": [{ "name": "next" }]
+  },
+  "include": ["next-env.d.ts", ".next/types/**/*.ts", "src", "next.config.ts"]
 }

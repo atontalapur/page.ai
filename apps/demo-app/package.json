@@ -5,17 +5,28 @@
   "description": "Next.js + Postgres testbed that the seeded bugs break",
   "type": "module",
   "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc",
+    "typecheck": "next typegen && tsc",
     "test": "vitest run --project unit --coverage",
     "test:integration": "vitest run --project integration"
   },
   "devDependencies": {
+    "@next/eslint-plugin-next": "16.4.3",
     "@page/config": "workspace:*",
     "@types/node": "catalog:",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   }
 }
