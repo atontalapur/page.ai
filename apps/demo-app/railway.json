@@ -1,0 +1,18 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "apps/demo-app/Dockerfile",
+    "watchPatterns": [
+      "apps/demo-app/**",
+      "packages/config/**",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml"
+    ]
+  },
+  "deploy": {
+    "preDeployCommand": "node scripts/db.ts migrate && node scripts/db.ts seed",
+    "healthcheckPath": "/api/health",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}
