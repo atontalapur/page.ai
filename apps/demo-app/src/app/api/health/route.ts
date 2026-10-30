@@ -1,6 +1,7 @@
-import { getDb } from '../../../db/index.ts';
+import { shop } from '../../data.ts';
 import { checkHealth } from './health.ts';
 
-export function GET() {
-  return checkHealth(getDb());
+export async function GET() {
+  const { db } = await shop();
+  return checkHealth(db);
 }
