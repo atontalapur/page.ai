@@ -1,0 +1,38 @@
+body {
+  margin: 0 auto;
+  max-width: 48rem;
+  padding: 1rem;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+header {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 1rem;
+}
+
+ul.products {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+td,
+th {
+  text-align: left;
+  padding: 0.25rem 0;
+}
+
+.error {
+  color: #b00020;
+}

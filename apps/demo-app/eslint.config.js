@@ -1,6 +1,10 @@
 import config from '@page/config/eslint';
-import { defineConfig } from 'eslint/config';
+import next from '@next/eslint-plugin-next';
+import { defineConfig, globalIgnores } from 'eslint/config';
 
-export default defineConfig(config, {
-  languageOptions: { parserOptions: { tsconfigRootDir: import.meta.dirname } },
-});
+export default defineConfig(
+  config,
+  next.configs['core-web-vitals'],
+  globalIgnores(['next-env.d.ts']),
+  { languageOptions: { parserOptions: { tsconfigRootDir: import.meta.dirname } } },
+);
