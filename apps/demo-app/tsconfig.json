@@ -1,4 +1,4 @@
 {
-  "extends": "@page/config/tsconfig/base.json",
+  "extends": "@page/config/tsconfig/react.json",
   "include": ["src"]
 }
