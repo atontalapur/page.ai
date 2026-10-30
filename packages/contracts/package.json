@@ -6,12 +6,14 @@
   "type": "module",
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "test": "vitest run --passWithNoTests"
   },
   "devDependencies": {
     "@page/config": "workspace:*",
     "@types/node": "catalog:",
     "eslint": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
