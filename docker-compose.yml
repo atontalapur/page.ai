@@ -1,0 +1,22 @@
+# Local Postgres for development and integration tests.
+# Start with `pnpm db:up`; connection string is in .env.example.
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: page
+      POSTGRES_PASSWORD: page
+      POSTGRES_DB: page
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    # Postgres 18+ keeps data in a versioned subdirectory, so mount the parent.
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U page -d page']
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  pgdata:

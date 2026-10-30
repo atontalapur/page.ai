@@ -1,0 +1,19 @@
+{
+  "name": "@page/orchestrator",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Nest app: ingest, triage, issue state machine, job queues, serves the UI",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@page/config": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
