@@ -19,23 +19,23 @@ On-call engineers get paged for routine errors (a null check, a bad config value
 
 Total: **$95** for the quarter. Railway and OpenRouter accounts already exist; the testbed is a Next.js + Postgres demo app with 30 seeded bugs.
 
-| Item | Budget | Use |
-| --- | --- | --- |
-| OpenRouter | $60 | Agent calls, cheap to strong models by tier |
-| Railway | $15 | Receiver, orchestrator, sandboxes, dashboard |
-| Twilio | $10 | Calls and SMS to on-call |
-| PostHog, GitHub, FastAPI, Docker | $0 | Error tracking, repo, CI, services |
-| Buffer | $10 | Evaluation overruns |
+| Item                             | Budget | Use                                          |
+| -------------------------------- | ------ | -------------------------------------------- |
+| OpenRouter                       | $60    | Agent calls, cheap to strong models by tier  |
+| Railway                          | $15    | Receiver, orchestrator, sandboxes, dashboard |
+| Twilio                           | $10    | Calls and SMS to on-call                     |
+| PostHog, GitHub, FastAPI, Docker | $0     | Error tracking, repo, CI, services           |
+| Buffer                           | $10    | Evaluation overruns                          |
 
 ## Timeline
 
-| Week | Milestone |
-| --- | --- |
-| 5 | Demo app, PostHog webhook, error-tracking agent with Twilio, CLI allowlist wrapper |
-| 6 | Orchestrator, Tier 1–2 agents, confidence scoring and escalation; dashboard live view and diffs |
-| 7 | Dashboard approval, query and kill; Tier 3 agents; end-to-end integration |
-| 8 | Evaluation on 30 bugs: fix rate per tier, time to fix, false escalations |
-| 9 | Final demo and report |
+| Week | Milestone                                                                                       |
+| ---- | ----------------------------------------------------------------------------------------------- |
+| 5    | Demo app, PostHog webhook, error-tracking agent with Twilio, CLI allowlist wrapper              |
+| 6    | Orchestrator, Tier 1–2 agents, confidence scoring and escalation; dashboard live view and diffs |
+| 7    | Dashboard approval, query and kill; Tier 3 agents; end-to-end integration                       |
+| 8    | Evaluation on 30 bugs: fix rate per tier, time to fix, false escalations                        |
+| 9    | Final demo and report                                                                           |
 
 ## Team
 
