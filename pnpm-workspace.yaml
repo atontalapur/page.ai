@@ -6,10 +6,12 @@ packages:
 catalog:
   '@eslint/js': ^10.0.1
   '@types/node': ^24.19.2
+  '@vitest/coverage-v8': ^5.0.5
   eslint: ^10.13.0
   eslint-config-prettier: ^10.1.8
   prettier: ^3.9.10
   # typescript-eslint supports typescript <6.1, so stay on 6.0.x
   typescript: ~6.0.3
   typescript-eslint: ^8.72.1
+  # @vitest/coverage-v8 peers on this exact version, so bump them together
   vitest: ^5.0.5

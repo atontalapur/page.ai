@@ -8,7 +8,8 @@
     "./eslint": "./eslint.js",
     "./prettier": "./prettier.js",
     "./tsconfig/base.json": "./tsconfig/base.json",
-    "./tsconfig/react.json": "./tsconfig/react.json"
+    "./tsconfig/react.json": "./tsconfig/react.json",
+    "./vitest": "./vitest.js"
   },
   "scripts": {
     "lint": "eslint ."
@@ -20,10 +21,12 @@
   },
   "peerDependencies": {
     "eslint": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "devDependencies": {
     "eslint": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

@@ -1,0 +1,33 @@
+# `pr-title` is a required status check on main (see #36). Squash merges use the PR
+# title as the commit subject, so it has to pass commitlint like any other commit.
+# Kept out of ci.yml so editing a title doesn't rerun the whole suite.
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    # Skip body-only edits. A skipped required check still counts as passing.
+    if: github.event.action != 'edited' || github.event.changes.title
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # commitlint is a root devDependency, so skip the rest of the workspace.
+      - uses: ./.github/actions/setup
+        with:
+          filter: page-ai
+      # Call the binary directly: `pnpm exec` would see the partial install and install
+      # the whole workspace. Pass the title through env, never inline it into the script.
+      - run: printf '%s\n' "$TITLE" | node_modules/.bin/commitlint --verbose
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
