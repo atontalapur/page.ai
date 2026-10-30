@@ -16,12 +16,23 @@ COPY packages/config packages/config
 COPY apps/demo-app apps/demo-app
 RUN pnpm --filter @page/demo-app build
 
+# Production dependencies only (no vitest, eslint, typescript or pglite). The app has no
+# runtime workspace dependencies, so the legacy deploy needs no injected packages.
+# Deploy copies .next without its node_modules, so copy the build over it. Turbopack links
+# server externals (pg) from .next/node_modules into the monorepo's pnpm store, which
+# isn't in /out, so point each link at the deployed node_modules instead.
+RUN pnpm --filter @page/demo-app deploy --prod --legacy --ignore-scripts /out \
+  && rm -rf /out/.next && cp -r apps/demo-app/.next /out/.next \
+  && rm -rf /out/.next/cache \
+  && for link in /out/.next/node_modules/*; do \
+       [ -L "$link" ] || continue; \
+       ln -sfn "../../node_modules/$(readlink "$link" | sed 's|.*/node_modules/||')" "$link"; \
+     done
+
 FROM node:24-alpine
 ENV NODE_ENV=production
-WORKDIR /repo
-COPY --from=build /repo /repo
-RUN chown -R node:node /repo/apps/demo-app/.next
+WORKDIR /app
+COPY --from=build --chown=node:node /out /app
 USER node
-WORKDIR /repo/apps/demo-app
 EXPOSE 3000
 CMD ["node_modules/.bin/next", "start"]
