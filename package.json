@@ -15,7 +15,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "depcruise": "depcruise apps packages"
+    "depcruise": "depcruise apps packages",
+    "db:up": "docker compose up -d --wait postgres",
+    "db:down": "docker compose down"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",
