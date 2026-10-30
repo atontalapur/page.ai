@@ -1,0 +1,58 @@
+# `checks` and `integration` are required status checks on main (see #36).
+# Renaming a job breaks the ruleset until it is updated to match.
+name: CI
+
+on:
+  pull_request:
+  # Runs on main seed the turbo cache; PR runs can restore caches from main, not from each other.
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - uses: actions/cache@v6
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      # Same image and credentials as docker-compose.yml.
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: page
+          POSTGRES_PASSWORD: page
+          POSTGRES_DB: page
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U page -d page"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgres://page:page@localhost:5432/page
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm test:integration
