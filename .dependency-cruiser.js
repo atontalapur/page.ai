@@ -2,7 +2,7 @@
 // path (apps/x/...) and the bare package name (@page/x), so a rule holds even before
 // the target package declares `exports`.
 const apps = '^(apps/|@page/(orchestrator|node|ui|demo-app)(/|$))';
-const zod = '((^|/)node_modules/zod/|^zod$)';
+const zod = '((^|/)node_modules/zod/|^zod(/|$))';
 const tests = '\\.test\\.tsx?$';
 
 /** @type {import('dependency-cruiser').IConfiguration} */
@@ -36,11 +36,11 @@ export default {
       },
     },
     {
-      name: 'ui-not-to-orchestrator',
-      comment: 'The UI talks to the orchestrator over HTTP; share types via contracts.',
+      name: 'apps-not-to-other-apps',
+      comment: 'Apps talk over HTTP/queues; share types via contracts.',
       severity: 'error',
-      from: { path: '^apps/ui/' },
-      to: { path: '^(apps/orchestrator/|@page/orchestrator(/|$))' },
+      from: { path: '^apps/([^/]+)/' },
+      to: { path: apps, pathNot: '^(apps/$1/|@page/$1(/|$))' },
     },
   ],
   options: {
