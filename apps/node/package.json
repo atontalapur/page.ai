@@ -3,5 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "description": "Daemon that claims fix jobs and runs agent sandboxes",
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@page/config": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:"
+  }
 }
