@@ -10,6 +10,10 @@ on:
       - packages/config/**
       - apps/node/src/sandbox/**
       - apps/node/scripts/sandbox-run.ts
+      - apps/node/package.json
+      - .dockerignore
+      - .gitignore
+      - .nvmrc
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
