@@ -13,10 +13,14 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
     "@page/config": "workspace:*",
+    "husky": "^9.1.7",
     "prettier": "catalog:",
     "turbo": "^2.11.10"
   }
