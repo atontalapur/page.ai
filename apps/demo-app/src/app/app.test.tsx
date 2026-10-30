@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import RootLayout from './layout';
-import HomePage from './page';
+import RootLayout from './layout.tsx';
+import HomePage from './page.tsx';
 
 describe('app shell', () => {
   it('renders the home page inside the root layout', () => {
