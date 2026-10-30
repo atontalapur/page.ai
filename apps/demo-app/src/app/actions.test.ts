@@ -36,6 +36,18 @@ describe('server actions', () => {
     );
   });
 
+  it('treats a malformed product id as not found', async () => {
+    for (const productId of ['abc', '', '9999999999']) {
+      expect(await navigation(addToCart(form({ productId })))).toBe('/cart?error=not_found');
+    }
+  });
+
+  it('ignores a remove with a malformed product id', async () => {
+    await navigation(addToCart(form({ productId: await productId(h.ctx.db, 'canvas-tote') })));
+    expect(await navigation(removeFromCart(form({ productId: 'abc' })))).toBe('/cart');
+    expect(await cartLines()).toHaveLength(1);
+  });
+
   it('removes a line', async () => {
     const tote = await productId(h.ctx.db, 'canvas-tote');
     await navigation(addToCart(form({ productId: tote })));

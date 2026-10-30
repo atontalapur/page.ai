@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { connection } from 'next/server';
-import { loadConfig, shopSettings, type ShopSettings } from '../config.ts';
+import { loadShopSettings, type ShopSettings } from '../config.ts';
 import { getDb, type Db } from '../db/index.ts';
 
 export type CookieStore = Pick<Awaited<ReturnType<typeof cookies>>, 'get' | 'set'>;
@@ -11,11 +11,16 @@ export interface ShopContext {
   cookies: CookieStore;
 }
 
+// Env doesn't change while the process runs. A parse failure isn't cached, so a bad
+// setting keeps failing shop requests until it's fixed and the app restarts.
+let settings: ShopSettings | undefined;
+
 /**
  * Per-request dependencies for pages, actions and route handlers. `connection()` keeps
  * database reads out of build-time prerendering, so `next build` needs no database.
  */
 export async function shop(): Promise<ShopContext> {
   await connection();
-  return { db: getDb(), settings: shopSettings(loadConfig()), cookies: await cookies() };
+  settings ??= loadShopSettings();
+  return { db: getDb(), settings, cookies: await cookies() };
 }

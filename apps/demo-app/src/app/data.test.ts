@@ -13,6 +13,10 @@ describe('shop', () => {
     expect(ctx.settings.checkoutEnabled).toBe(false);
     expect(ctx.cookies).toBe(jar);
     expect(typeof ctx.db.query).toBe('function');
+
+    // Parsed once per process: a later env change doesn't leak into requests.
+    vi.stubEnv('CHECKOUT_ENABLED', 'true');
+    expect((await shop()).settings).toBe(ctx.settings);
     vi.unstubAllEnvs();
   });
 });

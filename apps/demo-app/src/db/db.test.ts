@@ -14,7 +14,7 @@ function fakePool() {
     connect: () => Promise.resolve({ query: clientQuery, release }),
   } as unknown as Pool;
   const clientSql = () => clientQuery.mock.calls.map(([sql]) => sql);
-  return { pool, poolQuery, clientSql, release };
+  return { pool, poolQuery, clientQuery, clientSql, release };
 }
 
 describe('fromPool', () => {
@@ -39,12 +39,24 @@ describe('fromPool', () => {
     expect(release).toHaveBeenCalledOnce();
   });
 
+  it('keeps the original error and drops the client when rollback fails', async () => {
+    const { pool, clientQuery, release } = fakePool();
+    const boom = new Error('boom');
+    const gone = new Error('connection terminated');
+    clientQuery.mockImplementation((sql) =>
+      sql === 'rollback' ? Promise.reject(gone) : Promise.resolve({ rows: [] }),
+    );
+
+    await expect(fromPool(pool).transaction(() => Promise.reject(boom))).rejects.toBe(boom);
+    expect(release).toHaveBeenCalledWith(gone);
+  });
+
   it('rolls back and rethrows when the callback throws', async () => {
     const { pool, clientSql, release } = fakePool();
     const boom = new Error('boom');
 
     await expect(fromPool(pool).transaction(() => Promise.reject(boom))).rejects.toBe(boom);
     expect(clientSql()).toEqual(['begin', 'rollback']);
-    expect(release).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledExactlyOnceWith(undefined);
   });
 });

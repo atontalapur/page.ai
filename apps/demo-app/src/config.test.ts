@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig, shopSettings } from './config.ts';
+import { databaseUrl, loadShopSettings } from './config.ts';
 
-const url = 'postgres://page:page@localhost:5432/demo';
+describe('databaseUrl', () => {
+  it('accepts a postgres url', () => {
+    const url = 'postgres://page:page@localhost:5432/demo';
+    expect(databaseUrl({ DATABASE_URL: url })).toBe(url);
+  });
 
-describe('loadConfig', () => {
-  it('fills shop defaults', () => {
-    expect(shopSettings(loadConfig({ DATABASE_URL: url }))).toEqual({
+  it('rejects a missing or non-postgres url', () => {
+    expect(() => databaseUrl({})).toThrow();
+    expect(() => databaseUrl({ DATABASE_URL: 'mysql://x@localhost/demo' })).toThrow();
+  });
+
+  it('ignores a bad shop setting', () => {
+    const url = 'postgres://page:page@localhost:5432/demo';
+    expect(databaseUrl({ DATABASE_URL: url, MAX_ITEM_QUANTITY: '0' })).toBe(url);
+  });
+});
+
+describe('loadShopSettings', () => {
+  it('fills defaults', () => {
+    expect(loadShopSettings({})).toEqual({
       shippingFlatCents: 500,
       freeShippingMinCents: 5000,
       maxItemQuantity: 10,
@@ -13,26 +28,20 @@ describe('loadConfig', () => {
     });
   });
 
-  it('reads shop settings from the environment', () => {
-    const config = loadConfig({
-      DATABASE_URL: url,
+  it('reads settings from the environment', () => {
+    const settings = loadShopSettings({
       SHIPPING_FLAT_CENTS: '0',
       MAX_ITEM_QUANTITY: '3',
       CHECKOUT_ENABLED: 'false',
     });
-    expect(shopSettings(config)).toMatchObject({
+    expect(settings).toMatchObject({
       shippingFlatCents: 0,
       maxItemQuantity: 3,
       checkoutEnabled: false,
     });
   });
 
-  it('rejects a missing or non-postgres url', () => {
-    expect(() => loadConfig({})).toThrow();
-    expect(() => loadConfig({ DATABASE_URL: 'mysql://x@localhost/demo' })).toThrow();
-  });
-
   it('rejects a bad setting', () => {
-    expect(() => loadConfig({ DATABASE_URL: url, MAX_ITEM_QUANTITY: '0' })).toThrow();
+    expect(() => loadShopSettings({ MAX_ITEM_QUANTITY: '0' })).toThrow();
   });
 });

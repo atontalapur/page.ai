@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Queryable } from '../../../db/index.ts';
-import { testShop, type TestShop } from '../../test-utils.ts';
+import { createTestDb } from '../../../db/test-utils.ts';
 import { checkHealth } from './health.ts';
 import { GET } from './route.ts';
 
-const h = vi.hoisted(() => ({ ctx: undefined as unknown as TestShop }));
-vi.mock('../../data.ts', () => ({ shop: () => Promise.resolve(h.ctx) }));
+const h = vi.hoisted(() => ({ db: undefined as unknown as Queryable }));
+vi.mock('../../../db/index.ts', () => ({ getDb: () => h.db }));
 
 describe('GET /api/health', () => {
   it('reports ok when the database answers', async () => {
-    h.ctx = await testShop();
+    h.db = await createTestDb({ migrated: false });
     const res = await GET();
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'ok', db: 'ok' });

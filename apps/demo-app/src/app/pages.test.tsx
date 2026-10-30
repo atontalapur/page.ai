@@ -90,6 +90,13 @@ describe('pages', () => {
     expect(out).toContain('Checkout is paused');
   });
 
+  it('ignores inherited keys as error codes', async () => {
+    for (const error of ['__proto__', 'toString', 'constructor']) {
+      const out = html(await CartPage(props({}, { error })));
+      expect(out).not.toContain('class="error"');
+    }
+  });
+
   it('shows a placed order', async () => {
     const cartId = await cartWith('wool-beanie');
     const id = await placeOrder(h.ctx.db, cartId, h.ctx.settings);
@@ -101,5 +108,6 @@ describe('pages', () => {
   it('404s an unknown or malformed order id', async () => {
     expect(await navigation(OrderPage(props({ id: '999' })))).toBe('not-found');
     expect(await navigation(OrderPage(props({ id: 'abc' })))).toBe('not-found');
+    expect(await navigation(OrderPage(props({ id: '9999999999' })))).toBe('not-found');
   });
 });

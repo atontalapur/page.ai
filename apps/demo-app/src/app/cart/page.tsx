@@ -7,7 +7,7 @@ import { readCartId } from '../cart-session.ts';
 import { shop } from '../data.ts';
 
 function messageFor(code: unknown): string | undefined {
-  return typeof code === 'string' && code in errorMessages
+  return typeof code === 'string' && Object.hasOwn(errorMessages, code)
     ? errorMessages[code as ShopErrorCode]
     : undefined;
 }

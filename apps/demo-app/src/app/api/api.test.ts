@@ -75,11 +75,14 @@ describe('API routes', () => {
   it('rejects malformed bodies', async () => {
     expect((await addItem(post('not json'))).status).toBe(400);
     expect((await addItem(post({ productId: 'mug' }))).status).toBe(400);
+    expect((await addItem(post({ productId: 9999999999 }))).status).toBe(400);
+    expect((await removeItem(req, ctx({ productId: 'abc' }))).status).toBe(400);
   });
 
   it('404s an unknown or malformed order id', async () => {
     expect((await getOrder(req, ctx({ id: '999' }))).status).toBe(404);
     expect((await getOrder(req, ctx({ id: 'abc' }))).status).toBe(404);
+    expect((await getOrder(req, ctx({ id: '9999999999' }))).status).toBe(404);
   });
 
   it('lets unexpected errors through', async () => {

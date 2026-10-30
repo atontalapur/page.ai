@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { loadConfig } from '../config.ts';
+import { databaseUrl } from '../config.ts';
 import { fromPool, type Db } from './db.ts';
 
 export type { Db, Queryable } from './db.ts';
@@ -8,6 +8,6 @@ export type { Db, Queryable } from './db.ts';
 const cache = globalThis as { demoAppDb?: Db };
 
 export function getDb(): Db {
-  cache.demoAppDb ??= fromPool(new pg.Pool({ connectionString: loadConfig().DATABASE_URL }));
+  cache.demoAppDb ??= fromPool(new pg.Pool({ connectionString: databaseUrl() }));
   return cache.demoAppDb;
 }

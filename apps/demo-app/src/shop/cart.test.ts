@@ -68,6 +68,10 @@ describe('cart', () => {
     await expect(addItem(db, cart, keyring, 1, settings)).rejects.toMatchObject({
       code: 'out_of_stock',
     });
+    const missing = '00000000-0000-4000-8000-000000000000';
+    await expect(addItem(db, missing, beanie, 1, settings)).rejects.toMatchObject({
+      code: 'not_found',
+    });
   });
 
   it('removes a line', async () => {

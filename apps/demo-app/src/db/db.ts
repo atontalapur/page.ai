@@ -25,16 +25,20 @@ export function fromPool(pool: Pool): Db {
     ...wrap(pool),
     async transaction(fn) {
       const client = await pool.connect();
+      // Set when rollback fails: the connection is likely gone, so don't pool it again.
+      let broken: Error | undefined;
       try {
         await client.query('begin');
         const result = await fn(wrap(client));
         await client.query('commit');
         return result;
       } catch (err) {
-        await client.query('rollback');
+        await client.query('rollback').catch((rollbackErr: Error) => {
+          broken = rollbackErr;
+        });
         throw err;
       } finally {
-        client.release();
+        client.release(broken);
       }
     },
   };

@@ -34,6 +34,9 @@ describe('placeOrder', () => {
       code: 'empty_cart',
     });
     await expect(placeOrder(db, cart, settings)).rejects.toMatchObject({ code: 'empty_cart' });
+    await expect(
+      placeOrder(db, '00000000-0000-4000-8000-000000000000', settings),
+    ).rejects.toMatchObject({ code: 'empty_cart' });
   });
 
   it('rolls back when stock ran out after the item was added', async () => {

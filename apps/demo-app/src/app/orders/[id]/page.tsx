@@ -2,11 +2,13 @@ import { notFound } from 'next/navigation';
 import { formatCents } from '../../../shop/money.ts';
 import { getOrder } from '../../../shop/orders.ts';
 import { shop } from '../../data.ts';
+import { parseId } from '../../ids.ts';
 
 export default async function OrderPage(props: PageProps<'/orders/[id]'>) {
-  const id = Number((await props.params).id);
+  const id = parseId((await props.params).id);
+  if (id === undefined) notFound();
   const { db } = await shop();
-  const order = Number.isSafeInteger(id) ? await getOrder(db, id) : null;
+  const order = await getOrder(db, id);
   if (!order) notFound();
 
   return (

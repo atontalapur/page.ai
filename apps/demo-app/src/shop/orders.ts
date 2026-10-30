@@ -1,6 +1,6 @@
 import type { ShopSettings } from '../config.ts';
 import type { Db, Queryable } from '../db/index.ts';
-import { shippingFor } from './cart.ts';
+import { lockCart, shippingFor } from './cart.ts';
 import { ShopError } from './errors.ts';
 
 export interface OrderItem {
@@ -21,8 +21,8 @@ export interface Order {
 }
 
 /**
- * Turns the cart into an order in one transaction: locks the products, checks stock,
- * decrements it and empties the cart. Returns the new order id.
+ * Turns the cart into an order in one transaction: locks the cart and its products,
+ * checks stock, decrements it and removes the ordered lines. Returns the new order id.
  */
 export async function placeOrder(
   db: Db,
@@ -33,6 +33,8 @@ export async function placeOrder(
   if (!cartId) throw new ShopError('empty_cart', 'Cart is empty');
 
   return db.transaction(async (tx) => {
+    // Without this, a double-submitted checkout reads the same lines twice and orders them twice.
+    if (!(await lockCart(tx, cartId))) throw new ShopError('empty_cart', 'Cart is empty');
     const { rows: lines } = await tx.query<OrderItem & { stock: number }>(
       `select p.id as "productId", p.name, p.stock, p.price_cents as "unitPriceCents", ci.quantity
        from cart_items ci join products p on p.id = ci.product_id
@@ -65,7 +67,10 @@ export async function placeOrder(
         line.productId,
       ]);
     }
-    await tx.query('delete from cart_items where cart_id = $1', [cartId]);
+    await tx.query('delete from cart_items where cart_id = $1 and product_id = any($2::int[])', [
+      cartId,
+      lines.map((line) => line.productId),
+    ]);
     return orderId;
   });
 }

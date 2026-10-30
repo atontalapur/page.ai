@@ -1,7 +1,7 @@
 // Usage: node scripts/db.ts <migrate|seed>. Reads DATABASE_URL from the environment.
 import { join } from 'node:path';
 import pg from 'pg';
-import { loadConfig } from '../src/config.ts';
+import { databaseUrl } from '../src/config.ts';
 import { fromPool } from '../src/db/db.ts';
 import { ensureDatabase } from '../src/db/ensure-database.ts';
 import { loadMigrations, migrate } from '../src/db/migrate.ts';
@@ -13,7 +13,7 @@ if (command !== 'migrate' && command !== 'seed') {
   process.exit(2);
 }
 
-const { DATABASE_URL } = loadConfig();
+const DATABASE_URL = databaseUrl();
 if (command === 'migrate' && (await ensureDatabase(DATABASE_URL))) {
   console.log('created database');
 }

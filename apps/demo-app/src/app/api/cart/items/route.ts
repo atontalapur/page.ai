@@ -2,10 +2,11 @@ import { z } from 'zod';
 import { addItem, getCart } from '../../../../shop/cart.ts';
 import { openCart } from '../../../cart-session.ts';
 import { shop } from '../../../data.ts';
+import { idSchema } from '../../../ids.ts';
 import { errorResponse, handle } from '../../respond.ts';
 
 const body = z.object({
-  productId: z.number().int(),
+  productId: idSchema,
   quantity: z.number().int().default(1),
 });
 

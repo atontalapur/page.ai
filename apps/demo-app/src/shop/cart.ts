@@ -1,5 +1,5 @@
 import type { ShopSettings } from '../config.ts';
-import type { Queryable } from '../db/index.ts';
+import type { Db, Queryable } from '../db/index.ts';
 import { ShopError } from './errors.ts';
 
 export interface CartLine {
@@ -55,9 +55,18 @@ export async function getCart(
   return { lines, subtotalCents, shippingCents, totalCents: subtotalCents + shippingCents };
 }
 
+/**
+ * Locks the cart row for the rest of the transaction. Adds and checkouts on the same cart
+ * take this lock first, so they run one after another instead of on stale reads.
+ */
+export async function lockCart(tx: Queryable, cartId: string): Promise<boolean> {
+  const { rows } = await tx.query('select 1 from carts where id = $1 for update', [cartId]);
+  return rows.length > 0;
+}
+
 /** Adds `quantity` to whatever is already in the cart for that product. */
 export async function addItem(
-  db: Queryable,
+  db: Db,
   cartId: string,
   productId: number,
   quantity: number,
@@ -66,28 +75,32 @@ export async function addItem(
   if (!Number.isInteger(quantity) || quantity < 1) {
     throw new ShopError('invalid_quantity', 'Quantity must be a positive whole number');
   }
-  const { rows } = await db.query<{ stock: number; inCart: number }>(
-    `select p.stock, coalesce(ci.quantity, 0) as "inCart"
-     from products p
-     left join cart_items ci on ci.product_id = p.id and ci.cart_id = $2
-     where p.id = $1`,
-    [productId, cartId],
-  );
-  const product = rows[0];
-  if (!product) throw new ShopError('not_found', `No product with id ${productId}`);
+  await db.transaction(async (tx) => {
+    if (!(await lockCart(tx, cartId))) throw new ShopError('not_found', 'No such cart');
 
-  const total = product.inCart + quantity;
-  if (total > settings.maxItemQuantity) {
-    throw new ShopError('invalid_quantity', `At most ${settings.maxItemQuantity} per item`);
-  }
-  if (total > product.stock) {
-    throw new ShopError('out_of_stock', `Only ${product.stock} left`);
-  }
-  await db.query(
-    `insert into cart_items (cart_id, product_id, quantity) values ($1, $2, $3)
-     on conflict (cart_id, product_id) do update set quantity = excluded.quantity`,
-    [cartId, productId, total],
-  );
+    const { rows } = await tx.query<{ stock: number; inCart: number }>(
+      `select p.stock, coalesce(ci.quantity, 0) as "inCart"
+       from products p
+       left join cart_items ci on ci.product_id = p.id and ci.cart_id = $2
+       where p.id = $1`,
+      [productId, cartId],
+    );
+    const product = rows[0];
+    if (!product) throw new ShopError('not_found', `No product with id ${productId}`);
+
+    const total = product.inCart + quantity;
+    if (total > settings.maxItemQuantity) {
+      throw new ShopError('invalid_quantity', `At most ${settings.maxItemQuantity} per item`);
+    }
+    if (total > product.stock) {
+      throw new ShopError('out_of_stock', `Only ${product.stock} left`);
+    }
+    await tx.query(
+      `insert into cart_items (cart_id, product_id, quantity) values ($1, $2, $3)
+       on conflict (cart_id, product_id) do update set quantity = excluded.quantity`,
+      [cartId, productId, total],
+    );
+  });
 }
 
 export async function removeItem(db: Queryable, cartId: string, productId: number): Promise<void> {
