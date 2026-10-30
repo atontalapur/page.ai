@@ -1,6 +1,11 @@
 name: Setup
 description: pnpm (version from packageManager), Node from .nvmrc, cached store, frozen install
 
+inputs:
+  filter:
+    description: Install only this workspace project (pnpm --filter). Empty installs everything.
+    default: ''
+
 runs:
   using: composite
   steps:
@@ -10,5 +15,7 @@ runs:
     - uses: actions/setup-node@v7
       with:
         node-version-file: .nvmrc
-    - run: pnpm install --frozen-lockfile
+    - run: pnpm install --frozen-lockfile ${FILTER:+--filter "$FILTER"}
       shell: bash
+      env:
+        FILTER: ${{ inputs.filter }}

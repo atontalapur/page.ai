@@ -28,9 +28,22 @@ jobs:
           key: turbo-${{ runner.os }}-${{ github.sha }}
           restore-keys: turbo-${{ runner.os }}-
       - run: pnpm format:check
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
+      - run: pnpm depcruise
+      # One turbo run so lint, typecheck and test share a task graph and run in parallel.
+      # --continue reports every failing task, not just the first.
+      - run: pnpm turbo run lint typecheck test --continue --summarize
+      # Without this, each run restores the last cache, adds to it and saves it under a new
+      # key, so the cache only grows. Keep just the artifacts this run used.
+      - name: Prune turbo cache to this run's tasks
+        run: |
+          shopt -s nullglob
+          keep="$(jq -r '.tasks[].hash' .turbo/runs/*.json)"
+          for f in .turbo/cache/*; do
+            hash="$(basename "$f")"
+            hash="${hash%%[-.]*}"
+            grep -qxF "$hash" <<<"$keep" || rm -f "$f"
+          done
+          du -sh .turbo/cache
 
   integration:
     runs-on: ubuntu-latest
