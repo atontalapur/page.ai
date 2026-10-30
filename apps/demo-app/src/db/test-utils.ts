@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { PGlite, type Transaction } from '@electric-sql/pglite';
 import pg from 'pg';
+import { onTestFinished } from 'vitest';
 import { fromPool, type Db, type Queryable } from './db.ts';
 import { loadMigrations, migrate } from './migrate.ts';
 
@@ -16,9 +17,14 @@ function wrap(client: PGlite | Transaction): Queryable {
   };
 }
 
-/** In-memory Postgres, so unit tests run with no network. */
+/**
+ * In-memory Postgres, so unit tests run with no network. Closed when the test ends:
+ * each instance holds a few hundred MB, and the 1 GB agent sandbox (#5) can't keep
+ * one per test alive.
+ */
 export async function createTestDb({ migrated = true } = {}): Promise<Db> {
   const pg = await PGlite.create();
+  onTestFinished(() => pg.close());
   const db: Db = { ...wrap(pg), transaction: (fn) => pg.transaction((tx) => fn(wrap(tx))) };
   if (migrated) await migrate(db, await loadMigrations(migrationsDir));
   return db;
