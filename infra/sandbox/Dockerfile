@@ -34,13 +34,25 @@ RUN git init -q -b main \
   && git add -A \
   && git -c user.name=sandbox -c user.email=sandbox@page.invalid commit -qm baseline
 
+# The root filesystem stays writable so /workspace needs no volume copy at start, so the
+# node user must own nothing outside /workspace. smoke.sh checks this.
+USER root
+RUN rm -rf /home/node/.cache /tmp/* \
+  && chown -R root:root /opt/corepack /home/node \
+  && chmod 755 /var/tmp
+USER node
+
 # Corepack must not try to fetch anything at run time; the network is off.
+# PAGE_SANDBOX turns on the demo app's low-memory test settings (vitest.config.js).
 ENV COREPACK_ENABLE_NETWORK=0 \
-    HOME=/tmp
+    HOME=/tmp \
+    PAGE_SANDBOX=1
 LABEL org.opencontainers.image.source=https://github.com/atontalapur/page.ai \
       org.opencontainers.image.description="PageAgents agent sandbox"
 
 # The container stops itself after 15 minutes, so the wall clock holds even if the
 # daemon that started it dies. Commands run alongside via `docker exec`.
+# SANDBOX_LIMITS.wallClockSeconds in apps/node/src/sandbox/run-args.ts is the source of
+# truth and overrides this; the CMD only covers a plain `docker run` of the image.
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["sleep", "900"]

@@ -34,10 +34,10 @@ describe('sandboxRunArgs', () => {
     expect(flag('--security-opt')).toBe('no-new-privileges');
   });
 
-  it('makes the root read-only with only /tmp and the repo writable', () => {
-    expect(args).toContain('--read-only');
-    expect(flag('--tmpfs')).toBe('/tmp');
-    expect(flag('--mount')).toBe('type=volume,dst=/workspace');
+  it('gives /tmp a capped tmpfs and mounts nothing else', () => {
+    expect(flag('--tmpfs')).toBe('/tmp:size=128m');
+    expect(args).not.toContain('--mount');
+    expect(args).not.toContain('--volume');
   });
 
   it('ends with the image and a 15 minute sleep', () => {

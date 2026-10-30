@@ -15,9 +15,18 @@ uid="$(sx id -u)"
 [ "$uid" != 0 ] || fail "runs as root"
 echo "ok: uid $uid"
 
+# The root filesystem is writable at the Docker level, so what keeps the agent inside
+# /workspace is that the sandbox user can write nothing else. List every path it could
+# write to (owned by it, group-writable to it, or world-writable) outside /workspace and /tmp.
+# -xdev skips /proc, /sys and /dev, which are separate filesystems.
+# Symlinks always show mode 777, and find exits non-zero on dirs it can't read (/root),
+# which are root-owned anyway.
+writable="$(sx sh -c 'find / -xdev \( -path /workspace -o -path /tmp \) -prune -o ! -type l \
+  \( -user "$(id -u)" -o \( -group "$(id -g)" -perm -0020 \) -o -perm -0002 \) \
+  -print 2>/dev/null; true')"
+[ -z "$writable" ] || fail "writable outside /workspace and /tmp: $writable"
 sx sh -c 'echo x > /etc/sandbox-probe' 2>/dev/null && fail "wrote to /etc"
-sx sh -c 'echo x > /sandbox-probe' 2>/dev/null && fail "wrote to /"
-echo "ok: root filesystem is read-only"
+echo "ok: nothing outside /workspace and /tmp is writable"
 
 sx sh -c 'echo x > /workspace/.probe && rm /workspace/.probe' || fail "repo is not writable"
 echo "ok: /workspace is writable"

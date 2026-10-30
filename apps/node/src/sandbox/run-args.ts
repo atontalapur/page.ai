@@ -3,13 +3,13 @@ export const SANDBOX_LIMITS = {
   cpus: 1,
   memory: '1g',
   pids: 256,
+  // /tmp is RAM-backed and counts against `memory`.
+  tmp: '128m',
   wallClockSeconds: 15 * 60,
 } as const;
 
 // Containers carry this label so cleanup (#9) can find strays left by a crashed daemon.
 export const SANDBOX_LABEL = 'page.sandbox';
-
-export const WORKSPACE_DIR = '/workspace';
 
 export interface SandboxRunOptions {
   image: string;
@@ -45,14 +45,11 @@ export function sandboxRunArgs({ image, name }: SandboxRunOptions): string[] {
     'ALL',
     '--security-opt',
     'no-new-privileges',
-    '--read-only',
     // HOME points here, so git and other tools have somewhere to write scratch files.
+    // The root filesystem isn't read-only: a volume for the repo would copy node_modules
+    // on every start. The image gives the node user nothing to write outside /workspace.
     '--tmpfs',
-    '/tmp',
-    // An empty anonymous volume is filled from the image's /workspace, so the repo stays
-    // writable while the root filesystem is read-only. --rm deletes it with the container.
-    '--mount',
-    `type=volume,dst=${WORKSPACE_DIR}`,
+    `/tmp:size=${SANDBOX_LIMITS.tmp}`,
     image,
     'sleep',
     String(SANDBOX_LIMITS.wallClockSeconds),
