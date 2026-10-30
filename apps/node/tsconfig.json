@@ -1,4 +1,7 @@
 {
   "extends": "@page/config/tsconfig/base.json",
-  "include": ["src"]
+  "compilerOptions": {
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src", "scripts"]
 }
