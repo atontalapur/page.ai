@@ -4,6 +4,12 @@
   "private": true,
   "description": "execute() and host tools, gated by tier allowlists",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc",
