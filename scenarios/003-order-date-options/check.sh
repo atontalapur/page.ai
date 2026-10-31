@@ -1,8 +1,10 @@
 #!/bin/sh
-# An order page renders, with its total.
+# An order page renders, with its total and the date it was placed.
 set -eu
 cd apps/demo-app
 d=.page-check
+# A check killed before its trap ran leaves the directory behind.
+rm -rf "$d"
 mkdir "$d"
 trap 'rm -rf "$d"' EXIT
 cat > "$d/vitest.config.js" <<'JS'
@@ -33,6 +35,7 @@ it('renders an order', async () => {
   const html = renderToStaticMarkup(await OrderPage(props as never));
   expect(html).toContain('Canvas Tote');
   expect(html).toContain('$29.00');
+  expect(html).toMatch(/Placed[^<]*2026/);
 });
 TSX
 node_modules/.bin/vitest run --config "$d/vitest.config.js"

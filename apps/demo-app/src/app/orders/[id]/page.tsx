@@ -15,6 +15,7 @@ export default async function OrderPage(props: PageProps<'/orders/[id]'>) {
     <main>
       <h1>Order #{order.id}</h1>
       <p>Status: {order.status}</p>
+      <p>Placed {order.createdAt.toLocaleDateString('en-US', { dateStyle: 'long' })}</p>
       <ul>
         {order.items.map((item) => (
           <li key={item.productId}>

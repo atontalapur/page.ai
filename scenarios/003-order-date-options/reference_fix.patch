@@ -1,13 +1,13 @@
 diff --git a/apps/demo-app/src/app/orders/[id]/page.tsx b/apps/demo-app/src/app/orders/[id]/page.tsx
-index 0350332..bb7e323 100644
+index cd6f831..3950d15 100644
 --- a/apps/demo-app/src/app/orders/[id]/page.tsx
 +++ b/apps/demo-app/src/app/orders/[id]/page.tsx
-@@ -17,7 +17,7 @@ export default async function OrderPage(props: PageProps<'/orders/[id]'>) {
+@@ -15,7 +15,7 @@ export default async function OrderPage(props: PageProps<'/orders/[id]'>) {
+     <main>
+       <h1>Order #{order.id}</h1>
        <p>Status: {order.status}</p>
-       <p>
-         Placed{' '}
--        {order.createdAt.toLocaleDateString('en-US', { dateStyle: 'medium', month: 'long' })}
-+        {order.createdAt.toLocaleDateString('en-US', { dateStyle: 'long' })}
-       </p>
+-      <p>Placed {order.createdAt.toLocaleDateString('en-US', { dateStyle: 'medium', month: 'long' })}</p>
++      <p>Placed {order.createdAt.toLocaleDateString('en-US', { dateStyle: 'long' })}</p>
        <ul>
          {order.items.map((item) => (
+           <li key={item.productId}>
