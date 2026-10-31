@@ -3,6 +3,8 @@
 set -eu
 cd apps/demo-app
 d=.page-check
+# A check killed before its trap ran leaves the directory behind.
+rm -rf "$d"
 mkdir "$d"
 trap 'rm -rf "$d"' EXIT
 cat > "$d/vitest.config.js" <<'JS'
