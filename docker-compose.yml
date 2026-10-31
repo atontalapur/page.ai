@@ -1,5 +1,6 @@
-# Local Postgres for development and integration tests.
-# Start with `pnpm db:up`; connection string is in .env.example.
+# Local Postgres for development and integration tests, plus the demo app.
+# `pnpm db:up` starts only Postgres; connection string is in .env.example.
+# `docker compose up` also builds and serves the demo app on DEMO_APP_PORT (default 3000).
 services:
   postgres:
     image: postgres:18-alpine
@@ -17,6 +18,26 @@ services:
       interval: 2s
       timeout: 5s
       retries: 15
+
+  demo-app:
+    build:
+      context: .
+      dockerfile: apps/demo-app/Dockerfile
+    environment:
+      # Own database on the shared server; `db.ts migrate` creates it on first run.
+      DATABASE_URL: postgres://page:page@postgres:5432/demo
+    command: >-
+      sh -c "node scripts/db.ts migrate && node scripts/db.ts seed && exec node_modules/.bin/next start"
+    ports:
+      - '${DEMO_APP_PORT:-3000}:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/health || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
 volumes:
   pgdata:
