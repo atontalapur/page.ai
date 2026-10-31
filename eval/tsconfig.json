@@ -1,7 +1,10 @@
 {
   "extends": "@page/config/tsconfig/base.json",
   "compilerOptions": {
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // Node runs these files by stripping types, which rejects enums, parameter properties
+    // and namespaces.
+    "erasableSyntaxOnly": true
   },
   "include": ["src", "scripts"]
 }

@@ -17,12 +17,14 @@ export interface Scenario {
 
 /** Every problem with one scenario directory, reported together. */
 export class ScenarioError extends Error {
-  constructor(
-    readonly id: string,
-    readonly problems: string[],
-  ) {
+  readonly id: string;
+  readonly problems: string[];
+
+  constructor(id: string, problems: string[]) {
     super(`scenario ${id}: ${problems.join('; ')}`);
     this.name = 'ScenarioError';
+    this.id = id;
+    this.problems = problems;
   }
 }
 
