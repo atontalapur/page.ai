@@ -15,3 +15,13 @@ catalog:
   typescript-eslint: ^8.72.1
   # @vitest/coverage-v8 peers on this exact version, so bump them together
   vitest: ^5.0.5
+  # UI (apps/ui)
+  '@tailwindcss/vite': ^4.3.3
+  '@types/react': ^19.3.0
+  '@types/react-dom': ^19.3.0
+  '@vitejs/plugin-react': ^6.1.2
+  react: ^19.3.1
+  react-dom: ^19.3.1
+  tailwindcss: ^4.3.3
+  # vitest 5 pulls in vite 8, keep them in step
+  vite: ^8.3.5
