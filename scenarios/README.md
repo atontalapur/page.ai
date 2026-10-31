@@ -36,7 +36,7 @@ Write checks that don't lean on the demo app's own tests, since the agent can ed
 
 ## Checks that need more than plain node
 
-`node --input-type=module` with a heredoc covers `.ts` modules (001, 009). Two other
+`node --input-type=module` with a heredoc covers `.ts` modules (001, 009, 010). Two other
 shapes are in use; copy one into a new `check.sh`, since the runner pipes it in alone.
 
 - **Database:** `node --liftoff-only` with an in-memory PGlite, the app's migrations, and
