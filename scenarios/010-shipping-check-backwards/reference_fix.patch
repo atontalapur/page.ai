@@ -1,0 +1,13 @@
+diff --git a/apps/demo-app/src/config.ts b/apps/demo-app/src/config.ts
+index 1b06e74..d1f13ae 100644
+--- a/apps/demo-app/src/config.ts
++++ b/apps/demo-app/src/config.ts
+@@ -14,7 +14,7 @@ const shopSchema = z.object({
+   FREE_SHIPPING_MIN_CENTS: z.coerce.number().int().min(0).default(5000),
+   MAX_ITEM_QUANTITY: z.coerce.number().int().min(1).default(10),
+   CHECKOUT_ENABLED: z.stringbool().default(true),
+-}).refine((c) => c.SHIPPING_FLAT_CENTS > c.FREE_SHIPPING_MIN_CENTS, {
++}).refine((c) => c.FREE_SHIPPING_MIN_CENTS > c.SHIPPING_FLAT_CENTS, {
+   message: 'FREE_SHIPPING_MIN_CENTS must be above SHIPPING_FLAT_CENTS',
+ });
+ 
