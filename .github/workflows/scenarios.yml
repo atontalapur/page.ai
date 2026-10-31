@@ -1,16 +1,31 @@
 # Self-tests seeded bug scenarios (#6) in the sandbox image: check.sh passes on the clean
 # demo app, fails after break.sh and passes after reference_fix.patch.
-# A PR self-tests only the scenarios it touches. A change to the runner or to this
-# workflow, and every push to main, self-tests all of them.
+# A PR that changes only scenarios/ self-tests the scenarios it touches. Any other input
+# (the runner, the demo app, the sandbox image) and every push to main self-tests all of
+# them.
 # Not a required check: it only runs when its inputs change.
 name: Scenarios
 
 on:
   pull_request:
+    # sandbox-image.yml's inputs (what the scenarios run against), plus the scenarios and
+    # the runner.
     paths: &inputs
       - scenarios/**
       - eval/**
       - packages/contracts/**
+      - infra/sandbox/**
+      - apps/demo-app/**
+      - packages/config/**
+      - apps/node/src/sandbox/**
+      - apps/node/scripts/sandbox-run.ts
+      - apps/node/package.json
+      - .dockerignore
+      - .gitignore
+      - .nvmrc
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
       - .github/workflows/scenarios.yml
   push:
     branches: [main]
@@ -45,7 +60,9 @@ jobs:
             ids="$all"
           else
             changed="$(git diff --name-only "$BASE"...HEAD)"
-            if grep -qE '^(eval/|packages/contracts/|\.github/workflows/scenarios\.yml$)' <<<"$changed"; then
+            # Anything outside scenarios/ can break every scenario, so this needs no second
+            # copy of the trigger list.
+            if grep -qv '^scenarios/' <<<"$changed"; then
               ids="$all"
             else
               # Directories the PR touched that still exist (a deleted scenario has nothing to test).
