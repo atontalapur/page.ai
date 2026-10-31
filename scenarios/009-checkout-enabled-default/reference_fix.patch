@@ -1,0 +1,13 @@
+diff --git a/apps/demo-app/src/config.ts b/apps/demo-app/src/config.ts
+index 1467ce9..bd1d4ea 100644
+--- a/apps/demo-app/src/config.ts
++++ b/apps/demo-app/src/config.ts
+@@ -13,7 +13,7 @@ const shopSchema = z.object({
+   SHIPPING_FLAT_CENTS: z.coerce.number().int().min(0).default(500),
+   FREE_SHIPPING_MIN_CENTS: z.coerce.number().int().min(0).default(5000),
+   MAX_ITEM_QUANTITY: z.coerce.number().int().min(1).default(10),
+-  CHECKOUT_ENABLED: z.stringbool(),
++  CHECKOUT_ENABLED: z.stringbool().default(true),
+ });
+ 
+ export interface ShopSettings {

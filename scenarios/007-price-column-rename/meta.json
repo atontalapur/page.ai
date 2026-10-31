@@ -1,0 +1,5 @@
+{
+  "class": "database",
+  "expectedTier": 2,
+  "description": "Migration renames products.price_cents but cart and checkout queries still select the old column"
+}
