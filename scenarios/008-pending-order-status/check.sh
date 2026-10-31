@@ -1,5 +1,7 @@
 #!/bin/sh
-# Checkout creates an order that can be read back.
+# Checkout creates an order that can be read back, and orders_status_check still holds.
+# Widening the constraint and inserting 'placed' again are both accepted: the clean app
+# (which this must pass on) creates 'placed' orders.
 set -eu
 cd apps/demo-app
 # --liftoff-only keeps PGlite's wasm compile under the sandbox's 1 GB (see vitest.config.js).
@@ -23,8 +25,15 @@ const { rows } = await db.query(
 const cartId = await ensureCart(db);
 await addItem(db, cartId, rows[0].id, 1, settings);
 const order = await getOrder(db, await placeOrder(db, cartId, settings));
+assert.ok(['pending', 'placed'].includes(order.status), order.status);
 assert.equal(order.totalCents, 2900);
 assert.equal(order.items.length, 1);
 const stock = await db.query('select stock from products where id = $1', [rows[0].id]);
 assert.equal(stock.rows[0].stock, 4);
+await assert.rejects(
+  db.query(
+    `insert into orders (status, subtotal_cents, shipping_cents, total_cents) values ('lost', 0, 0, 0)`,
+  ),
+  /orders_status_check/,
+);
 JS
