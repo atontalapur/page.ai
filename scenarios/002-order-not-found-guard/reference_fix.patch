@@ -1,12 +1,12 @@
 diff --git a/apps/demo-app/src/app/orders/[id]/page.tsx b/apps/demo-app/src/app/orders/[id]/page.tsx
-index 8084522..5614b56 100644
+index 912eda3..5614b56 100644
 --- a/apps/demo-app/src/app/orders/[id]/page.tsx
 +++ b/apps/demo-app/src/app/orders/[id]/page.tsx
 @@ -9,7 +9,7 @@ export default async function OrderPage(props: PageProps<'/orders/[id]'>) {
    if (id === undefined) notFound();
    const { db } = await shop();
    const order = await getOrder(db, id);
--  if (order === undefined) notFound();
+-  if (!order) throw new Error(`No order with id ${id}`);
 +  if (!order) notFound();
  
    return (

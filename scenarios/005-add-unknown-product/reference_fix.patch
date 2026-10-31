@@ -1,11 +1,13 @@
 diff --git a/apps/demo-app/src/shop/cart.ts b/apps/demo-app/src/shop/cart.ts
-index 8d77de2..d711195 100644
+index b7bb5ae..d711195 100644
 --- a/apps/demo-app/src/shop/cart.ts
 +++ b/apps/demo-app/src/shop/cart.ts
-@@ -86,6 +86,7 @@ export async function addItem(
+@@ -85,7 +85,8 @@ export async function addItem(
+        where p.id = $1`,
        [productId, cartId],
      );
-     const product = rows[0];
+-    const product = rows[0]!;
++    const product = rows[0];
 +    if (!product) throw new ShopError('not_found', `No product with id ${productId}`);
  
      const total = product.inCart + quantity;

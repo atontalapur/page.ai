@@ -1,5 +1,5 @@
 {
   "class": "frontend",
   "expectedTier": 1,
-  "description": "Order page checks for undefined instead of null, so an unknown order id throws instead of a 404"
+  "description": "Order page throws a plain Error for a missing order instead of calling notFound(), so an unknown order id is a 500 instead of a 404"
 }
