@@ -7,12 +7,22 @@ digits and a kebab-case slug (`001-bad-currency-code`).
 | --------------------- | ----------------------------------------------------------------------------------- |
 | `break.sh`            | Plants the bug in a clean demo app. Fails if it couldn't (the code it edits moved). |
 | `trigger.sh`          | Makes the bug fire on a running app at `$DEMO_APP_URL`, so PostHog sees it.         |
-| `check.sh`            | Exits 0 when the bug is fixed and non-zero while it's there.                        |
+| `check.sh`            | Exits 0 when the bug is fixed and 1 while it's there.                               |
 | `reference_fix.patch` | A known fix, applied on top of `break.sh` with `git apply`.                         |
 | `meta.json`           | `class`, `expectedTier` and a one-line `description` (`ScenarioMeta` in contracts). |
 
-The scripts run in the sandbox image (Alpine, busybox `sh`, no bash) from `/workspace`,
-the repo root, as the sandbox user. They get no network. Keep them executable.
+`break.sh` and `check.sh` run in the sandbox image (Alpine, busybox `sh`, no bash) from
+`/workspace`, the repo root, as the sandbox user. They get no network. `check.sh` must
+exit 1 for the bug, so the self-test can tell it apart from a check that crashed or a
+dead sandbox (125-127 from `docker exec`, 137 from the OOM killer). A failed `assert`
+in `node` exits 1. Under `set -e` the script exits with the failing command's code, so
+map other failures to 1 yourself.
+
+`trigger.sh` runs outside the sandbox, from the eval runner's host, against a deployed
+demo app (staging, for the PostHog demo). It needs the network and `curl`. The self-test
+doesn't run it.
+
+Keep all three executable.
 
 ## check.sh never goes in the sandbox
 

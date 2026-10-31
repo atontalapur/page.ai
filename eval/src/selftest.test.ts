@@ -75,7 +75,23 @@ describe('selfTest', () => {
     expect(result.passed).toBe(false);
     const last = result.steps.at(-1);
     expect(last?.step).toBe('check fails after break.sh');
-    expect(last?.detail).toMatch(/^expected a non-zero exit, got 0/);
+    expect(last?.detail).toMatch(/^expected exit 1, got 0/);
+  });
+
+  it('fails when check.sh dies for a reason other than the bug', async () => {
+    const { sh } = fakeSandbox();
+    let checks = 0;
+    const result = await selfTest(scenario, (script) => {
+      // The second check (after break.sh) gets OOM-killed instead of reporting the bug.
+      if (script === 'CHECK' && ++checks === 2) return Promise.resolve({ code: 137, output: '' });
+      return sh(script);
+    });
+    expect(result.passed).toBe(false);
+    expect(result.steps.at(-1)).toEqual({
+      step: 'check fails after break.sh',
+      ok: false,
+      detail: 'expected exit 1, got 137\n',
+    });
   });
 
   it('stops at the first failing step and keeps only the tail of its output', async () => {

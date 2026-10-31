@@ -33,6 +33,10 @@ found="$(find /workspace -name node_modules -prune -o -name check.sh -print)"
 test -z "$found" || { echo "check.sh in sandbox: $found"; exit 1; }
 `;
 
+// check.sh exits with this while the bug is there. Any other non-zero code (125-127 from
+// docker exec, 137 from the OOM killer) means the check or the sandbox broke instead.
+export const BUG_PRESENT = 1;
+
 // Lines of output kept for a failed step.
 const TAIL_LINES = 40;
 
@@ -65,12 +69,12 @@ export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<Se
   const steps: StepResult[] = [];
   for (const { step, script, expect } of plan) {
     const { code, output } = await sh(script);
-    const ok = expect === 'pass' ? code === 0 : code !== 0;
+    const ok = code === (expect === 'pass' ? 0 : BUG_PRESENT);
     if (ok) {
       steps.push({ step, ok });
       continue;
     }
-    const wanted = expect === 'pass' ? 'exit 0' : 'a non-zero exit';
+    const wanted = `exit ${expect === 'pass' ? 0 : BUG_PRESENT}`;
     steps.push({ step, ok, detail: `expected ${wanted}, got ${code}\n${tail(output)}` });
     return { id: scenario.id, passed: false, steps };
   }
