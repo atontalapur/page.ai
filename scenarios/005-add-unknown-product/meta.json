@@ -1,0 +1,5 @@
+{
+  "class": "backend-api",
+  "expectedTier": 1,
+  "description": "addItem drops its missing-product check, so an unknown productId throws a TypeError instead of a 404"
+}
