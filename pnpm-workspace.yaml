@@ -16,3 +16,4 @@ catalog:
   typescript-eslint: ^8.72.1
   # @vitest/coverage-v8 peers on this exact version, so bump them together
   vitest: ^5.0.5
+  zod: ^4.6.7

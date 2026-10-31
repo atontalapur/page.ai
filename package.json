@@ -16,7 +16,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "depcruise": "depcruise apps packages",
+    "depcruise": "depcruise apps packages eval",
     "scenarios:selftest": "node eval/scripts/selftest.ts",
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose down"
