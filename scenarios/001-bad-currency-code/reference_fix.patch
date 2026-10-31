@@ -1,0 +1,10 @@
+diff --git a/apps/demo-app/src/shop/money.ts b/apps/demo-app/src/shop/money.ts
+index 3a9c03b..56d0fe7 100644
+--- a/apps/demo-app/src/shop/money.ts
++++ b/apps/demo-app/src/shop/money.ts
+@@ -1,4 +1,4 @@
+-const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'US' });
++const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+ 
+ export function formatCents(cents: number): string {
+   return usd.format(cents / 100);
