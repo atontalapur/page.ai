@@ -10,4 +10,5 @@ SQL
 sed -i 's/price_cents as "priceCents"/unit_price_cents as "priceCents"/' "$d/src/shop/products.ts"
 sed -i 's/insert into products (slug, name, description, price_cents, stock)/insert into products (slug, name, description, unit_price_cents, stock)/; s/price_cents = excluded.price_cents/unit_price_cents = excluded.unit_price_cents/' "$d/src/db/seed.ts"
 grep -q 'unit_price_cents as "priceCents"' "$d/src/shop/products.ts"
+grep -q 'insert into products (slug, name, description, unit_price_cents, stock)' "$d/src/db/seed.ts"
 grep -q 'unit_price_cents = excluded.unit_price_cents' "$d/src/db/seed.ts"
