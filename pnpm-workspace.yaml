@@ -1,6 +1,7 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  - 'eval'
 
 # One version per tool across the repo. Reference with "catalog:".
 catalog:

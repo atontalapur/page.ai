@@ -1,0 +1,24 @@
+{
+  "name": "@page/eval",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Scenario self-test and the eval runner for the seeded bugs",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc",
+    "test": "vitest run --project unit --coverage",
+    "test:integration": "vitest run --project integration"
+  },
+  "dependencies": {
+    "@page/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@page/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
