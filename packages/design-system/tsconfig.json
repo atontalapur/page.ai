@@ -1,0 +1,10 @@
+{
+  "extends": "@page/config/tsconfig/react.json",
+  "compilerOptions": {
+    "types": ["vite/client"],
+    "paths": {
+      "@page/design-system/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "playground", "vite.config.ts"]
+}

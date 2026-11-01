@@ -1,0 +1,250 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@import '@fontsource-variable/inter';
+
+/* Scan this package's components wherever the stylesheet is imported from. */
+@source "../**/*.{ts,tsx}";
+
+/*
+ * Every color comes from Radix Colors (https://www.radix-ui.com/colors).
+ * Each scale ships light and dark values; the dark files apply under `.dark`, so the
+ * semantic tokens below map to scale steps once and flip with the theme on their own.
+ *   slate  - grays: backgrounds, borders, text
+ *   indigo - brand: primary actions, focus, charts
+ *   red    - destructive
+ */
+@import '@radix-ui/colors/slate.css';
+@import '@radix-ui/colors/slate-dark.css';
+@import '@radix-ui/colors/slate-alpha.css';
+@import '@radix-ui/colors/slate-dark-alpha.css';
+@import '@radix-ui/colors/indigo.css';
+@import '@radix-ui/colors/indigo-dark.css';
+@import '@radix-ui/colors/indigo-alpha.css';
+@import '@radix-ui/colors/indigo-dark-alpha.css';
+@import '@radix-ui/colors/red.css';
+@import '@radix-ui/colors/red-dark.css';
+@import '@radix-ui/colors/red-alpha.css';
+@import '@radix-ui/colors/red-dark-alpha.css';
+@import '@radix-ui/colors/black-alpha.css';
+@import '@radix-ui/colors/white-alpha.css';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Drop Tailwind's default palette so only Radix scales and semantic tokens exist as
+ * utilities (bg-slate-3, text-indigo-11, border-border, ...).
+ */
+@theme {
+  --color-*: initial;
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: 'Inter Variable', sans-serif;
+
+  /* Radix's step-9 contrast color for indigo and red, and the base of black-a/white-a. */
+  --color-white: #fff;
+  --color-black: #000;
+
+  --color-slate-1: var(--slate-1);
+  --color-slate-2: var(--slate-2);
+  --color-slate-3: var(--slate-3);
+  --color-slate-4: var(--slate-4);
+  --color-slate-5: var(--slate-5);
+  --color-slate-6: var(--slate-6);
+  --color-slate-7: var(--slate-7);
+  --color-slate-8: var(--slate-8);
+  --color-slate-9: var(--slate-9);
+  --color-slate-10: var(--slate-10);
+  --color-slate-11: var(--slate-11);
+  --color-slate-12: var(--slate-12);
+  --color-slate-a1: var(--slate-a1);
+  --color-slate-a2: var(--slate-a2);
+  --color-slate-a3: var(--slate-a3);
+  --color-slate-a4: var(--slate-a4);
+  --color-slate-a5: var(--slate-a5);
+  --color-slate-a6: var(--slate-a6);
+  --color-slate-a7: var(--slate-a7);
+  --color-slate-a8: var(--slate-a8);
+  --color-slate-a9: var(--slate-a9);
+  --color-slate-a10: var(--slate-a10);
+  --color-slate-a11: var(--slate-a11);
+  --color-slate-a12: var(--slate-a12);
+  --color-indigo-1: var(--indigo-1);
+  --color-indigo-2: var(--indigo-2);
+  --color-indigo-3: var(--indigo-3);
+  --color-indigo-4: var(--indigo-4);
+  --color-indigo-5: var(--indigo-5);
+  --color-indigo-6: var(--indigo-6);
+  --color-indigo-7: var(--indigo-7);
+  --color-indigo-8: var(--indigo-8);
+  --color-indigo-9: var(--indigo-9);
+  --color-indigo-10: var(--indigo-10);
+  --color-indigo-11: var(--indigo-11);
+  --color-indigo-12: var(--indigo-12);
+  --color-indigo-a1: var(--indigo-a1);
+  --color-indigo-a2: var(--indigo-a2);
+  --color-indigo-a3: var(--indigo-a3);
+  --color-indigo-a4: var(--indigo-a4);
+  --color-indigo-a5: var(--indigo-a5);
+  --color-indigo-a6: var(--indigo-a6);
+  --color-indigo-a7: var(--indigo-a7);
+  --color-indigo-a8: var(--indigo-a8);
+  --color-indigo-a9: var(--indigo-a9);
+  --color-indigo-a10: var(--indigo-a10);
+  --color-indigo-a11: var(--indigo-a11);
+  --color-indigo-a12: var(--indigo-a12);
+  --color-red-1: var(--red-1);
+  --color-red-2: var(--red-2);
+  --color-red-3: var(--red-3);
+  --color-red-4: var(--red-4);
+  --color-red-5: var(--red-5);
+  --color-red-6: var(--red-6);
+  --color-red-7: var(--red-7);
+  --color-red-8: var(--red-8);
+  --color-red-9: var(--red-9);
+  --color-red-10: var(--red-10);
+  --color-red-11: var(--red-11);
+  --color-red-12: var(--red-12);
+  --color-red-a1: var(--red-a1);
+  --color-red-a2: var(--red-a2);
+  --color-red-a3: var(--red-a3);
+  --color-red-a4: var(--red-a4);
+  --color-red-a5: var(--red-a5);
+  --color-red-a6: var(--red-a6);
+  --color-red-a7: var(--red-a7);
+  --color-red-a8: var(--red-a8);
+  --color-red-a9: var(--red-a9);
+  --color-red-a10: var(--red-a10);
+  --color-red-a11: var(--red-a11);
+  --color-red-a12: var(--red-a12);
+  --color-black-a1: var(--black-a1);
+  --color-black-a2: var(--black-a2);
+  --color-black-a3: var(--black-a3);
+  --color-black-a4: var(--black-a4);
+  --color-black-a5: var(--black-a5);
+  --color-black-a6: var(--black-a6);
+  --color-black-a7: var(--black-a7);
+  --color-black-a8: var(--black-a8);
+  --color-black-a9: var(--black-a9);
+  --color-black-a10: var(--black-a10);
+  --color-black-a11: var(--black-a11);
+  --color-black-a12: var(--black-a12);
+  --color-white-a1: var(--white-a1);
+  --color-white-a2: var(--white-a2);
+  --color-white-a3: var(--white-a3);
+  --color-white-a4: var(--white-a4);
+  --color-white-a5: var(--white-a5);
+  --color-white-a6: var(--white-a6);
+  --color-white-a7: var(--white-a7);
+  --color-white-a8: var(--white-a8);
+  --color-white-a9: var(--white-a9);
+  --color-white-a10: var(--white-a10);
+  --color-white-a11: var(--white-a11);
+  --color-white-a12: var(--white-a12);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * Step roles follow Radix's guidance: 1-2 app backgrounds, 3-5 component backgrounds
+ * (normal, hover, pressed), 6-8 borders, 9-10 solid fills, 11-12 text.
+ */
+:root {
+  --radius: 0.45rem;
+
+  --background: var(--slate-1);
+  --foreground: var(--slate-12);
+  --card: var(--slate-1);
+  --card-foreground: var(--slate-12);
+  --popover: var(--slate-1);
+  --popover-foreground: var(--slate-12);
+  --primary: var(--indigo-9);
+  --primary-foreground: var(--color-white);
+  --secondary: var(--slate-3);
+  --secondary-foreground: var(--slate-12);
+  --muted: var(--slate-3);
+  --muted-foreground: var(--slate-11);
+  --accent: var(--slate-4);
+  --accent-foreground: var(--slate-12);
+  --destructive: var(--red-9);
+  --border: var(--slate-6);
+  --input: var(--slate-7);
+  --ring: var(--indigo-8);
+
+  --chart-1: var(--indigo-6);
+  --chart-2: var(--indigo-8);
+  --chart-3: var(--indigo-9);
+  --chart-4: var(--indigo-10);
+  --chart-5: var(--indigo-11);
+
+  --sidebar: var(--slate-2);
+  --sidebar-foreground: var(--slate-12);
+  --sidebar-primary: var(--indigo-9);
+  --sidebar-primary-foreground: var(--color-white);
+  --sidebar-accent: var(--slate-4);
+  --sidebar-accent-foreground: var(--slate-12);
+  --sidebar-border: var(--slate-6);
+  --sidebar-ring: var(--indigo-8);
+}
+
+/* Dark scales already flip; only raise surfaces a step so cards and menus read as elevated. */
+.dark {
+  --card: var(--slate-2);
+  --popover: var(--slate-2);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-sans;
+  }
+}
