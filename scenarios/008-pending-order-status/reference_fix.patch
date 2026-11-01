@@ -1,0 +1,8 @@
+diff --git a/apps/demo-app/migrations/002_pending_order_status.sql b/apps/demo-app/migrations/002_pending_order_status.sql
+new file mode 100644
+index 0000000..eae992b
+--- /dev/null
++++ b/apps/demo-app/migrations/002_pending_order_status.sql
+@@ -0,0 +1,2 @@
++alter table orders drop constraint orders_status_check;
++alter table orders add constraint orders_status_check check (status in ('pending', 'placed', 'cancelled'));

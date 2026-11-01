@@ -1,0 +1,5 @@
+{
+  "class": "infra-config",
+  "expectedTier": 1,
+  "description": "CHECKOUT_ENABLED loses its default, so every shop page throws where the variable is unset"
+}

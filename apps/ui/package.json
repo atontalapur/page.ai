@@ -5,6 +5,8 @@
   "description": "Vite + React dashboard for live issues",
   "type": "module",
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
     "lint": "eslint .",
     "typecheck": "tsc",
     "test": "vitest run --project unit --coverage",
@@ -12,10 +14,20 @@
   },
   "devDependencies": {
     "@page/config": "workspace:*",
+    "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
+    "tailwindcss": "catalog:",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "react": "catalog:",
+    "react-dom": "catalog:"
   }
 }
