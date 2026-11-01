@@ -1,0 +1,5 @@
+{
+  "class": "database",
+  "expectedTier": 2,
+  "description": "Orders are inserted as 'pending', which orders_status_check doesn't allow, so every checkout throws"
+}

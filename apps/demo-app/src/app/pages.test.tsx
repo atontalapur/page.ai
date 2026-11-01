@@ -103,6 +103,7 @@ describe('pages', () => {
     const out = html(await OrderPage(props({ id: String(id) })));
     expect(out).toContain(`Order #${id}</h1>`);
     expect(out).toContain('Wool Beanie');
+    expect(out).toMatch(/Placed \w+ \d+, \d{4}/);
   });
 
   it('404s an unknown or malformed order id', async () => {

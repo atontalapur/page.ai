@@ -1,0 +1,5 @@
+{
+  "class": "frontend",
+  "expectedTier": 1,
+  "description": "Order page passes dateStyle and month to toLocaleDateString, which throws on every order page"
+}

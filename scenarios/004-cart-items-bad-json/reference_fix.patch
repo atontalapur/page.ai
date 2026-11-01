@@ -1,0 +1,13 @@
+diff --git a/apps/demo-app/src/app/api/cart/items/route.ts b/apps/demo-app/src/app/api/cart/items/route.ts
+index aeb18ce..82ff8f3 100644
+--- a/apps/demo-app/src/app/api/cart/items/route.ts
++++ b/apps/demo-app/src/app/api/cart/items/route.ts
+@@ -11,7 +11,7 @@ const body = z.object({
+ });
+ 
+ export async function POST(req: Request) {
+-  const parsed = body.safeParse(await req.json());
++  const parsed = body.safeParse(await req.json().catch(() => undefined));
+   if (!parsed.success) return errorResponse('bad_request', 'Expected { productId, quantity? }');
+ 
+   const { db, settings, cookies } = await shop();

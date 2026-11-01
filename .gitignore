@@ -12,3 +12,6 @@ coverage/
 
 *.log
 .DS_Store
+
+# Scratch directory the scenario checks write into the demo app.
+.page-check/

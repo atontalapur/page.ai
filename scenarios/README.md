@@ -34,6 +34,18 @@ of copying it. The self-test checks before and after each run that no `check.sh`
 
 Write checks that don't lean on the demo app's own tests, since the agent can edit those.
 
+## Checks that need more than plain node
+
+`node --input-type=module` with a heredoc covers `.ts` modules (001, 009, 010). Two other
+shapes are in use; copy one into a new `check.sh`, since the runner pipes it in alone.
+
+- **Database:** `node --liftoff-only` with an in-memory PGlite, the app's migrations, and
+  rows the check inserts itself (005-008). `--liftoff-only` keeps PGlite's wasm compile
+  under the sandbox's 1 GB.
+- **Pages and route handlers:** `.tsx` and `next/headers` need Vitest. The check writes a
+  test and a config into `apps/demo-app/.page-check/`, mocks `src/app/data.ts` with a fake
+  db, runs `vitest --config` on it, and deletes the directory on exit (002-004).
+
 ## Self-test
 
 Every scenario must pass this before it counts:
