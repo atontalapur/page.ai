@@ -1,0 +1,5 @@
+{
+  "class": "infra-config",
+  "expectedTier": 1,
+  "description": "A new shipping settings check compares the wrong way round, so the defaults fail and every shop page throws"
+}

@@ -1,0 +1,93 @@
+# Self-tests seeded bug scenarios (#6) in the sandbox image: check.sh passes on the clean
+# demo app, fails after break.sh and passes after reference_fix.patch.
+# A PR that changes only scenarios/ self-tests the scenarios it touches. Any other input
+# (the runner, the demo app, the sandbox image) and every push to main self-tests all of
+# them.
+# Not a required check: it only runs when its inputs change.
+name: Scenarios
+
+on:
+  pull_request:
+    # sandbox-image.yml's inputs (what the scenarios run against), plus the scenarios and
+    # the runner.
+    paths: &inputs
+      - scenarios/**
+      - eval/**
+      - packages/contracts/**
+      - infra/sandbox/**
+      - apps/demo-app/**
+      - packages/config/**
+      - apps/node/src/sandbox/**
+      - apps/node/scripts/sandbox-run.ts
+      - apps/node/package.json
+      - .dockerignore
+      - .gitignore
+      - .nvmrc
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .github/workflows/scenarios.yml
+  push:
+    branches: [main]
+    paths: *inputs
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: page-sandbox:${{ github.sha }}
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Pick scenarios
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          all="$(find scenarios -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
+          if [ "$EVENT" != pull_request ]; then
+            ids="$all"
+          else
+            changed="$(git diff --name-only "$BASE"...HEAD)"
+            # Anything outside scenarios/ can break every scenario, so this needs no second
+            # copy of the trigger list.
+            if grep -qv '^scenarios/' <<<"$changed"; then
+              ids="$all"
+            else
+              # Directories the PR touched that still exist (a deleted scenario has nothing to test).
+              ids="$(grep -oP '^scenarios/\K[^/]+(?=/)' <<<"$changed" | sort -u | grep -xF -f <(echo "$all") || true)"
+            fi
+          fi
+          echo "Scenarios: ${ids:-none}"
+          echo "ids=$(echo $ids)" >> "$GITHUB_OUTPUT"
+      - if: steps.pick.outputs.ids != ''
+        uses: ./.github/actions/setup
+        with:
+          filter: '@page/eval...'
+      - if: steps.pick.outputs.ids != ''
+        uses: docker/setup-buildx-action@v4
+      # Same cache scope as sandbox-image.yml, so an unchanged demo app builds from cache.
+      - if: steps.pick.outputs.ids != ''
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infra/sandbox/Dockerfile
+          load: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha,scope=sandbox
+      - if: steps.pick.outputs.ids != ''
+        env:
+          IDS: ${{ steps.pick.outputs.ids }}
+        # IDS is unquoted on purpose: one argument per scenario id.
+        run: pnpm scenarios:selftest "$IMAGE" $IDS

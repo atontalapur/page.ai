@@ -1,0 +1,5 @@
+{
+  "class": "backend-api",
+  "expectedTier": 1,
+  "description": "POST /api/cart/items stops catching req.json(), so a malformed body returns 500 instead of 400"
+}

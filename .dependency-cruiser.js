@@ -42,6 +42,13 @@ export default {
       from: { path: '^apps/([^/]+)/' },
       to: { path: apps, pathNot: '^(apps/$1/|@page/$1(/|$))' },
     },
+    {
+      name: 'eval-not-to-apps',
+      comment: 'Eval drives apps from the outside (their CLIs, HTTP); share types via contracts.',
+      severity: 'error',
+      from: { path: '^eval/' },
+      to: { path: apps },
+    },
   ],
   options: {
     doNotFollow: { path: 'node_modules' },

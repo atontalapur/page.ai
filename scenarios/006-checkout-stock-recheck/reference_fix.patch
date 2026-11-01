@@ -1,0 +1,13 @@
+diff --git a/apps/demo-app/src/shop/orders.ts b/apps/demo-app/src/shop/orders.ts
+index 080d012..5d526d5 100644
+--- a/apps/demo-app/src/shop/orders.ts
++++ b/apps/demo-app/src/shop/orders.ts
+@@ -44,6 +44,8 @@ export async function placeOrder(
+       [cartId],
+     );
+     if (lines.length === 0) throw new ShopError('empty_cart', 'Cart is empty');
++    const short = lines.find((line) => line.quantity > line.stock);
++    if (short) throw new ShopError('out_of_stock', `Only ${short.stock} ${short.name} left`);
+ 
+     const subtotalCents = lines.reduce((sum, l) => sum + l.unitPriceCents * l.quantity, 0);
+     const shippingCents = shippingFor(subtotalCents, settings);

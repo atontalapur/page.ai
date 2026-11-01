@@ -1,7 +1,9 @@
 import { randomBytes } from 'node:crypto';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PGlite, type Transaction } from '@electric-sql/pglite';
 import pg from 'pg';
+import { inject, onTestFinished } from 'vitest';
 import { fromPool, type Db, type Queryable } from './db.ts';
 import { loadMigrations, migrate } from './migrate.ts';
 
@@ -16,12 +18,65 @@ function wrap(client: PGlite | Transaction): Queryable {
   };
 }
 
-/** In-memory Postgres, so unit tests run with no network. */
-export async function createTestDb({ migrated = true } = {}): Promise<Db> {
+function toDb(pg: PGlite): Db {
+  return { ...wrap(pg), transaction: (fn) => pg.transaction((tx) => fn(wrap(tx))) };
+}
+
+declare module 'vitest' {
+  export interface ProvidedContext {
+    pgliteSnapshotDir: string;
+  }
+}
+
+function snapshotFile(dir: string, migrated: boolean): string {
+  return join(dir, migrated ? 'migrated.tar' : 'fresh.tar');
+}
+
+/**
+ * PGlite runs initdb on every create, which takes over 2 s on the sandbox's one CPU.
+ * vitest.global-setup.ts calls this once per run (via scripts/pglite-snapshot.ts) to
+ * save a fresh and a migrated data dir, and each test loads a copy.
+ */
+export async function writeSnapshots(dir: string): Promise<void> {
   const pg = await PGlite.create();
-  const db: Db = { ...wrap(pg), transaction: (fn) => pg.transaction((tx) => fn(wrap(tx))) };
-  if (migrated) await migrate(db, await loadMigrations(migrationsDir));
-  return db;
+  try {
+    const save = async (migrated: boolean) => {
+      const blob = await pg.dumpDataDir('none');
+      await writeFile(snapshotFile(dir, migrated), Buffer.from(await blob.arrayBuffer()));
+    };
+    await save(false);
+    await migrate(toDb(pg), await loadMigrations(migrationsDir));
+    await save(true);
+  } finally {
+    await pg.close();
+  }
+}
+
+// Read once per test file. A failed read is dropped so the next test reports its own
+// error instead of replaying this one.
+const snapshots = new Map<boolean, Promise<Blob>>();
+
+function snapshot(migrated: boolean): Promise<Blob> {
+  let blob = snapshots.get(migrated);
+  if (!blob) {
+    blob = readFile(snapshotFile(inject('pgliteSnapshotDir'), migrated)).then(
+      (data) => new Blob([data]),
+    );
+    blob.catch(() => snapshots.delete(migrated));
+    snapshots.set(migrated, blob);
+  }
+  return blob;
+}
+
+/**
+ * In-memory Postgres, so unit tests run with no network. Each call gets its own copy.
+ * Closed when the test ends: each instance holds a few hundred MB, and the 1 GB agent
+ * sandbox (#5) can't keep one per test alive.
+ */
+export async function createTestDb({ migrated = true } = {}): Promise<Db> {
+  const pg = await PGlite.create({ loadDataDir: await snapshot(migrated) });
+  onTestFinished(() => pg.close());
+  return toDb(pg);
 }
 
 /**

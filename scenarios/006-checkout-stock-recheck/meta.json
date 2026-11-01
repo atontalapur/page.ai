@@ -1,0 +1,5 @@
+{
+  "class": "backend-api",
+  "expectedTier": 2,
+  "description": "placeOrder stops re-checking stock, so a second cart's checkout violates products_stock_check"
+}

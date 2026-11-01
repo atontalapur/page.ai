@@ -1,0 +1,5 @@
+{
+  "class": "frontend",
+  "expectedTier": 1,
+  "description": "Invalid currency code in money.ts makes every page with a price return 500"
+}
