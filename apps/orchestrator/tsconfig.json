@@ -1,4 +1,9 @@
 {
   "extends": "@page/config/tsconfig/base.json",
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "rewriteRelativeImportExtensions": true
+  },
   "include": ["src"]
 }

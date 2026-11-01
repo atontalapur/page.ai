@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  // Workspace packages export their .ts sources, so tsc compiles them into this program
+  // too and the output root is the repo root: dist/apps/orchestrator/src/main.js.
+  // At runtime @page/* still resolves to those sources, which Node runs by stripping types.
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "../..",
+    "outDir": "dist",
+    "sourceMap": true
+  },
+  "exclude": ["src/**/*.test.ts", "src/**/test-utils.ts"]
+}
