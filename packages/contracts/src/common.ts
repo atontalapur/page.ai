@@ -6,8 +6,14 @@ export const BUG_CLASSES = ['frontend', 'backend-api', 'database', 'infra-config
 /** Every id on the wire is a uuid. */
 export const idSchema = z.uuid();
 
-/** Timestamps travel as ISO 8601 UTC strings ending in `Z`, so JSON keeps them unchanged. */
-export const timestampSchema = z.iso.datetime();
+/**
+ * Timestamps travel as ISO 8601 strings. Offsets are accepted because Postgres `to_json` on a
+ * timestamptz gives `+00:00` with microseconds; every value is normalized to UTC `Z` with
+ * millisecond precision (`Date.toISOString()`), so consumers only ever see one format.
+ */
+export const timestampSchema = z.iso
+  .datetime({ offset: true })
+  .transform((value) => new Date(value).toISOString());
 
 /**
  * A pull request link from an agent. The dashboard renders it as a link, so it must be an

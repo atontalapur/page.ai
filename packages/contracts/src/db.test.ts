@@ -35,10 +35,24 @@ describe('issueSchema', () => {
     expect(() => issueSchema.parse({ ...issueFixture, severity: 'p1' })).toThrow();
   });
 
-  it('rejects a non-uuid id and a timestamp with an offset', () => {
+  it('rejects a non-uuid id', () => {
     expect(() => issueSchema.parse({ ...issueFixture, id: '42' })).toThrow();
+  });
+
+  it.each([
+    [
+      'a Postgres to_json timestamptz',
+      '2026-10-30T12:00:00.123456+00:00',
+      '2026-10-30T12:00:00.123Z',
+    ],
+    ['a non-UTC offset', '2026-10-30T14:00:00+02:00', '2026-10-30T12:00:00.000Z'],
+  ])('normalizes %s to UTC', (_, createdAt, expected) => {
+    expect(issueSchema.parse({ ...issueFixture, createdAt }).createdAt).toBe(expected);
+  });
+
+  it('rejects a timestamp with no offset', () => {
     expect(() =>
-      issueSchema.parse({ ...issueFixture, createdAt: '2026-10-30T12:00:00+02:00' }),
+      issueSchema.parse({ ...issueFixture, createdAt: '2026-10-30T12:00:00' }),
     ).toThrow();
   });
 });
