@@ -37,6 +37,50 @@ describe('orchestratorConfigSchema', () => {
     const env = { ...orchestratorEnvFixture, TWILIO_AUTH_TOKEN: undefined };
     expect(() => orchestratorConfigSchema.parse(env)).toThrow(/TWILIO_AUTH_TOKEN/);
   });
+
+  it('reports a missing secret alongside other invalid vars', () => {
+    const env = {
+      ...orchestratorEnvFixture,
+      DATABASE_URL: undefined,
+      TWILIO_AUTH_TOKEN: undefined,
+    };
+    const result = orchestratorConfigSchema.safeParse(env);
+    expect(result.error?.issues.map((issue) => issue.path[0])).toEqual(
+      expect.arrayContaining(['DATABASE_URL', 'TWILIO_AUTH_TOKEN']),
+    );
+  });
+
+  it('treats blank vars from a copied .env.example as unset', () => {
+    const config = orchestratorConfigSchema.parse({
+      ...orchestratorEnvFixture,
+      USE_FAKE_ADAPTERS: '',
+      PORT: '',
+      LOG_LEVEL: ' ',
+    });
+    expect(config).toMatchObject({ USE_FAKE_ADAPTERS: false, PORT: 3000, LOG_LEVEL: 'info' });
+  });
+
+  it('needs no blank third-party secrets with fake adapters', () => {
+    const env = {
+      USE_FAKE_ADAPTERS: 'true',
+      DATABASE_URL: orchestratorEnvFixture.DATABASE_URL,
+      NODE_SHARED_SECRET: 'node-secret',
+      POSTHOG_WEBHOOK_SECRET: 'webhook-secret',
+      OPENROUTER_API_KEY: '',
+      TWILIO_AUTH_TOKEN: '',
+      NOTIFY_TO_NUMBERS: '',
+    };
+    expect(orchestratorConfigSchema.parse(env).OPENROUTER_API_KEY).toBeUndefined();
+  });
+
+  it('rejects an env that is not an object', () => {
+    expect(orchestratorConfigSchema.safeParse(undefined).success).toBe(false);
+  });
+
+  it('rejects a NOTIFY_TO_NUMBERS list with no numbers in it', () => {
+    const env = { ...orchestratorEnvFixture, NOTIFY_TO_NUMBERS: ' , ' };
+    expect(() => orchestratorConfigSchema.parse(env)).toThrow(/NOTIFY_TO_NUMBERS/);
+  });
 });
 
 describe('nodeConfigSchema', () => {

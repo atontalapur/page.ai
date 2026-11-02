@@ -20,12 +20,31 @@ export const baseConfigSchema = z.object({
   NODE_SHARED_SECRET: secret,
 });
 
-/** With real adapters on, these optional vars become required. */
+/**
+ * dotenv sets `KEY=` to `''`, which `.optional()` and `.default()` don't treat as missing.
+ * Dropping blank values first makes a copied `.env.example` behave like an unset var.
+ */
+function blankToUndefined(env: unknown) {
+  if (typeof env !== 'object' || env === null) return env;
+  return Object.fromEntries(
+    Object.entries(env).filter(([, value]) => typeof value !== 'string' || value.trim() !== ''),
+  );
+}
+
+/** Wraps an app's env schema so blank vars count as unset. */
+function envSchema<T extends z.ZodType>(schema: T) {
+  return z.preprocess(blankToUndefined, schema);
+}
+
+/**
+ * With real adapters on, these optional vars become required. It runs even when other fields
+ * fail (`when`), so boot reports every missing var at once; fields may be invalid, hence `?.`.
+ */
 function requireUnlessFake(keys: readonly string[]) {
-  return (config: Record<string, unknown>, ctx: z.RefinementCtx) => {
-    if (config.USE_FAKE_ADAPTERS) return;
+  const check = (config: Record<string, unknown> | undefined, ctx: z.RefinementCtx) => {
+    if (config?.USE_FAKE_ADAPTERS === true) return;
     for (const key of keys) {
-      if (config[key] === undefined) {
+      if (config?.[key] === undefined) {
         ctx.addIssue({
           code: 'custom',
           path: [key],
@@ -34,58 +53,66 @@ function requireUnlessFake(keys: readonly string[]) {
       }
     }
   };
+  return [check, { when: () => true }] as const;
 }
 
-export const orchestratorConfigSchema = baseConfigSchema
-  .extend({
-    PORT: z.coerce.number().int().positive().default(3000),
-    POSTHOG_WEBHOOK_SECRET: secret,
-    OPENROUTER_API_KEY: secret.optional(),
-    TWILIO_ACCOUNT_SID: secret.optional(),
-    TWILIO_AUTH_TOKEN: secret.optional(),
-    TWILIO_FROM_NUMBER: secret.optional(),
-    // Comma-separated phone numbers to call or text (#31).
-    NOTIFY_TO_NUMBERS: z
-      .string()
-      .transform((list) =>
-        list
-          .split(',')
-          .map((n) => n.trim())
-          .filter(Boolean),
-      )
-      .optional(),
-  })
-  .superRefine(
-    requireUnlessFake([
-      'OPENROUTER_API_KEY',
-      'TWILIO_ACCOUNT_SID',
-      'TWILIO_AUTH_TOKEN',
-      'TWILIO_FROM_NUMBER',
-      'NOTIFY_TO_NUMBERS',
-    ]),
-  );
+export const orchestratorConfigSchema = envSchema(
+  baseConfigSchema
+    .extend({
+      PORT: z.coerce.number().int().positive().default(3000),
+      POSTHOG_WEBHOOK_SECRET: secret,
+      OPENROUTER_API_KEY: secret.optional(),
+      TWILIO_ACCOUNT_SID: secret.optional(),
+      TWILIO_AUTH_TOKEN: secret.optional(),
+      TWILIO_FROM_NUMBER: secret.optional(),
+      // Comma-separated phone numbers to call or text (#31).
+      NOTIFY_TO_NUMBERS: z
+        .string()
+        .transform((list) =>
+          list
+            .split(',')
+            .map((n) => n.trim())
+            .filter(Boolean),
+        )
+        .pipe(z.array(z.string()).min(1, 'needs at least one number'))
+        .optional(),
+    })
+    .superRefine(
+      ...requireUnlessFake([
+        'OPENROUTER_API_KEY',
+        'TWILIO_ACCOUNT_SID',
+        'TWILIO_AUTH_TOKEN',
+        'TWILIO_FROM_NUMBER',
+        'NOTIFY_TO_NUMBERS',
+      ]),
+    ),
+);
 
 export type OrchestratorConfig = z.infer<typeof orchestratorConfigSchema>;
 
-export const nodeConfigSchema = baseConfigSchema
-  .extend({
-    ORCHESTRATOR_URL: z.url(),
-    OPENROUTER_API_KEY: secret.optional(),
-    // The fine-grained token and demo repo agents push to (#10).
-    GITHUB_TOKEN: secret.optional(),
-    GITHUB_REPO: z
-      .string()
-      .regex(/^[\w.-]+\/[\w.-]+$/, 'owner/name')
-      .optional(),
-  })
-  .superRefine(requireUnlessFake(['OPENROUTER_API_KEY', 'GITHUB_TOKEN', 'GITHUB_REPO']));
+export const nodeConfigSchema = envSchema(
+  baseConfigSchema
+    .extend({
+      ORCHESTRATOR_URL: z.url(),
+      OPENROUTER_API_KEY: secret.optional(),
+      // The fine-grained token and demo repo agents push to (#10).
+      GITHUB_TOKEN: secret.optional(),
+      GITHUB_REPO: z
+        .string()
+        .regex(/^[\w.-]+\/[\w.-]+$/, 'owner/name')
+        .optional(),
+    })
+    .superRefine(...requireUnlessFake(['OPENROUTER_API_KEY', 'GITHUB_TOKEN', 'GITHUB_REPO'])),
+);
 
 export type NodeConfig = z.infer<typeof nodeConfigSchema>;
 
 /** The demo app reports to PostHog only when a key is set; otherwise it uses a fake (#2). */
-export const demoAppConfigSchema = z.object({
-  POSTHOG_KEY: secret.optional(),
-  POSTHOG_HOST: z.url().default('https://us.i.posthog.com'),
-});
+export const demoAppConfigSchema = envSchema(
+  z.object({
+    POSTHOG_KEY: secret.optional(),
+    POSTHOG_HOST: z.url().default('https://us.i.posthog.com'),
+  }),
+);
 
 export type DemoAppConfig = z.infer<typeof demoAppConfigSchema>;
