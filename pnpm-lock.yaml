@@ -600,6 +600,10 @@ importers:
         version: 5.0.5(@types/node@24.19.2)(@vitest/coverage-v8@5.0.5)(vite@8.3.5(@types/node@24.19.2)(jiti@2.7.0))
 
   packages/toolkit:
+    dependencies:
+      '@page/contracts':
+        specifier: workspace:*
+        version: link:../contracts
     devDependencies:
       '@page/config':
         specifier: workspace:*
