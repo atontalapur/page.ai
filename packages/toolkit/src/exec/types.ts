@@ -1,5 +1,6 @@
 import type { Tier } from '@page/contracts';
 import type { StepLog } from '../audit/step-log.ts';
+import type { Result } from '../result.ts';
 import type { ExecRunner } from './runner.ts';
 
 /** A shell command, checked against the tier's policy. */
@@ -42,12 +43,21 @@ export interface ExecOk extends StepBase {
   output: string;
 }
 
-export type ExecErr = StepBase &
-  (
-    | { type: 'refused'; message: string }
-    | { type: 'failed'; exitCode: number; output: string }
-    | { type: 'timed_out'; output: string }
-    // The step couldn't be written. `ran` says whether the command ran anyway (the write
-    // after it failed) or was stopped (the write before it failed).
-    | { type: 'audit_failed'; ran: boolean; message: string }
-  );
+/** How a command that did run ended badly. */
+export type RunErr = StepBase &
+  ({ type: 'failed'; exitCode: number; output: string } | { type: 'timed_out'; output: string });
+
+/** What running a command (or an edit) produced, before the audit log has its say. */
+export type RunOutcome = Result<ExecOk, RunErr>;
+
+export type ExecErr =
+  | RunErr
+  | (StepBase &
+      // `auditFailed` is set when the refusal itself couldn't be written to the log.
+      (
+        | { type: 'refused'; message: string; auditFailed?: true }
+        // The step couldn't be opened, so the command was stopped before it ran.
+        | { type: 'audit_failed'; ran: false; message: string }
+        // The command ran but its outcome couldn't be written. `result` is what it did.
+        | { type: 'audit_failed'; ran: true; message: string; result: RunOutcome }
+      ));

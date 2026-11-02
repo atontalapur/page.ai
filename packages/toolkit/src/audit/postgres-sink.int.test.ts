@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -6,7 +6,7 @@ import { execute } from '../exec/execute.ts';
 import { FakeRunner } from '../exec/fake-runner.ts';
 import { PostgresAuditSink } from './postgres-sink.ts';
 import { StepLog } from './step-log.ts';
-import { TEST_ISSUE_ID, TEST_RUN_ID } from './test-utils.ts';
+import { TEST_ISSUE_ID } from './test-utils.ts';
 
 const url = process.env.DATABASE_URL ?? 'postgres://page:page@localhost:5432/page';
 const schema = `toolkit_audit_${randomBytes(4).toString('hex')}`;
@@ -23,23 +23,36 @@ afterAll(async () => {
   await pool.end();
 });
 
+interface StepRow {
+  run_id: string;
+  seq: number;
+  kind: string;
+  input: string;
+  output_trimmed: string;
+  exit_code: number | null;
+  allowed: boolean;
+}
+
 describe('PostgresAuditSink against Postgres', () => {
+  const stepsOf = async (runId: string): Promise<StepRow[]> =>
+    (
+      await pool.query<StepRow>(
+        `select run_id, seq, kind, input, output_trimmed, exit_code, allowed
+         from steps where run_id = $1 order by seq`,
+        [runId],
+      )
+    ).rows;
+
   it('writes a refused command and an allowed one as steps rows', async () => {
-    const steps = new StepLog({
-      sink: new PostgresAuditSink(pool),
-      issueId: TEST_ISSUE_ID,
-      runId: TEST_RUN_ID,
-    });
+    const runId = randomUUID();
+    const steps = new StepLog({ sink: new PostgresAuditSink(pool), issueId: TEST_ISSUE_ID, runId });
     const runner = new FakeRunner(() => FakeRunner.exited(0, 'src\n'));
     await execute({ kind: 'exec', command: 'sudo rm -rf /' }, { tier: 1, runner, steps });
     await execute({ kind: 'exec', command: 'ls' }, { tier: 1, runner, steps });
 
-    const { rows } = await pool.query(
-      'select run_id, seq, kind, input, output_trimmed, exit_code, allowed from steps order by seq',
-    );
-    expect(rows).toEqual([
+    expect(await stepsOf(runId)).toEqual([
       {
-        run_id: TEST_RUN_ID,
+        run_id: runId,
         seq: 0,
         kind: 'exec',
         input: 'sudo rm -rf /',
@@ -48,7 +61,7 @@ describe('PostgresAuditSink against Postgres', () => {
         allowed: false,
       },
       {
-        run_id: TEST_RUN_ID,
+        run_id: runId,
         seq: 1,
         kind: 'exec',
         input: 'ls',
@@ -60,15 +73,48 @@ describe('PostgresAuditSink against Postgres', () => {
     expect(runner.requests).toHaveLength(1);
   });
 
-  it('refuses to run when the insert fails (seq already taken)', async () => {
-    const steps = new StepLog({
-      sink: new PostgresAuditSink(pool),
-      issueId: TEST_ISSUE_ID,
-      runId: TEST_RUN_ID,
+  it('carries on from the stored steps when a run resumes', async () => {
+    const runId = randomUUID();
+    await pool.query(
+      `insert into steps (run_id, seq, kind, input, exit_code, allowed)
+       values ($1, 0, 'exec', 'ls', 0, true), ($1, 1, 'exec', 'pnpm test', 1, true)`,
+      [runId],
+    );
+    // A fresh StepLog, as after a daemon restart.
+    const steps = new StepLog({ sink: new PostgresAuditSink(pool), issueId: TEST_ISSUE_ID, runId });
+    const runner = new FakeRunner(() => FakeRunner.exited(0, 'ok\n'));
+    const result = await execute(
+      { kind: 'exec', command: 'pnpm test' },
+      { tier: 1, runner, steps },
+    );
+
+    expect(result.ok).toBe(true);
+    expect((await stepsOf(runId)).map((row) => [row.seq, row.input])).toEqual([
+      [0, 'ls'],
+      [1, 'pnpm test'],
+      [2, 'pnpm test'],
+    ]);
+  });
+
+  it('refuses to run when the insert fails', async () => {
+    // Its own pool on a schema with no steps table, so the insert fails whatever ran before.
+    const broken = new pg.Pool({
+      connectionString: url,
+      options: `-c search_path=${schema}_missing`,
+      max: 1,
     });
-    const runner = new FakeRunner();
-    const result = await execute({ kind: 'exec', command: 'ls' }, { tier: 1, runner, steps });
-    expect(result).toMatchObject({ ok: false, error: { type: 'audit_failed', ran: false } });
-    expect(runner.requests).toEqual([]);
+    try {
+      const steps = new StepLog({
+        sink: new PostgresAuditSink(broken),
+        issueId: TEST_ISSUE_ID,
+        runId: randomUUID(),
+      });
+      const runner = new FakeRunner();
+      const result = await execute({ kind: 'exec', command: 'ls' }, { tier: 1, runner, steps });
+      expect(result).toMatchObject({ ok: false, error: { type: 'audit_failed', ran: false } });
+      expect(runner.requests).toEqual([]);
+    } finally {
+      await broken.end();
+    }
   });
 });

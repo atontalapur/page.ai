@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { testSteps } from '../audit/test-utils.ts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { testSteps } from '../audit/test-utils.ts';
 import { execute } from './execute.ts';
 import { DockerExecRunner } from './docker-runner.ts';
 
