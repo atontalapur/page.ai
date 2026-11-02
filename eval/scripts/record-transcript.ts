@@ -35,6 +35,12 @@ if (!image || !id || !values.model || !apiKey) {
 }
 
 const scenario = await loadScenario(join('scenarios', id));
+// The description names the cause, so the agent gets the report instead.
+const { report } = scenario.meta;
+if (report === undefined) {
+  console.error(`scenario ${id} has no report in meta.json; add one before recording`);
+  process.exit(2);
+}
 const [breakScript, checkScript] = await Promise.all(
   ['break.sh', 'check.sh'].map((f) => readFile(join(scenario.dir, f), 'utf8')),
 );
@@ -54,9 +60,9 @@ try {
     execute: (call, { timeoutMs = Infinity }) =>
       execute(call, { tier, runner, timeoutMs: Math.min(DEFAULT_TIMEOUT_MS, timeoutMs) }),
   });
-  // The scenario's description stands in for the triaged error report until ingest (#30)
-  // can produce one.
-  const task = { task: scenario.meta.description };
+  // The scenario's report stands in for the triaged error report until ingest (#30) can
+  // build one.
+  const task = { task: report };
   // Setup (container start, break.sh) comes out of the budget. Saving the shortened limit
   // in the config keeps the replay exact.
   const config = {
