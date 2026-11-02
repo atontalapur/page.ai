@@ -74,17 +74,49 @@ describe('OpenRouterClient', () => {
     });
   });
 
-  it('treats null content and a missing cost as empty and zero', async () => {
+  it('treats null content as empty', async () => {
     const body = {
       model: 'm',
       choices: [{ message: { role: 'assistant', content: null }, finish_reason: 'length' }],
-      usage: { prompt_tokens: 1, completion_tokens: 0, total_tokens: 1 },
+      usage: { prompt_tokens: 1, completion_tokens: 0, total_tokens: 1, cost: 0 },
     };
     const result = await client(fakeFetch(200, body)).complete(messages);
     expect(result).toEqual({
       ok: true,
       completion: { content: '', finishReason: 'length', model: 'm', costUsd: 0 },
     });
+  });
+
+  it('reports a response without a cost as a bad response, so the cost cap still holds', async () => {
+    const body = {
+      model: 'm',
+      choices: [{ message: { content: 'hi' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    };
+    const result = await client(fakeFetch(200, body)).complete(messages);
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        kind: 'bad_response',
+        status: 200,
+        message: 'the response has no usage.cost, so the cost limit cannot be enforced',
+      },
+    });
+  });
+
+  it('keeps the defaults when options are passed as undefined', async () => {
+    const seen: Captured[] = [];
+    const c = new OpenRouterClient({
+      apiKey: 'k',
+      model: 'm',
+      fetch: fakeFetch(200, completionBody, seen),
+      baseUrl: undefined,
+      timeoutMs: undefined,
+      extraBody: undefined,
+    });
+    const result = await c.complete(messages);
+    expect(result.ok).toBe(true);
+    expect(seen[0]!.url).toBe('https://openrouter.ai/api/v1/chat/completions');
   });
 
   it.each([
@@ -142,5 +174,17 @@ describe('OpenRouterClient', () => {
     const c = new OpenRouterClient({ apiKey: 'k', model: 'm', fetch: hanging, timeoutMs: 5 });
     const result = await c.complete(messages);
     expect(result).toMatchObject({ ok: false, error: { kind: 'network', status: null } });
+  });
+
+  it('aborts sooner when the call asks for a shorter timeout', async () => {
+    const hanging: FetchLike = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+    const c = new OpenRouterClient({ apiKey: 'k', model: 'm', fetch: hanging });
+    const started = Date.now();
+    const result = await c.complete(messages, { timeoutMs: 5 });
+    expect(result).toMatchObject({ ok: false, error: { kind: 'network' } });
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 });

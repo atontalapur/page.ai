@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import type { ChatMessage, CompletionResult, ModelClient, ModelErrorKind } from './types.ts';
+import type {
+  ChatMessage,
+  CompleteOptions,
+  CompletionResult,
+  ModelClient,
+  ModelErrorKind,
+} from './types.ts';
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -56,22 +62,26 @@ function parseJson(text: string): unknown {
  * an error raised while the model is answering comes back as a 200 with an `error` body.
  */
 export class OpenRouterClient implements ModelClient {
-  private readonly options: Required<Omit<OpenRouterClientOptions, 'extraBody'>> & {
-    extraBody: Record<string, unknown>;
-  };
+  private readonly options: Required<OpenRouterClientOptions>;
 
   constructor(options: OpenRouterClientOptions) {
+    // Field by field, so an option passed as undefined keeps its default.
     this.options = {
-      baseUrl: DEFAULT_BASE_URL,
-      timeoutMs: DEFAULT_TIMEOUT_MS,
-      extraBody: {},
-      fetch: globalThis.fetch,
-      ...options,
+      apiKey: options.apiKey,
+      model: options.model,
+      baseUrl: options.baseUrl ?? DEFAULT_BASE_URL,
+      timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      extraBody: options.extraBody ?? {},
+      fetch: options.fetch ?? globalThis.fetch,
     };
   }
 
-  async complete(messages: readonly ChatMessage[]): Promise<CompletionResult> {
-    const { apiKey, model, baseUrl, timeoutMs, extraBody, fetch } = this.options;
+  async complete(
+    messages: readonly ChatMessage[],
+    options: CompleteOptions = {},
+  ): Promise<CompletionResult> {
+    const { apiKey, model, baseUrl, extraBody, fetch } = this.options;
+    const timeoutMs = Math.min(this.options.timeoutMs, options.timeoutMs ?? Infinity);
 
     let response: Response;
     let text: string;
@@ -100,13 +110,22 @@ export class OpenRouterClient implements ModelClient {
       return failure('bad_response', response.status, `unexpected response: ${text.slice(0, 500)}`);
     }
     const [choice] = parsed.data.choices as [(typeof parsed.data.choices)[number]];
+    // Without a cost the agent's cost limit can't fire, so a run could spend unchecked.
+    const costUsd = parsed.data.usage?.cost;
+    if (costUsd === undefined) {
+      return failure(
+        'bad_response',
+        response.status,
+        'the response has no usage.cost, so the cost limit cannot be enforced',
+      );
+    }
     return {
       ok: true,
       completion: {
         content: choice.message.content ?? '',
         finishReason: choice.finish_reason,
         model: parsed.data.model,
-        costUsd: parsed.data.usage?.cost ?? 0,
+        costUsd,
       },
     };
   }

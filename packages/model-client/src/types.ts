@@ -28,7 +28,12 @@ export interface ModelError {
 export type CompletionResult =
   { ok: true; completion: Completion } | { ok: false; error: ModelError };
 
+export interface CompleteOptions {
+  /** Give up after this long, even if the client's own timeout is longer. */
+  timeoutMs?: number;
+}
+
 /** The one way the agent talks to a model. */
 export interface ModelClient {
-  complete(messages: readonly ChatMessage[]): Promise<CompletionResult>;
+  complete(messages: readonly ChatMessage[], options?: CompleteOptions): Promise<CompletionResult>;
 }

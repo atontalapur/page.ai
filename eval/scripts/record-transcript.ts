@@ -12,7 +12,7 @@ import {
   TRANSCRIPT_VERSION,
   type Transcript,
 } from '@page/agent';
-import { OpenRouterClient } from '@page/model-client';
+import { OpenRouterClient, withRetries } from '@page/model-client';
 import { DockerExecRunner, execute } from '@page/toolkit';
 import { loadScenario } from '../src/scenario.ts';
 import { shellIn, startSandbox, stopSandbox } from './sandbox.ts';
@@ -48,7 +48,7 @@ try {
   const runner = new DockerExecRunner({ container: name });
   const tier = scenario.meta.expectedTier;
   const recording = recordingDeps({
-    model: new OpenRouterClient({ apiKey, model: values.model }),
+    model: withRetries(new OpenRouterClient({ apiKey, model: values.model })),
     execute: (call) => execute(call, { tier, runner }),
   });
   // The scenario's description stands in for the triaged error report until ingest (#30)
