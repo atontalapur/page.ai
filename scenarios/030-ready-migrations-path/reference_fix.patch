@@ -1,13 +1,31 @@
 diff --git a/apps/demo-app/src/app/api/health/health.ts b/apps/demo-app/src/app/api/health/health.ts
-index db06271..1f54739 100644
+index 09282f8..4c974d0 100644
 --- a/apps/demo-app/src/app/api/health/health.ts
 +++ b/apps/demo-app/src/app/api/health/health.ts
-@@ -3,7 +3,7 @@ import type { Queryable } from '../../../db/index.ts';
- import { loadMigrations } from '../../../db/migrate.ts';
+@@ -3,7 +3,7 @@ import { join } from 'node:path';
+ import type { Queryable } from '../../../db/index.ts';
  
  // The migrations this build ships with.
 -const MIGRATIONS_DIR = join(process.cwd(), 'apps/demo-app/migrations');
 +const MIGRATIONS_DIR = join(process.cwd(), 'migrations');
  
- /**
-  * 200 when the database answers, 503 otherwise, so Railway and compose can gate on it.
+ // Postgres' undefined_table.
+ const UNDEFINED_TABLE = '42P01';
+@@ -13,9 +13,14 @@ const UNDEFINED_TABLE = '42P01';
+  * `ready` also needs every migration this build ships with to be applied.
+  */
+ export async function checkHealth(db: Queryable, ready = false): Promise<Response> {
+-  const shipped = ready
+-    ? (await readdir(MIGRATIONS_DIR)).filter((name) => name.endsWith('.sql'))
+-    : [];
++  let shipped: string[] = [];
++  if (ready) {
++    try {
++      shipped = (await readdir(MIGRATIONS_DIR)).filter((name) => name.endsWith('.sql'));
++    } catch {
++      return Response.json({ status: 'error', migrations: 'unreadable' }, { status: 503 });
++    }
++  }
+   try {
+     await db.query('select 1');
+     if (ready) {

@@ -1,11 +1,11 @@
 diff --git a/apps/demo-app/src/app/api/cart/route.ts b/apps/demo-app/src/app/api/cart/route.ts
-index d8abfb9..f2c1d9d 100644
+index d8abfb9..f92e69b 100644
 --- a/apps/demo-app/src/app/api/cart/route.ts
 +++ b/apps/demo-app/src/app/api/cart/route.ts
-@@ -1,10 +1,16 @@
-+import { z } from 'zod';
+@@ -1,10 +1,15 @@
  import { getCart } from '../../../shop/cart.ts';
- import { readCartId } from '../../cart-session.ts';
+-import { readCartId } from '../../cart-session.ts';
++import { parseCartId, readCartId } from '../../cart-session.ts';
  import { shop } from '../../data.ts';
 +import { errorResponse } from '../respond.ts';
  
@@ -14,9 +14,32 @@ index d8abfb9..f2c1d9d 100644
    // Clients without cookies (the mobile app) send the cart id in a header.
 -  const cartId = req.headers.get('x-cart-id') ?? readCartId(cookies);
 +  const header = req.headers.get('x-cart-id');
-+  if (header !== null && !z.uuid().safeParse(header).success) {
++  const cartId = header === null ? readCartId(cookies) : parseCartId(header);
++  if (header !== null && cartId === undefined) {
 +    return errorResponse('bad_request', 'x-cart-id must be a cart id');
 +  }
-+  const cartId = header ?? readCartId(cookies);
    return Response.json(await getCart(db, cartId, settings));
  }
+diff --git a/apps/demo-app/src/app/cart-session.ts b/apps/demo-app/src/app/cart-session.ts
+index 0578e81..2b0c1b3 100644
+--- a/apps/demo-app/src/app/cart-session.ts
++++ b/apps/demo-app/src/app/cart-session.ts
+@@ -6,11 +6,16 @@ import type { CookieStore } from './data.ts';
+ const COOKIE = 'cart_id';
+ const THIRTY_DAYS = 60 * 60 * 24 * 30;
+ 
+-export function readCartId(cookies: CookieStore): string | undefined {
+-  const parsed = z.uuid().safeParse(cookies.get(COOKIE)?.value);
++/** `value` if it's a cart id (a uuid), else undefined. */
++export function parseCartId(value: string | null | undefined): string | undefined {
++  const parsed = z.uuid().safeParse(value);
+   return parsed.success ? parsed.data : undefined;
+ }
+ 
++export function readCartId(cookies: CookieStore): string | undefined {
++  return parseCartId(cookies.get(COOKIE)?.value);
++}
++
+ /** Returns the shopper's cart id, creating the cart and cookie if needed. Actions and handlers only. */
+ export async function openCart(db: Db, cookies: CookieStore): Promise<string> {
+   const id = await ensureCart(db, readCartId(cookies));

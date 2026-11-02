@@ -9,24 +9,28 @@ d=apps/demo-app/src/app/api/health
 grep -q '^export async function checkHealth(db: Queryable): Promise<Response> {$' "$d/health.ts"
 grep -q "^    await db.query('select 1');$" "$d/health.ts"
 cat > "$d/health.ts" <<'TS'
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Queryable } from '../../../db/index.ts';
-import { loadMigrations } from '../../../db/migrate.ts';
 
 // The migrations this build ships with.
 const MIGRATIONS_DIR = join(process.cwd(), 'apps/demo-app/migrations');
+
+// Postgres' undefined_table.
+const UNDEFINED_TABLE = '42P01';
 
 /**
  * 200 when the database answers, 503 otherwise, so Railway and compose can gate on it.
  * `ready` also needs every migration this build ships with to be applied.
  */
 export async function checkHealth(db: Queryable, ready = false): Promise<Response> {
-  const shipped = ready ? (await loadMigrations(MIGRATIONS_DIR)).map((m) => m.name) : [];
+  const shipped = ready
+    ? (await readdir(MIGRATIONS_DIR)).filter((name) => name.endsWith('.sql'))
+    : [];
   try {
     await db.query('select 1');
     if (ready) {
-      const { rows } = await db.query<{ name: string }>('select name from schema_migrations');
-      const applied = new Set(rows.map((row) => row.name));
+      const applied = await appliedMigrations(db);
       const pending = shipped.filter((name) => !applied.has(name));
       if (pending.length > 0) {
         return Response.json({ status: 'error', db: 'ok', pending }, { status: 503 });
@@ -35,6 +39,18 @@ export async function checkHealth(db: Queryable, ready = false): Promise<Respons
     return Response.json({ status: 'ok', db: 'ok' });
   } catch {
     return Response.json({ status: 'error', db: 'unreachable' }, { status: 503 });
+  }
+}
+
+/** Names in schema_migrations, or none on a database that was never migrated. */
+async function appliedMigrations(db: Queryable): Promise<Set<string>> {
+  try {
+    const { rows } = await db.query<{ name: string }>('select name from schema_migrations');
+    return new Set(rows.map((row) => row.name));
+  } catch (err) {
+    // migrate() creates the table, so it's missing until the first migration runs.
+    if ((err as { code?: unknown }).code === UNDEFINED_TABLE) return new Set();
+    throw err;
   }
 }
 TS
