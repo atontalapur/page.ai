@@ -6,41 +6,32 @@ import { Capture, DockerExecRunner } from './docker-runner.ts';
 const docker = fileURLToPath(new URL('./__fixtures__/fake-docker.sh', import.meta.url));
 
 const runner = (container: string, clientGraceMs?: number) =>
-  new DockerExecRunner({ container, docker, workdir: '/w', clientGraceMs });
+  new DockerExecRunner({ container, docker, clientGraceMs });
 
 describe('DockerExecRunner', () => {
   it('builds a docker exec with the timeout enforced in the container', async () => {
     const result = await runner('argv').run({ command: 'ls -la', timeoutMs: 1500 });
     const argv = result.stdout.trimEnd().split('\n');
     expect(argv[3]).toMatch(/^PAGE_EXEC=[0-9a-f-]{36}$/);
-    expect([...argv.slice(0, 3), ...argv.slice(4)]).toEqual([
+    expect(argv[9]).toContain('timeout -s KILL "$1" sh -c "$2"');
+    expect([...argv.slice(0, 3), ...argv.slice(4, 9), ...argv.slice(10)]).toEqual([
       'exec',
       '-i',
       '-e',
       '-w',
-      '/w',
+      '/workspace',
       'argv',
-      'timeout',
-      '-s',
-      'KILL',
-      '2',
       'sh',
       '-c',
+      'page-exec',
+      '2',
       'ls -la',
     ]);
   });
 
   it('rounds sub-second timeouts up to one second', async () => {
     const result = await runner('argv').run({ command: 'x', timeoutMs: 10 });
-    expect(result.stdout.split('\n')[10]).toBe('1');
-  });
-
-  it('defaults the workdir to the sandbox workspace', async () => {
-    const result = await new DockerExecRunner({ container: 'argv', docker }).run({
-      command: 'x',
-      timeoutMs: 1000,
-    });
-    expect(result.stdout.split('\n')[5]).toBe('/workspace');
+    expect(result.stdout.split('\n')[11]).toBe('1');
   });
 
   it('returns exit code, stdout and stderr', async () => {
@@ -83,6 +74,18 @@ describe('DockerExecRunner', () => {
   it('rejects when docker could not exec at all', async () => {
     await expect(runner('missing').run({ command: 'ls', timeoutMs: 1000 })).rejects.toThrow(
       'docker exec in missing failed: Error response from daemon: No such container',
+    );
+  });
+
+  it('rejects when the runtime could not start the process', async () => {
+    await expect(runner('oci').run({ command: 'ls', timeoutMs: 1000 })).rejects.toThrow(
+      'docker exec in oci failed: OCI runtime exec failed',
+    );
+  });
+
+  it('rejects when the container has no timeout', async () => {
+    await expect(runner('notimeout').run({ command: 'ls', timeoutMs: 1000 })).rejects.toThrow(
+      'no timeout in the container',
     );
   });
 

@@ -11,22 +11,44 @@ const CLIENT_GRACE_MS = 5_000;
 // Characters kept per stream while a command runs. execute() trims much harder; this only
 // stops a runaway command from filling the daemon's memory.
 const CAPTURE_LIMIT = 1_000_000;
-// docker prints this when it couldn't exec at all (container gone, daemon down). The
-// command never ran, so it's a runner failure, not a result.
-const DOCKER_ERROR = 'Error response from daemon:';
+// docker prints one of these when it couldn't exec at all: the container is gone, the
+// daemon is down, or the runtime couldn't start the process. The command never ran, so it's
+// a runner failure, not a result.
+const DOCKER_ERRORS = ['Error response from daemon:', 'OCI runtime exec failed:'];
+// The wrapper below exits with this, after printing RUNNER_ERROR, when the container lacks
+// what it needs. Like a docker error, the command never ran.
+const RUNNER_UNUSABLE = 125;
+const RUNNER_ERROR = 'page-exec:';
 // Every process a command starts inherits this variable, grandchildren and new sessions
 // included, so a timed-out command can be cleaned up without touching anything else.
 const EXEC_TAG = 'PAGE_EXEC';
+// The session field of /proc/<pid>/stat. comm may hold spaces or `)`, so cut after the last `)`.
+const SESSION_OF = (stat: string) => `sed 's/.*) //' ${stat} 2>/dev/null | cut -d" " -f4`;
+const HAS_TAG = (pid: string, id: string) =>
+  `tr "\\0" "\\n" < /proc/${pid}/environ 2>/dev/null | grep -qx "${EXEC_TAG}=${id}"`;
 // Kills every process tagged with the id in $0. busybox has no `pkill -e`, so read environ.
+// Used from outside when the docker client had to be killed.
 const KILL_TAGGED =
   'for p in /proc/[0-9]*; do ' +
-  `tr "\\0" "\\n" < "$p/environ" 2>/dev/null | grep -qx "${EXEC_TAG}=$0" && kill -9 "\${p#/proc/}"; ` +
+  `${HAS_TAG('${p#/proc/}', '$0')} && kill -9 "\${p#/proc/}"; ` +
   'done; true';
+// Runs `sh -c $2` under a $1-second timeout, then kills whatever it left behind, whether it
+// exited or timed out: anything in this exec's session (docker starts each exec as its own
+// session leader, apart from tini and the keepalive) or carrying the tag (in case it called
+// setsid). A worker spawned with a fresh env keeps the session; only one that drops both
+// escapes, which the sandbox's pid limit bounds. Leftovers would otherwise hold stdout open,
+// keeping `docker exec` from returning, and eat the sandbox's CPU, memory and pids.
+const RUN =
+  `command -v timeout >/dev/null || { echo "${RUNNER_ERROR} no timeout in the container" >&2; exit ${RUNNER_UNUSABLE}; }; ` +
+  'timeout -s KILL "$1" sh -c "$2"; status=$?; ' +
+  `sid=$(${SESSION_OF('/proc/$$/stat')}); ` +
+  'for p in /proc/[0-9]*; do pid=${p#/proc/}; [ "$pid" = $$ ] && continue; ' +
+  `if [ "$(${SESSION_OF('$p/stat')})" = "$sid" ] || ${HAS_TAG('$pid', `$${EXEC_TAG}`)}; ` +
+  'then kill -9 "$pid" 2>/dev/null; fi; done; exit $status';
 
 export interface DockerExecRunnerOptions {
   /** Name or id of the run's sandbox container. */
   container: string;
-  workdir?: string;
   /** The docker binary. Tests can point this somewhere else. */
   docker?: string;
   /** How long after the deadline to kill the docker client. */
@@ -71,18 +93,15 @@ export class Capture {
  */
 export class DockerExecRunner implements ExecRunner {
   private readonly container: string;
-  private readonly workdir: string;
   private readonly docker: string;
   private readonly clientGraceMs: number;
 
   constructor({
     container,
-    workdir = WORKSPACE,
     docker = 'docker',
     clientGraceMs = CLIENT_GRACE_MS,
   }: DockerExecRunnerOptions) {
     this.container = container;
-    this.workdir = workdir;
     this.docker = docker;
     this.clientGraceMs = clientGraceMs;
   }
@@ -92,17 +111,17 @@ export class DockerExecRunner implements ExecRunner {
     const tag = randomUUID();
     const started = Date.now();
     const done = await this.spawn(
+      // Always the workspace: the policy and the edit tool resolve relative paths against it.
       // prettier-ignore
-      ['exec', '-i', '-e', `${EXEC_TAG}=${tag}`, '-w', this.workdir, this.container,
-        'timeout', '-s', 'KILL', String(seconds), 'sh', '-c', command],
+      ['exec', '-i', '-e', `${EXEC_TAG}=${tag}`, '-w', WORKSPACE, this.container,
+        'sh', '-c', RUN, 'page-exec', String(seconds), command],
       stdin ?? '',
       seconds * 1000 + this.clientGraceMs,
     );
     const elapsed = Date.now() - started;
 
-    if (done.clientKilled || (done.code === KILLED && elapsed >= timeoutMs)) {
-      // `timeout` kills only its own child. A compound command (`sleep 9; true`, or a test
-      // runner's workers) leaves the rest running, so kill everything carrying the tag.
+    if (done.clientKilled) {
+      // The wrapper never got to clean up, so kill everything carrying the tag from outside.
       await this.spawn(
         ['exec', this.container, 'sh', '-c', KILL_TAGGED, tag],
         '',
@@ -110,10 +129,16 @@ export class DockerExecRunner implements ExecRunner {
       );
       return { status: 'timed_out', stdout: done.stdout, stderr: done.stderr };
     }
+    if (done.code === KILLED && elapsed >= timeoutMs) {
+      return { status: 'timed_out', stdout: done.stdout, stderr: done.stderr };
+    }
     if (done.code === null) {
       throw new Error(`docker exec in ${this.container} ended without an exit code`);
     }
-    if (done.code !== 0 && done.stderr.startsWith(DOCKER_ERROR)) {
+    const runnerFailed =
+      DOCKER_ERRORS.some((prefix) => done.stderr.startsWith(prefix)) ||
+      (done.code === RUNNER_UNUSABLE && done.stderr.startsWith(RUNNER_ERROR));
+    if (done.code !== 0 && runnerFailed) {
       throw new Error(`docker exec in ${this.container} failed: ${done.stderr.trim()}`);
     }
     return { status: 'exited', exitCode: done.code, stdout: done.stdout, stderr: done.stderr };

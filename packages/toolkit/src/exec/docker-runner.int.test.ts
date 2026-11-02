@@ -73,6 +73,21 @@ describe('DockerExecRunner against a container', () => {
     expect(ps.stdout).toContain('sleep 300');
   }, 20_000);
 
+  it('kills what a finished command left behind, even with a fresh env or session', async () => {
+    const runner = new DockerExecRunner({ container });
+    // Both hold stdout open. One drops the tag (like a worker spawned with its own env),
+    // the other leaves the session.
+    const result = await runner.run({
+      command: 'env -i sleep 41 & setsid sleep 43 & echo ok',
+      timeoutMs: 10_000,
+    });
+    expect(result).toEqual({ status: 'exited', exitCode: 0, stdout: 'ok\n', stderr: '' });
+    const ps = await runner.run({ command: 'ps -o args', timeoutMs: 10_000 });
+    expect(ps.stdout).not.toContain('sleep 41');
+    expect(ps.stdout).not.toContain('sleep 43');
+    expect(ps.stdout).toContain('sleep 300');
+  }, 20_000);
+
   it('rejects when the container does not exist', async () => {
     const runner = new DockerExecRunner({ container: 'page-no-such-container' });
     await expect(runner.run({ command: 'ls', timeoutMs: 5000 })).rejects.toThrow(
