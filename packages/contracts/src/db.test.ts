@@ -51,6 +51,20 @@ describe('runSchema', () => {
   it('rejects an unknown tier', () => {
     expect(() => runSchema.parse({ ...runFixture, tier: 4 })).toThrow();
   });
+
+  it('accepts an https github.com prUrl', () => {
+    const run = { ...runFixture, prUrl: 'https://github.com/atontalapur/page-demo/pull/7' };
+    expect(roundTrip(runSchema, run)).toEqual(run);
+  });
+
+  it.each([
+    'javascript:alert(1)',
+    'http://github.com/atontalapur/page-demo/pull/7',
+    'https://github.com.evil.example/pull/7',
+    'https://github.com@evil.example/pull/7',
+  ])('rejects the prUrl %s', (prUrl) => {
+    expect(() => runSchema.parse({ ...runFixture, prUrl })).toThrow();
+  });
 });
 
 describe('stepSchema', () => {

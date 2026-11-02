@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { BUG_CLASSES, fingerprintSchema, idSchema, tierSchema, timestampSchema } from './common.ts';
+import {
+  BUG_CLASSES,
+  fingerprintSchema,
+  idSchema,
+  prUrlSchema,
+  tierSchema,
+  timestampSchema,
+} from './common.ts';
 import { escalationNoteSchema } from './escalation.ts';
 
 // Row shapes for the tables in #25. Fields are camelCase; the DB layer maps column names.
@@ -50,7 +57,7 @@ export const runSchema = z.strictObject({
   status: z.enum(RUN_STATUSES),
   startedAt: timestampSchema.nullable(),
   finishedAt: timestampSchema.nullable(),
-  prUrl: z.url().nullable(),
+  prUrl: prUrlSchema.nullable(),
 });
 
 export type Run = z.infer<typeof runSchema>;

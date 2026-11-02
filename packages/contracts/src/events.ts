@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { idSchema } from './common.ts';
+import { idSchema, prUrlSchema } from './common.ts';
 import { approvalSchema, issueSchema, RUN_STATUSES, runSchema, stepSchema } from './db.ts';
 import { escalationNoteSchema } from './escalation.ts';
 
@@ -43,7 +43,7 @@ export const nodeToServerEvents = {
     v,
     runId: idSchema,
     status: z.enum(RUN_STATUSES).exclude(['queued', 'running']),
-    prUrl: z.url().nullable(),
+    prUrl: prUrlSchema.nullable(),
     note: escalationNoteSchema.nullable(),
   }),
 };

@@ -41,3 +41,12 @@ it('rejects a UI decision that is still pending', () => {
     }),
   ).toThrow();
 });
+
+it('rejects a node prUrl that is not https github.com', () => {
+  expect(() =>
+    nodeToServerEvents['node.run.finished'].parse({
+      ...nodeToServerEventFixtures['node.run.finished'],
+      prUrl: 'javascript:alert(1)',
+    }),
+  ).toThrow();
+});

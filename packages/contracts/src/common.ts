@@ -9,6 +9,12 @@ export const idSchema = z.uuid();
 /** Timestamps travel as ISO 8601 UTC strings ending in `Z`, so JSON keeps them unchanged. */
 export const timestampSchema = z.iso.datetime();
 
+/**
+ * A pull request link from an agent. The dashboard renders it as a link, so it must be an
+ * https github.com URL: `z.url()` alone accepts any scheme, `javascript:` included.
+ */
+export const prUrlSchema = z.url({ protocol: /^https$/, hostname: /^github\.com$/ });
+
 export const tierSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
 
 export type Tier = z.infer<typeof tierSchema>;
