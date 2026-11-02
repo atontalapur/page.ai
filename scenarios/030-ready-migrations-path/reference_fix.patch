@@ -1,0 +1,13 @@
+diff --git a/apps/demo-app/src/app/api/health/health.ts b/apps/demo-app/src/app/api/health/health.ts
+index db06271..1f54739 100644
+--- a/apps/demo-app/src/app/api/health/health.ts
++++ b/apps/demo-app/src/app/api/health/health.ts
+@@ -3,7 +3,7 @@ import type { Queryable } from '../../../db/index.ts';
+ import { loadMigrations } from '../../../db/migrate.ts';
+ 
+ // The migrations this build ships with.
+-const MIGRATIONS_DIR = join(process.cwd(), 'apps/demo-app/migrations');
++const MIGRATIONS_DIR = join(process.cwd(), 'migrations');
+ 
+ /**
+  * 200 when the database answers, 503 otherwise, so Railway and compose can gate on it.

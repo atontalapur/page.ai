@@ -1,0 +1,5 @@
+{
+  "class": "frontend",
+  "expectedTier": 2,
+  "description": "idSchema drops its int4 upper bound, so an order id past 2147483647 reaches Postgres and the order page returns 500 instead of 404"
+}

@@ -1,0 +1,5 @@
+{
+  "class": "infra-config",
+  "expectedTier": 1,
+  "description": "SHIPPING_FLAT_CENTS defaults to 4.99 (dollars) with .int() dropped, so checkout inserts a fraction into an integer column and returns 500"
+}

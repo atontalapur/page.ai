@@ -1,0 +1,13 @@
+diff --git a/apps/demo-app/src/app/api/respond.ts b/apps/demo-app/src/app/api/respond.ts
+index 0a9d353..624ad13 100644
+--- a/apps/demo-app/src/app/api/respond.ts
++++ b/apps/demo-app/src/app/api/respond.ts
+@@ -5,7 +5,7 @@ const statusFor: Record<ShopErrorCode, number> = {
+   not_found: 404,
+   invalid_quantity: 400,
+   out_of_stock: 409,
+-  empty_cart: 204,
++  empty_cart: 409,
+   checkout_disabled: 503,
+ };
+ 

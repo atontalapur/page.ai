@@ -1,0 +1,14 @@
+diff --git a/apps/demo-app/src/app/cart-session.ts b/apps/demo-app/src/app/cart-session.ts
+index ac58532..0578e81 100644
+--- a/apps/demo-app/src/app/cart-session.ts
++++ b/apps/demo-app/src/app/cart-session.ts
+@@ -7,7 +7,8 @@ const COOKIE = 'cart_id';
+ const THIRTY_DAYS = 60 * 60 * 24 * 30;
+ 
+ export function readCartId(cookies: CookieStore): string | undefined {
+-  return z.uuid().optional().parse(cookies.get(COOKIE)?.value);
++  const parsed = z.uuid().safeParse(cookies.get(COOKIE)?.value);
++  return parsed.success ? parsed.data : undefined;
+ }
+ 
+ /** Returns the shopper's cart id, creating the cart and cookie if needed. Actions and handlers only. */
