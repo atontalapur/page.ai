@@ -1,5 +1,7 @@
 export { execute, DEFAULT_TIMEOUT_MS } from './exec/execute.ts';
 export type { ExecContext, ExecErr, ExecOk, ToolCall } from './exec/execute.ts';
+export { DockerExecRunner } from './exec/docker-runner.ts';
+export type { DockerExecRunnerOptions } from './exec/docker-runner.ts';
 export { FakeRunner } from './exec/fake-runner.ts';
 export type { ExecRunner, RunRequest, RunResult } from './exec/runner.ts';
 export { DEFAULT_OUTPUT_BUDGET, trimOutput } from './exec/trim.ts';
