@@ -33,7 +33,8 @@ vi.mock('../src/app/data.ts', () => ({
   }),
 }));
 
-// Next decodes route params before the handler sees them.
+// Next decodes route handler params before the handler sees them: on 16.4.3 (dev and
+// start) GET /api/products/50%25-off gets slug "50%-off". Pages get the raw segment.
 const get = (slug: string) =>
   GET(new Request(`http://shop.test/api/products/${encodeURIComponent(slug)}`), {
     params: Promise.resolve({ slug }),

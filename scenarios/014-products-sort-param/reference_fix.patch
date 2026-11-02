@@ -1,24 +1,46 @@
 diff --git a/apps/demo-app/src/app/api/products/route.ts b/apps/demo-app/src/app/api/products/route.ts
-index 83bee40..94c5ae8 100644
+index 83bee40..25ba230 100644
 --- a/apps/demo-app/src/app/api/products/route.ts
 +++ b/apps/demo-app/src/app/api/products/route.ts
-@@ -1,8 +1,18 @@
- import { listProducts } from '../../../shop/products.ts';
+@@ -1,8 +1,12 @@
+-import { listProducts } from '../../../shop/products.ts';
++import { isProductSort, listProducts } from '../../../shop/products.ts';
  import { shop } from '../../data.ts';
 +import { errorResponse } from '../respond.ts';
-+
-+// Public sort keys and the column each one orders by. Never put the raw param in SQL.
-+const sortColumns = new Map([
-+  ['name', 'name'],
-+  ['price', 'price_cents'],
-+  ['stock', 'stock'],
-+]);
  
  export async function GET(req: Request) {
    const sort = new URL(req.url).searchParams.get('sort') ?? 'name';
-+  const orderBy = sortColumns.get(sort);
-+  if (!orderBy) return errorResponse('bad_request', 'sort must be one of name, price, stock');
++  if (!isProductSort(sort)) {
++    return errorResponse('bad_request', 'sort must be one of name, price, stock');
++  }
    const { db } = await shop();
--  return Response.json(await listProducts(db, sort));
-+  return Response.json(await listProducts(db, orderBy));
+   return Response.json(await listProducts(db, sort));
  }
+diff --git a/apps/demo-app/src/shop/products.ts b/apps/demo-app/src/shop/products.ts
+index 0f4c1f2..5b2d3df 100644
+--- a/apps/demo-app/src/shop/products.ts
++++ b/apps/demo-app/src/shop/products.ts
+@@ -11,9 +11,20 @@ export interface Product {
+ 
+ const columns = `id, slug, name, description, price_cents as "priceCents", stock`;
+ 
+-/** Lists the catalogue ordered by `orderBy`, a products column (name by default). */
+-export async function listProducts(db: Queryable, orderBy = 'name'): Promise<Product[]> {
+-  const { rows } = await db.query<Product>(`select ${columns} from products order by ${orderBy}`);
++// Sort keys and the column each one orders by. Only these columns ever reach the SQL.
++const sortColumns = { name: 'name', price: 'price_cents', stock: 'stock' } as const;
++export type ProductSort = keyof typeof sortColumns;
++
++export function isProductSort(value: string): value is ProductSort {
++  return Object.hasOwn(sortColumns, value);
++}
++
++/** Lists the catalogue ordered by `sort` (name by default). */
++export async function listProducts(db: Queryable, sort: ProductSort = 'name'): Promise<Product[]> {
++  if (!isProductSort(sort)) throw new Error(`Unknown product sort ${String(sort)}`);
++  const { rows } = await db.query<Product>(
++    `select ${columns} from products order by ${sortColumns[sort]}`,
++  );
+   return rows;
+ }
+ 

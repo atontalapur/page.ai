@@ -5,6 +5,13 @@
 # home page, product pages and the products API.
 set -eu
 d=apps/demo-app
+# The new migration has to sort right after 001. Another migration means the code moved.
+for m in "$d"/migrations/*.sql; do
+  case "${m##*/}" in
+  001_*) ;;
+  *) echo "unexpected migration $m" >&2; exit 1 ;;
+  esac
+done
 cat > "$d/migrations/002_product_categories.sql" <<'SQL'
 create table categories (
   id serial primary key,
