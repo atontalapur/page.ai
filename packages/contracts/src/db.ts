@@ -50,6 +50,20 @@ export const RUN_STATUSES = [
   'killed',
 ] as const;
 
+/**
+ * How sure a run is of its fix (README, step 4). Below the threshold, the issue escalates a tier.
+ * The dashboard shows the parts, not only the score.
+ */
+export const confidenceSchema = z.strictObject({
+  score: z.number().min(0).max(1),
+  // The agent reproduced the error before fixing it.
+  reproduced: z.boolean(),
+  testsPass: z.boolean(),
+  selfAssessed: z.number().min(0).max(1),
+});
+
+export type Confidence = z.infer<typeof confidenceSchema>;
+
 export const runSchema = z.strictObject({
   id: idSchema,
   issueId: idSchema,
@@ -58,6 +72,8 @@ export const runSchema = z.strictObject({
   startedAt: timestampSchema.nullable(),
   finishedAt: timestampSchema.nullable(),
   prUrl: prUrlSchema.nullable(),
+  // Null until the run scores itself.
+  confidence: confidenceSchema.nullable(),
 });
 
 export type Run = z.infer<typeof runSchema>;

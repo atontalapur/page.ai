@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
+  escalationNoteFixture,
   nodeToServerEventFixtures,
   pendingApprovalFixture,
   serverToNodeEventFixtures,
@@ -65,4 +66,47 @@ it('rejects a pending approval sent as a decision to the node or the UI', () => 
   const pending = { v: 1, approval: pendingApprovalFixture };
   expect(() => serverToNodeEvents['approval.decided'].parse(pending)).toThrow();
   expect(() => serverToUiEvents['approval.updated'].parse(pending)).toThrow();
+});
+
+describe('node.run.finished', () => {
+  const finished = nodeToServerEvents['node.run.finished'];
+  const escalated = {
+    v: 1,
+    runId: nodeToServerEventFixtures['node.run.finished'].runId,
+    status: 'escalated',
+    prUrl: null,
+    confidence: null,
+    reason: 'tests_failing',
+    toTier: 2,
+    note: escalationNoteFixture,
+  };
+
+  it('round-trips an escalation with its reason, target tier and note', () => {
+    expect(roundTrip(finished, escalated)).toEqual(escalated);
+  });
+
+  it.each(['reason', 'toTier'])('rejects an escalation without %s', (key) => {
+    expect(() => finished.parse({ ...escalated, [key]: undefined })).toThrow();
+  });
+
+  it('rejects an escalation without a note', () => {
+    expect(() => finished.parse({ ...escalated, note: null })).toThrow();
+  });
+
+  it('rejects a success without a confidence score', () => {
+    const succeeded = nodeToServerEventFixtures['node.run.finished'];
+    expect(() => finished.parse({ ...succeeded, confidence: null })).toThrow();
+  });
+
+  it('accepts a killed run with nothing to report', () => {
+    const killed = {
+      v: 1,
+      runId: escalated.runId,
+      status: 'killed',
+      prUrl: null,
+      confidence: null,
+      note: null,
+    };
+    expect(roundTrip(finished, killed)).toEqual(killed);
+  });
 });

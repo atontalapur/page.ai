@@ -1,12 +1,13 @@
 import { z } from 'zod';
-import { idSchema, prUrlSchema } from './common.ts';
+import { idSchema, prUrlSchema, tierSchema } from './common.ts';
 import {
   APPROVAL_DECISIONS,
   approvalSchema,
+  confidenceSchema,
   decidedApprovalSchema,
+  ESCALATION_REASONS,
   issueSchema,
   pendingApprovalSchema,
-  RUN_STATUSES,
   runSchema,
   stepSchema,
 } from './db.ts';
@@ -20,6 +21,38 @@ const v = z.literal(1);
 const runKill = z.strictObject({ v, runId: idSchema });
 const runChat = z.strictObject({ v, runId: idSchema, message: z.string().min(1) });
 const runDiff = z.strictObject({ v, runId: idSchema, diff: z.string() });
+
+const runFinishedBase = {
+  v,
+  runId: idSchema,
+  prUrl: prUrlSchema.nullable(),
+  confidence: confidenceSchema.nullable(),
+};
+
+/**
+ * The node's last word on a run. An escalation carries everything the server needs to write
+ * the `Escalation` row; the server checks `toTier` is above the run's tier.
+ */
+const nodeRunFinished = z.discriminatedUnion('status', [
+  z.strictObject({
+    ...runFinishedBase,
+    status: z.literal('succeeded'),
+    confidence: confidenceSchema,
+    note: escalationNoteSchema.nullable(),
+  }),
+  z.strictObject({
+    ...runFinishedBase,
+    status: z.literal('escalated'),
+    reason: z.enum(ESCALATION_REASONS),
+    toTier: tierSchema,
+    note: escalationNoteSchema,
+  }),
+  z.strictObject({
+    ...runFinishedBase,
+    status: z.enum(['failed', 'killed']),
+    note: escalationNoteSchema.nullable(),
+  }),
+]);
 
 export const serverToUiEvents = {
   'issue.updated': z.strictObject({ v, issue: issueSchema }),
@@ -51,13 +84,7 @@ export const uiToServerEvents = {
 export const nodeToServerEvents = {
   'node.step': z.strictObject({ v, step: stepSchema }),
   'node.diff': runDiff,
-  'node.run.finished': z.strictObject({
-    v,
-    runId: idSchema,
-    status: z.enum(RUN_STATUSES).exclude(['queued', 'running']),
-    prUrl: prUrlSchema.nullable(),
-    note: escalationNoteSchema.nullable(),
-  }),
+  'node.run.finished': nodeRunFinished,
   // A Tier 3 agent asks to run a gated host tool such as `ops.restart`. The node picks the
   // approval id so it can match the `approval.decided` that answers it.
   'node.approval.request': z.strictObject({

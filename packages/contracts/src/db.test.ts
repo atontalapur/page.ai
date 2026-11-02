@@ -52,6 +52,11 @@ describe('runSchema', () => {
     expect(() => runSchema.parse({ ...runFixture, tier: 4 })).toThrow();
   });
 
+  it('rejects a confidence score outside 0 to 1', () => {
+    const confidence = { score: 1.2, reproduced: true, testsPass: true, selfAssessed: 0.5 };
+    expect(() => runSchema.parse({ ...runFixture, confidence })).toThrow();
+  });
+
   it('accepts an https github.com prUrl', () => {
     const run = { ...runFixture, prUrl: 'https://github.com/atontalapur/page-demo/pull/7' };
     expect(roundTrip(runSchema, run)).toEqual(run);

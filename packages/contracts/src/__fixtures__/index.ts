@@ -1,6 +1,14 @@
 // Valid fixtures for every contract. Consumer tests import these from
 // `@page/contracts/fixtures` instead of building their own.
-import type { DecidedApproval, Escalation, Issue, PendingApproval, Run, Step } from '../db.ts';
+import type {
+  Confidence,
+  DecidedApproval,
+  Escalation,
+  Issue,
+  PendingApproval,
+  Run,
+  Step,
+} from '../db.ts';
 import type { EscalationNote } from '../escalation.ts';
 import type {
   NodeToServerEvents,
@@ -44,6 +52,14 @@ export const runFixture: Run = {
   startedAt: at,
   finishedAt: null,
   prUrl: null,
+  confidence: null,
+};
+
+export const confidenceFixture: Confidence = {
+  score: 0.82,
+  reproduced: true,
+  testsPass: true,
+  selfAssessed: 0.7,
 };
 
 export const stepFixture: Step = {
@@ -104,7 +120,7 @@ export const serverToUiEventFixtures: Payloads<ServerToUiEvents> = {
   'run.diff': { v: 1, runId, diff: '--- a/src/cart/total.ts\n+++ b/src/cart/total.ts\n' },
   'run.finished': {
     v: 1,
-    run: { ...runFixture, status: 'escalated', finishedAt: later },
+    run: { ...runFixture, status: 'escalated', finishedAt: later, confidence: confidenceFixture },
     note: escalationNoteFixture,
   },
   'approval.requested': { v: 1, approval: pendingApprovalFixture },
@@ -125,6 +141,7 @@ export const nodeToServerEventFixtures: Payloads<NodeToServerEvents> = {
     runId,
     status: 'succeeded',
     prUrl: 'https://github.com/atontalapur/page-demo/pull/7',
+    confidence: confidenceFixture,
     note: null,
   },
   'node.approval.request': {
