@@ -73,7 +73,7 @@ Work step by step so you can check each change as you go.
 1. Every response must contain exactly one action block.
 2. Each command runs in a fresh shell in the repository root. The app is in \`${APP}\`. \`cd\` and environment variables do not carry over to the next command.
 3. Only these programs are available: cat, ls, head, tail, rg, find, git (status, diff and log only) and pnpm (test, lint, typecheck, vitest, tsc and eslint). Anything else is refused.
-4. Commands may use pipes, \`&&\`, \`||\`, \`;\` and redirects to files inside the repository. Globs, \`$\` variables, backticks, \`$(...)\`, heredocs and subshells are refused, so quote patterns and pass paths explicitly.
+4. Commands may use pipes, \`&&\`, \`||\`, \`;\` and redirects to files inside the repository. Globs, \`$\` variables, backticks, \`$(...)\`, heredocs and subshells are refused, so quote patterns and pass paths explicitly. Quote paths that contain brackets, such as Next.js route folders: \`cat -n "app/orders/[id]/page.tsx"\`.
 5. Change files only with ${EDIT} blocks. The SEARCH text must match the file exactly, including indentation, and appear exactly once. Use an empty SEARCH section to create a new file.
 6. Command output is cut to about 8,000 characters, keeping the start and the end. Narrow your command if you need the middle.
 
@@ -82,7 +82,7 @@ Work step by step so you can check each change as you go.
 ### Find where something is defined or used
 
 ${FENCE}${BASH}
-rg -n "formatPrice" ${APP}/src
+rg -n "getCart" ${APP}/src
 ${FENCE}
 
 ### View specific lines of a file

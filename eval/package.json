@@ -11,7 +11,10 @@
     "test:integration": "vitest run --project integration"
   },
   "dependencies": {
-    "@page/contracts": "workspace:*"
+    "@page/agent": "workspace:*",
+    "@page/contracts": "workspace:*",
+    "@page/model-client": "workspace:*",
+    "@page/toolkit": "workspace:*"
   },
   "devDependencies": {
     "@page/config": "workspace:*",
