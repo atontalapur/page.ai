@@ -1,0 +1,24 @@
+diff --git a/apps/demo-app/src/app/api/products/route.ts b/apps/demo-app/src/app/api/products/route.ts
+index 83bee40..94c5ae8 100644
+--- a/apps/demo-app/src/app/api/products/route.ts
++++ b/apps/demo-app/src/app/api/products/route.ts
+@@ -1,8 +1,18 @@
+ import { listProducts } from '../../../shop/products.ts';
+ import { shop } from '../../data.ts';
++import { errorResponse } from '../respond.ts';
++
++// Public sort keys and the column each one orders by. Never put the raw param in SQL.
++const sortColumns = new Map([
++  ['name', 'name'],
++  ['price', 'price_cents'],
++  ['stock', 'stock'],
++]);
+ 
+ export async function GET(req: Request) {
+   const sort = new URL(req.url).searchParams.get('sort') ?? 'name';
++  const orderBy = sortColumns.get(sort);
++  if (!orderBy) return errorResponse('bad_request', 'sort must be one of name, price, stock');
+   const { db } = await shop();
+-  return Response.json(await listProducts(db, sort));
++  return Response.json(await listProducts(db, orderBy));
+ }

@@ -1,0 +1,5 @@
+{
+  "class": "infra-config",
+  "expectedTier": 1,
+  "description": "Shop settings schema goes strict but parses all of process.env, so unrelated variables make every shop page throw"
+}

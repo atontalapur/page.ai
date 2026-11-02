@@ -1,0 +1,14 @@
+diff --git a/apps/demo-app/src/app/page.tsx b/apps/demo-app/src/app/page.tsx
+index afc137a..3adcf84 100644
+--- a/apps/demo-app/src/app/page.tsx
++++ b/apps/demo-app/src/app/page.tsx
+@@ -8,7 +8,8 @@ export default async function HomePage(props: PageProps<'/'>) {
+   const query = typeof q === 'string' ? q.trim() : '';
+   const { db } = await shop();
+   const all = await listProducts(db);
+-  const products = query ? all.filter((p) => new RegExp(query, 'i').test(p.name)) : all;
++  const needle = query.toLowerCase();
++  const products = query ? all.filter((p) => p.name.toLowerCase().includes(needle)) : all;
+ 
+   return (
+     <main>

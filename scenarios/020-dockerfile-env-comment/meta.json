@@ -1,0 +1,5 @@
+{
+  "class": "infra-config",
+  "expectedTier": 2,
+  "description": "Dockerfile sets FREE_SHIPPING_MIN_CENTS with a trailing # note, which Docker keeps in the value, so every shop page throws in the image"
+}

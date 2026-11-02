@@ -1,0 +1,17 @@
+diff --git a/apps/demo-app/src/config.ts b/apps/demo-app/src/config.ts
+index c9e855e..2980bce 100644
+--- a/apps/demo-app/src/config.ts
++++ b/apps/demo-app/src/config.ts
+@@ -8,9 +8,9 @@ const databaseSchema = z.object({
+   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+ });
+ 
+-// The config surface the infra/config seeded bugs break. Strict, so a misspelt name like
+-// MAX_ITEMS_QUANTITY fails loudly instead of leaving MAX_ITEM_QUANTITY on its default.
+-const shopSchema = z.strictObject({
++// The config surface the infra/config seeded bugs break.
++// Not strict: it parses all of process.env, which holds plenty of unrelated variables.
++const shopSchema = z.object({
+   SHIPPING_FLAT_CENTS: z.coerce.number().int().min(0).default(500),
+   FREE_SHIPPING_MIN_CENTS: z.coerce.number().int().min(0).default(5000),
+   MAX_ITEM_QUANTITY: z.coerce.number().int().min(1).default(10),

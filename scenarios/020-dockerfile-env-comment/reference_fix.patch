@@ -1,0 +1,14 @@
+diff --git a/apps/demo-app/Dockerfile b/apps/demo-app/Dockerfile
+index ba29279..81174ae 100644
+--- a/apps/demo-app/Dockerfile
++++ b/apps/demo-app/Dockerfile
+@@ -32,7 +32,8 @@ RUN pnpm --filter @page/demo-app deploy --prod --legacy --ignore-scripts /out \
+ FROM node:24-alpine
+ ENV NODE_ENV=production
+ # Same threshold everywhere the image runs, instead of each service setting it.
+-ENV FREE_SHIPPING_MIN_CENTS 5000  # free shipping from 50 USD
++# Free shipping from 50 USD. A # note after an ENV value is part of the value.
++ENV FREE_SHIPPING_MIN_CENTS=5000
+ WORKDIR /app
+ COPY --from=build --chown=node:node /out /app
+ USER node
