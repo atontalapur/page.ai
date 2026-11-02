@@ -19,7 +19,10 @@ export const ISSUE_STATUSES = [
   'pr_open',
   'awaiting_approval',
   'resolved',
+  // Escalated past the top tier; a human takes over.
   'failed',
+  // A human stopped the pipeline.
+  'killed',
 ] as const;
 
 export const SEVERITIES = ['low', 'medium', 'high', 'critical'] as const;

@@ -5,17 +5,35 @@
   "description": "Nest app: ingest, triage, issue state machine, job queues, serves the UI",
   "type": "module",
   "scripts": {
+    "build": "tsc -p tsconfig.build.json && cp -R migrations dist/apps/orchestrator/",
+    "dev": "pnpm build && node --env-file-if-exists=../../.env --enable-source-maps dist/apps/orchestrator/src/main.js",
+    "start": "node --enable-source-maps dist/apps/orchestrator/src/main.js",
     "lint": "eslint .",
     "typecheck": "tsc",
     "test": "vitest run --project unit --coverage",
     "test:integration": "vitest run --project integration"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.13",
+    "@nestjs/testing": "^12.3.2",
     "@page/config": "workspace:*",
     "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.3.2",
+    "@nestjs/core": "^12.3.2",
+    "@nestjs/platform-fastify": "^12.3.2",
+    "@page/contracts": "workspace:*",
+    "kysely": "^0.29.7",
+    "pg": "^8.23.1",
+    "pg-boss": "^12.38.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "catalog:"
   }
 }
