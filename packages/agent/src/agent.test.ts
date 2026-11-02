@@ -140,6 +140,56 @@ describe('runAgent', () => {
     expect(result).toMatchObject({ exitStatus: 'time_limit', modelCalls: 2 });
   });
 
+  it('gives each model call and execute the time left in the budget', async () => {
+    let clock = 0;
+    const model = new ScriptedModel([bash('pnpm test'), submit()]);
+    model.onCall = () => (clock += 100);
+    const fake = fakeExecute((call) => {
+      clock += 400;
+      return okResult(call);
+    });
+    await runAgent(task, { model, ...fake, now: () => clock }, { wallTimeLimitMs: 1_000 });
+
+    expect(model.options.map((o) => o?.timeoutMs)).toEqual([1_000, 500]);
+    expect(fake.options).toEqual([{ timeoutMs: 900 }]);
+  });
+
+  it('passes no timeout when there is no wall clock limit', async () => {
+    const model = new ScriptedModel([bash('ls'), submit()]);
+    const fake = fakeExecute();
+    await runAgent(task, { model, ...fake }, { wallTimeLimitMs: 0 });
+    expect(model.options.map((o) => o?.timeoutMs)).toEqual([undefined, undefined]);
+    expect(fake.options).toEqual([{}]);
+  });
+
+  it('ends on the time limit when the deadline cuts a model call short', async () => {
+    let clock = 0;
+    const timeout = { kind: 'network', status: null, message: 'aborted' } as const;
+    const model = new ScriptedModel([timeout]);
+    model.onCall = () => (clock += 1_000);
+    const result = await runAgent(
+      task,
+      { model, ...fakeExecute(), now: () => clock },
+      { wallTimeLimitMs: 1_000 },
+    );
+    expect(result.exitStatus).toBe('time_limit');
+    expect(result.error).toBeUndefined();
+  });
+
+  it('does not start a command once the model reply used up the time', async () => {
+    let clock = 0;
+    const model = new ScriptedModel([bash('pnpm test')]);
+    model.onCall = () => (clock += 1_000);
+    const fake = fakeExecute();
+    const result = await runAgent(
+      task,
+      { model, ...fake, now: () => clock },
+      { wallTimeLimitMs: 1_000 },
+    );
+    expect(result).toMatchObject({ exitStatus: 'time_limit', modelCalls: 1 });
+    expect(fake.calls).toEqual([]);
+  });
+
   it('stops with the error when the model call fails', async () => {
     const error = { kind: 'rate_limited', status: 429, message: 'slow down' } as const;
     const model = new ScriptedModel([bash('ls'), error]);

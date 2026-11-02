@@ -13,7 +13,7 @@ import {
   type Transcript,
 } from '@page/agent';
 import { OpenRouterClient, withRetries } from '@page/model-client';
-import { DockerExecRunner, execute } from '@page/toolkit';
+import { DEFAULT_TIMEOUT_MS, DockerExecRunner, execute } from '@page/toolkit';
 import { loadScenario } from '../src/scenario.ts';
 import { shellIn, startSandbox, stopSandbox } from './sandbox.ts';
 
@@ -39,6 +39,8 @@ const [breakScript, checkScript] = await Promise.all(
   ['break.sh', 'check.sh'].map((f) => readFile(join(scenario.dir, f), 'utf8')),
 );
 
+// The sandbox's own wall clock starts with the container, so the agent's budget does too.
+const containerStartedAt = Date.now();
 const name = startSandbox(image);
 try {
   const sh = shellIn(name);
@@ -49,12 +51,18 @@ try {
   const tier = scenario.meta.expectedTier;
   const recording = recordingDeps({
     model: withRetries(new OpenRouterClient({ apiKey, model: values.model })),
-    execute: (call) => execute(call, { tier, runner }),
+    execute: (call, { timeoutMs = Infinity }) =>
+      execute(call, { tier, runner, timeoutMs: Math.min(DEFAULT_TIMEOUT_MS, timeoutMs) }),
   });
   // The scenario's description stands in for the triaged error report until ingest (#30)
   // can produce one.
   const task = { task: scenario.meta.description };
-  const config = DEFAULT_AGENT_CONFIG;
+  // Setup (container start, break.sh) comes out of the budget. Saving the shortened limit
+  // in the config keeps the replay exact.
+  const config = {
+    ...DEFAULT_AGENT_CONFIG,
+    wallTimeLimitMs: DEFAULT_AGENT_CONFIG.wallTimeLimitMs - (Date.now() - containerStartedAt),
+  };
   const run = await runAgent(task, recording.deps, config);
 
   // check.sh goes over stdin after the run, so the agent never sees it.

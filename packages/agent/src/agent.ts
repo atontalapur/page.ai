@@ -9,8 +9,16 @@ import {
   type AgentTask,
 } from './prompts.ts';
 
+export interface ExecuteOptions {
+  /** The time left in the run. The command must not outlive it; unset means no limit. */
+  timeoutMs?: number;
+}
+
 /** toolkit's `execute()` with the tier and runner already bound. */
-export type ExecuteFn = (call: ToolCall) => Promise<Result<ExecOk, ExecErr>>;
+export type ExecuteFn = (
+  call: ToolCall,
+  options: ExecuteOptions,
+) => Promise<Result<ExecOk, ExecErr>>;
 
 export interface AgentDeps {
   model: ModelClient;
@@ -53,6 +61,9 @@ export interface AgentRun {
 
 const reached = (limit: number, value: number) => limit > 0 && value >= limit;
 
+const withTimeout = (timeoutMs: number | undefined) =>
+  timeoutMs === undefined ? {} : { timeoutMs };
+
 /**
  * The mini-swe-agent loop: ask the model, run the one action it gives, show it the
  * result, repeat until it submits or a limit is hit. The model and `execute()` are the
@@ -74,6 +85,12 @@ export async function runAgent(
   let costUsd = 0;
   let formatErrors = 0;
 
+  const outOfTime = () => reached(config.wallTimeLimitMs, now() - startedAt);
+  // A model call or command started near the end must not run past it, or the run can
+  // outlive its sandbox.
+  const timeLeft = () =>
+    config.wallTimeLimitMs > 0 ? config.wallTimeLimitMs - (now() - startedAt) : undefined;
+
   const finish = (exitStatus: ExitStatus, error?: ModelError): AgentRun => ({
     exitStatus,
     messages,
@@ -85,10 +102,13 @@ export async function runAgent(
   for (;;) {
     if (reached(config.stepLimit, modelCalls)) return finish('step_limit');
     if (reached(config.costLimitUsd, costUsd)) return finish('cost_limit');
-    if (reached(config.wallTimeLimitMs, now() - startedAt)) return finish('time_limit');
+    if (outOfTime()) return finish('time_limit');
 
-    const reply = await deps.model.complete(messages);
-    if (!reply.ok) return finish('model_error', reply.error);
+    const reply = await deps.model.complete(messages, withTimeout(timeLeft()));
+    if (!reply.ok) {
+      // A call the deadline cut short is the time limit, not a model failure.
+      return outOfTime() ? finish('time_limit') : finish('model_error', reply.error);
+    }
     modelCalls += 1;
     costUsd += reply.completion.costUsd;
     messages.push({ role: 'assistant', content: reply.completion.content });
@@ -108,7 +128,8 @@ export async function runAgent(
     formatErrors = 0;
 
     if (parsed.action.kind === 'submit') return finish('submitted');
-    const result = await deps.execute(parsed.action.call);
+    if (outOfTime()) return finish('time_limit');
+    const result = await deps.execute(parsed.action.call, withTimeout(timeLeft()));
     messages.push({ role: 'user', content: observationPrompt(result) });
   }
 }

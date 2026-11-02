@@ -1,12 +1,21 @@
-import type { ChatMessage, CompletionResult, ModelClient, ModelError } from '@page/model-client';
+import type {
+  ChatMessage,
+  CompleteOptions,
+  CompletionResult,
+  ModelClient,
+  ModelError,
+} from '@page/model-client';
 import { err, ok, type ExecErr, type ExecOk, type Result, type ToolCall } from '@page/toolkit';
-import type { ExecuteFn } from './agent.ts';
+import type { ExecuteFn, ExecuteOptions } from './agent.ts';
 
 export type ScriptedReply = string | { content: string; costUsd?: number; finishReason?: string };
 
 /** A ModelClient that answers with `replies` in order and records what it was sent. */
 export class ScriptedModel implements ModelClient {
   readonly calls: ChatMessage[][] = [];
+  readonly options: (CompleteOptions | undefined)[] = [];
+  /** Runs before each reply, e.g. to move a fake clock. */
+  onCall: () => void = () => {};
   private next = 0;
   private readonly replies: readonly (ScriptedReply | ModelError)[];
   private readonly defaultCostUsd: number;
@@ -16,8 +25,10 @@ export class ScriptedModel implements ModelClient {
     this.defaultCostUsd = defaultCostUsd;
   }
 
-  complete(messages: readonly ChatMessage[]): Promise<CompletionResult> {
+  complete(messages: readonly ChatMessage[], options?: CompleteOptions): Promise<CompletionResult> {
     this.calls.push(structuredClone([...messages]));
+    this.options.push(options);
+    this.onCall();
     const reply = this.replies[this.next++];
     if (reply === undefined) throw new Error(`ScriptedModel ran out of replies at ${this.next}`);
     if (typeof reply === 'object' && 'kind' in reply) {
@@ -41,11 +52,13 @@ type Responder = (call: ToolCall) => Result<ExecOk, ExecErr>;
 /** An `execute()` stand-in that records each call; by default every call exits 0 silently. */
 export function fakeExecute(respond: Responder = (call) => okResult(call)) {
   const calls: ToolCall[] = [];
-  const execute: ExecuteFn = (call) => {
+  const options: ExecuteOptions[] = [];
+  const execute: ExecuteFn = (call, opts) => {
     calls.push(call);
+    options.push(opts);
     return Promise.resolve(respond(call));
   };
-  return { execute, calls };
+  return { execute, calls, options };
 }
 
 const inputOf = (call: ToolCall) =>

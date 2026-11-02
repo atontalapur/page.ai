@@ -41,14 +41,14 @@ export function recordingDeps(deps: AgentDeps): Recording & { deps: AgentDeps } 
     clock,
     deps: {
       model: {
-        async complete(messages) {
-          const reply = await deps.model.complete(messages);
+        async complete(messages, options) {
+          const reply = await deps.model.complete(messages, options);
           turns.push({ type: 'model', reply });
           return reply;
         },
       },
-      async execute(call) {
-        const result = await deps.execute(call);
+      async execute(call, options) {
+        const result = await deps.execute(call, options);
         turns.push({ type: 'execute', call, result });
         return result;
       },
