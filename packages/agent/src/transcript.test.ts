@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest';
+import type { ChatMessage } from '@page/model-client';
 import { runAgent } from './agent.ts';
+import { instancePrompt, systemPrompt } from './prompts.ts';
 import { recordingDeps, ReplayDivergence, replayDeps, type Turn } from './transcript.ts';
 import { bash, failedResult, fakeExecute, okResult, ScriptedModel, submit } from './test-utils.ts';
 
 const task = { task: 'checkout returns 500' };
+const opening: ChatMessage[] = [
+  { role: 'system', content: systemPrompt() },
+  { role: 'user', content: instancePrompt(task) },
+];
+
+const modelTurn = (content: string, sent: ChatMessage[] = opening): Turn => ({
+  type: 'model',
+  sent,
+  reply: { ok: true, completion: { content, finishReason: 'stop', model: 'm', costUsd: 0 } },
+});
 
 async function recordRun() {
   const model = new ScriptedModel([bash('rg -n total src'), bash('pnpm test'), submit()], 0.01);
@@ -30,6 +42,15 @@ describe('recordingDeps', () => {
     expect(turns[3]).toMatchObject({ result: { ok: false, error: { type: 'failed' } } });
   });
 
+  it('logs the messages each model call added since the last one', async () => {
+    const { turns } = await recordRun();
+    const sent = turns.flatMap((t) => (t.type === 'model' ? [t.sent] : []));
+    expect(sent[0]).toEqual(opening);
+    expect(sent[1]!.map((m) => m.role)).toEqual(['assistant', 'user']);
+    expect(sent[1]![0]!.content).toBe(bash('rg -n total src'));
+    expect(sent[1]![1]!.content).toContain('src/cart.ts:9:total');
+  });
+
   it('logs the clock readings the loop took', async () => {
     const { clock } = await recordRun();
     expect(clock.length).toBeGreaterThan(0);
@@ -40,7 +61,9 @@ describe('recordingDeps', () => {
     const error = { kind: 'auth', status: 401, message: 'bad key' } as const;
     const recording = recordingDeps({ model: new ScriptedModel([error]), ...fakeExecute() });
     await runAgent(task, recording.deps);
-    expect(recording.turns).toEqual([{ type: 'model', reply: { ok: false, error } }]);
+    expect(recording.turns).toEqual([
+      { type: 'model', sent: opening, reply: { ok: false, error } },
+    ]);
   });
 });
 
@@ -73,13 +96,7 @@ describe('replayDeps', () => {
 
   it('fails when the loop runs a different command than was recorded', async () => {
     const turns: Turn[] = [
-      {
-        type: 'model',
-        reply: {
-          ok: true,
-          completion: { content: bash('ls'), finishReason: 'stop', model: 'm', costUsd: 0 },
-        },
-      },
+      modelTurn(bash('ls')),
       {
         type: 'execute',
         call: { kind: 'exec', command: 'ls -la' },
@@ -105,6 +122,32 @@ describe('replayDeps', () => {
     );
   });
 
+  it('fails when the prompt the loop sends has changed', async () => {
+    const { turns, clock } = await recordRun();
+    const changed = { task: 'checkout returns 502' };
+    await expect(runAgent(changed, replayDeps({ turns, clock }).deps)).rejects.toThrow(
+      /turn 0: message 1 \(user\) differs from the recording/,
+    );
+  });
+
+  it('fails when an observation the loop builds has changed', async () => {
+    const { turns, clock } = await recordRun();
+    const edited = structuredClone(turns);
+    const exec = edited[1]!;
+    if (exec.type !== 'execute' || !exec.result.ok) throw new Error('expected an ok execute');
+    exec.result.value.output = 'something else';
+    await expect(runAgent(task, replayDeps({ turns: edited, clock }).deps)).rejects.toThrow(
+      /turn 2: message 1 \(user\) differs from the recording/,
+    );
+  });
+
+  it('fails when the loop sends more messages than were recorded', async () => {
+    const turns: Turn[] = [modelTurn(submit(), opening.slice(0, 1))];
+    await expect(runAgent(task, replayDeps({ turns, clock: [] }).deps)).rejects.toThrow(
+      /turn 0: the loop sent 2 new messages, the recording has 1/,
+    );
+  });
+
   it('compares edit calls field by field', async () => {
     const edit = { kind: 'edit', path: 'a.ts', oldText: 'x', newText: 'y' } as const;
     const reply = [
@@ -118,13 +161,7 @@ describe('replayDeps', () => {
       '```',
     ].join('\n');
     const turns: Turn[] = [
-      {
-        type: 'model',
-        reply: {
-          ok: true,
-          completion: { content: reply, finishReason: 'stop', model: 'm', costUsd: 0 },
-        },
-      },
+      modelTurn(reply),
       { type: 'execute', call: edit, result: okResult(edit) },
     ];
     await expect(runAgent(task, replayDeps({ turns, clock: [] }).deps)).rejects.toThrow(
