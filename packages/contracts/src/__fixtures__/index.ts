@@ -93,9 +93,7 @@ export const decidedApprovalFixture: Approval = {
 
 export const jobFixtures: { [Q in QueueName]: JobPayload<Q> } = {
   triage: { v: 1, issueId },
-  'fix.tier1': { v: 1, issueId, runId, fingerprint },
-  'fix.tier2': { v: 1, issueId, runId, fingerprint },
-  'fix.tier3': { v: 1, issueId, runId, fingerprint },
+  fix: { v: 1, issueId, runId, tier: 1, fingerprint },
   notify: { v: 1, issueId, channel: 'call', message: 'New high severity backend-api issue.' },
 };
 

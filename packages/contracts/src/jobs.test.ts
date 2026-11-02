@@ -15,8 +15,13 @@ describe('jobSchemas', () => {
   });
 
   it('rejects a fix job without the fingerprint singletonKey', () => {
-    const job = { ...jobFixtures['fix.tier1'], fingerprint: undefined };
-    expect(() => jobSchemas['fix.tier1'].parse(job)).toThrow();
+    const job = { ...jobFixtures.fix, fingerprint: undefined };
+    expect(() => jobSchemas.fix.parse(job)).toThrow();
+  });
+
+  it('rejects a fix job without a valid tier', () => {
+    expect(() => jobSchemas.fix.parse({ ...jobFixtures.fix, tier: undefined })).toThrow();
+    expect(() => jobSchemas.fix.parse({ ...jobFixtures.fix, tier: 4 })).toThrow();
   });
 
   it('rejects an unknown notify channel', () => {

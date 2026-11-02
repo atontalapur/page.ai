@@ -15,6 +15,9 @@ export type Tier = z.infer<typeof tierSchema>;
 
 /**
  * PostHog's error-tracking issue id. It's the unique key on `issues` and the pg-boss
- * `singletonKey` for fix jobs, so one issue never has two fix runs at once.
+ * `singletonKey` for fix jobs. pg-boss scopes the key to one queue and enforces it only under
+ * a queue policy, so every tier shares the `fix` queue and #26 must create it with the
+ * `singleton` policy: one active job per issue, with an escalation waiting until the run
+ * before it finishes.
  */
 export const fingerprintSchema = z.string().min(1);
