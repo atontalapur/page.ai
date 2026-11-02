@@ -37,6 +37,18 @@ each deploy, and gates on `/api/health`. One-time service setup:
    find it on its own outside the root).
 3. Add a Postgres service and set `DATABASE_URL=${{Postgres.DATABASE_URL}}` on this one.
 4. Generate a public domain. Optional shop settings are listed in `.env.example`.
+5. Set `POSTHOG_KEY` (and `POSTHOG_HOST` if the project isn't on US cloud) so errors
+   reach PostHog Error Tracking. Railway's `RAILWAY_GIT_COMMIT_SHA` tags each error with
+   its release.
+
+## Error reporting
+
+`src/instrumentation.ts` reports every unhandled server error (pages, route handlers,
+server actions) through `onRequestError`, tagged with the route file path, release and
+error name. In the browser, posthog-js captures uncaught errors and unhandled
+rejections, and `global-error.tsx` reports what React catches. Both go through an
+`ErrorReporter` (`src/observability/`) that falls back to an in-memory fake when
+`POSTHOG_KEY` is unset. A `ShopError` is a 4xx, not a crash, so it is never reported.
 
 ## Notes
 

@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { safeReportingConfig } from '../observability/config.ts';
+import { ErrorReporting } from './error-reporting.tsx';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -19,6 +21,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <Link href="/cart">Cart</Link>
         </header>
         {children}
+        <ErrorReporting config={safeReportingConfig()} />
       </body>
     </html>
   );
