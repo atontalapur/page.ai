@@ -1,4 +1,5 @@
 import type { Tier } from '@page/contracts';
+import type { StepLog } from '../audit/step-log.ts';
 import type { ExecRunner } from './runner.ts';
 
 /** A shell command, checked against the tier's policy. */
@@ -23,6 +24,8 @@ export type ToolCall = ExecCall | EditCall;
 export interface ExecContext {
   tier: Tier;
   runner: ExecRunner;
+  /** The run's audit trail. Every call writes one step to it. */
+  steps: StepLog;
   timeoutMs?: number;
   /** Characters of output the agent sees; see trimOutput. */
   outputBudget?: number;
@@ -44,4 +47,7 @@ export type ExecErr = StepBase &
     | { type: 'refused'; message: string }
     | { type: 'failed'; exitCode: number; output: string }
     | { type: 'timed_out'; output: string }
+    // The step couldn't be written. `ran` says whether the command ran anyway (the write
+    // after it failed) or was stopped (the write before it failed).
+    | { type: 'audit_failed'; ran: boolean; message: string }
   );

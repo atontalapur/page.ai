@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { testSteps } from '../audit/test-utils.ts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execute } from './execute.ts';
 import { DockerExecRunner } from './docker-runner.ts';
@@ -99,14 +100,14 @@ describe('DockerExecRunner against a container', () => {
     const runner = new DockerExecRunner({ container });
     const result = await execute(
       { kind: 'exec', command: 'ls / | head -n 3' },
-      { tier: 1, runner },
+      { tier: 1, runner, steps: testSteps() },
     );
     expect(result.ok).toBe(true);
   });
 
   it('runs the edit tool in the container: create, edit, refuse a bad path', async () => {
     const runner = new DockerExecRunner({ container });
-    const ctx = { tier: 1 as const, runner };
+    const ctx = { tier: 1 as const, runner, steps: testSteps() };
     const path = "src/it's $(x).ts";
 
     const created = await execute({ kind: 'edit', path, oldText: '', newText: 'a = 1\n' }, ctx);
