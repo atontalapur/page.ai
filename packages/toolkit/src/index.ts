@@ -1,1 +1,10 @@
-export {};
+export { execute, DEFAULT_TIMEOUT_MS } from './exec/execute.ts';
+export type { ExecContext, ExecErr, ExecOk, ToolCall } from './exec/execute.ts';
+export { FakeRunner } from './exec/fake-runner.ts';
+export type { ExecRunner, RunRequest, RunResult } from './exec/runner.ts';
+export { DEFAULT_OUTPUT_BUDGET, trimOutput } from './exec/trim.ts';
+export { checkCommand } from './policy/policy.ts';
+export type { Verdict } from './policy/policy.ts';
+export { WORKSPACE, writePathRefusal } from './policy/paths.ts';
+export { err, ok } from './result.ts';
+export type { Result } from './result.ts';
