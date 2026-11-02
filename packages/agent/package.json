@@ -25,6 +25,7 @@
     "vitest": "catalog:"
   },
   "dependencies": {
+    "@page/model-client": "workspace:*",
     "@page/toolkit": "workspace:*"
   }
 }

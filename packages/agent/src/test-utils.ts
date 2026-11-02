@@ -1,0 +1,66 @@
+import type { ChatMessage, CompletionResult, ModelClient, ModelError } from '@page/model-client';
+import { err, ok, type ExecErr, type ExecOk, type Result, type ToolCall } from '@page/toolkit';
+import type { ExecuteFn } from './agent.ts';
+
+export type ScriptedReply = string | { content: string; costUsd?: number; finishReason?: string };
+
+/** A ModelClient that answers with `replies` in order and records what it was sent. */
+export class ScriptedModel implements ModelClient {
+  readonly calls: ChatMessage[][] = [];
+  private next = 0;
+  private readonly replies: readonly (ScriptedReply | ModelError)[];
+  private readonly defaultCostUsd: number;
+
+  constructor(replies: readonly (ScriptedReply | ModelError)[], defaultCostUsd = 0) {
+    this.replies = replies;
+    this.defaultCostUsd = defaultCostUsd;
+  }
+
+  complete(messages: readonly ChatMessage[]): Promise<CompletionResult> {
+    this.calls.push(structuredClone([...messages]));
+    const reply = this.replies[this.next++];
+    if (reply === undefined) throw new Error(`ScriptedModel ran out of replies at ${this.next}`);
+    if (typeof reply === 'object' && 'kind' in reply) {
+      return Promise.resolve({ ok: false, error: reply });
+    }
+    const r = typeof reply === 'string' ? { content: reply } : reply;
+    return Promise.resolve({
+      ok: true,
+      completion: {
+        content: r.content,
+        finishReason: r.finishReason ?? 'stop',
+        model: 'scripted',
+        costUsd: r.costUsd ?? this.defaultCostUsd,
+      },
+    });
+  }
+}
+
+type Responder = (call: ToolCall) => Result<ExecOk, ExecErr>;
+
+/** An `execute()` stand-in that records each call; by default every call exits 0 silently. */
+export function fakeExecute(respond: Responder = (call) => okResult(call)) {
+  const calls: ToolCall[] = [];
+  const execute: ExecuteFn = (call) => {
+    calls.push(call);
+    return Promise.resolve(respond(call));
+  };
+  return { execute, calls };
+}
+
+const inputOf = (call: ToolCall) =>
+  call.kind === 'exec'
+    ? call.command
+    : JSON.stringify({ path: call.path, oldText: call.oldText, newText: call.newText });
+
+export const okResult = (call: ToolCall, output = '') =>
+  ok<ExecOk>({ kind: call.kind, input: inputOf(call), exitCode: 0, output });
+
+export const failedResult = (call: ToolCall, exitCode: number, output: string) =>
+  err<ExecErr>({ kind: call.kind, input: inputOf(call), type: 'failed', exitCode, output });
+
+export const bash = (command: string, thought = 'THOUGHT: next step.') =>
+  `${thought}\n\n\`\`\`page_bash\n${command}\n\`\`\``;
+
+export const submit = (thought = 'THOUGHT: the fix is in and the tests pass.') =>
+  `${thought}\n\n\`\`\`page_submit\n\`\`\``;

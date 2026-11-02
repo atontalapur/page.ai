@@ -470,6 +470,9 @@ importers:
 
   packages/agent:
     dependencies:
+      '@page/model-client':
+        specifier: workspace:*
+        version: link:../model-client
       '@page/toolkit':
         specifier: workspace:*
         version: link:../toolkit
