@@ -13,6 +13,7 @@ new ──────triage─▶ triaged ─start_fix─▶ fixing (tier 1)
                                          ▼  │
                                   awaiting_approval ─approve─▶ resolved
 
+pr_open takes approve and reject like awaiting_approval; nothing enters it yet
 escalate or reject at tier 3 ─▶ failed (a human takes over)
 kill from any open status    ─▶ killed
 ```

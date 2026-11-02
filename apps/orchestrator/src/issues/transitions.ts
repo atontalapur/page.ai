@@ -4,6 +4,7 @@ import {
   type Issue,
   type IssueEvent,
   type IssueStatus,
+  type Tier,
 } from '@page/contracts';
 
 /** The part of an issue that events change. */
@@ -28,29 +29,59 @@ export function isTerminal(status: IssueStatus): boolean {
  * tier has failed too.
  */
 function escalate(state: IssueState): IssueState {
-  const tier = state.currentTier ?? 1;
+  const tier = state.currentTier;
+  if (tier === null) throw new Error(`issue is ${state.status} but has no tier`);
   if (tier === MAX_TIER) return { ...state, status: 'failed' };
-  return { ...state, status: 'fixing', currentTier: tier === 1 ? 2 : 3 };
+  return { ...state, status: 'fixing', currentTier: (tier + 1) as Tier };
 }
+
+/** Returns the next state, or undefined when the event does not apply. */
+type Rule = (state: IssueState, event: IssueEvent) => IssueState | undefined;
+
+/** A patch, or the PR opened for it, waiting on a human. */
+const awaitingHuman: Rule = (state, event) => {
+  switch (event.type) {
+    case 'approve':
+      return { ...state, status: 'resolved' };
+    case 'reject':
+      return escalate(state);
+    default:
+      return undefined;
+  }
+};
+
+const none: Rule = () => undefined;
+
+// Keyed by every status, so adding one to ISSUE_STATUSES fails to compile until it has rules.
+const rules: Record<IssueStatus, Rule> = {
+  new: (state, event) =>
+    event.type === 'triage'
+      ? { ...state, status: 'triaged', class: event.class, severity: event.severity }
+      : undefined,
+  triaged: (state, event) =>
+    event.type === 'start_fix' ? { ...state, status: 'fixing', currentTier: 1 } : undefined,
+  fixing: (state, event) => {
+    switch (event.type) {
+      case 'patch_ready':
+        return { ...state, status: 'awaiting_approval' };
+      case 'escalate':
+        return escalate(state);
+      default:
+        return undefined;
+    }
+  },
+  pr_open: awaitingHuman,
+  awaiting_approval: awaitingHuman,
+  resolved: none,
+  failed: none,
+  killed: none,
+};
 
 /** Returns the state after `event`, or throws TransitionError if `event` is not allowed. */
 export function transition(state: IssueState, event: IssueEvent): IssueState {
   const { status } = state;
   if (event.type === 'kill' && !isTerminal(status)) return { ...state, status: 'killed' };
-
-  switch (`${status}:${event.type}`) {
-    case 'new:triage':
-      if (event.type !== 'triage') break;
-      return { ...state, status: 'triaged', class: event.class, severity: event.severity };
-    case 'triaged:start_fix':
-      return { ...state, status: 'fixing', currentTier: 1 };
-    case 'fixing:patch_ready':
-      return { ...state, status: 'awaiting_approval' };
-    case 'fixing:escalate':
-    case 'awaiting_approval:reject':
-      return escalate(state);
-    case 'awaiting_approval:approve':
-      return { ...state, status: 'resolved' };
-  }
-  throw new TransitionError(status, event.type);
+  const next = rules[status](state, event);
+  if (!next) throw new TransitionError(status, event.type);
+  return next;
 }

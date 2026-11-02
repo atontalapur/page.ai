@@ -41,26 +41,31 @@ describe('issue transitions', () => {
     expect(transition(fixing(3), escalate)).toMatchObject({ status: 'failed', currentTier: 3 });
   });
 
-  it('treats a missing tier as tier 1', () => {
+  it('refuses to escalate an issue with no tier', () => {
     const state: IssueState = { ...fixing(1), currentTier: null };
-    expect(transition(state, { type: 'escalate', runId, reason: 'x' })).toMatchObject({
-      currentTier: 2,
-    });
+    expect(() => transition(state, { type: 'escalate', runId, reason: 'x' })).toThrow(
+      'issue is fixing but has no tier',
+    );
   });
 
-  it('escalates when a human rejects the patch', () => {
-    const awaiting: IssueState = { ...fixing(2), status: 'awaiting_approval' };
-    expect(transition(awaiting, { type: 'reject', reason: 'wrong fix' })).toMatchObject({
-      status: 'fixing',
-      currentTier: 3,
-    });
-    expect(
-      transition({ ...awaiting, currentTier: 3 }, { type: 'reject', reason: 'wrong fix' }),
-    ).toMatchObject({ status: 'failed' });
-  });
+  it.each(['awaiting_approval', 'pr_open'] as const)(
+    'resolves or escalates when a human decides on %s',
+    (status) => {
+      const waiting: IssueState = { ...fixing(2), status };
+      expect(transition(waiting, { type: 'approve' })).toMatchObject({ status: 'resolved' });
+      expect(transition(waiting, { type: 'reject', reason: 'wrong fix' })).toMatchObject({
+        status: 'fixing',
+        currentTier: 3,
+      });
+      expect(
+        transition({ ...waiting, currentTier: 3 }, { type: 'reject', reason: 'wrong fix' }),
+      ).toMatchObject({ status: 'failed' });
+      expect(() => transition(waiting, { type: 'patch_ready', runId })).toThrow(TransitionError);
+    },
+  );
 
   it('kills from any open status', () => {
-    for (const status of ['new', 'triaged', 'fixing', 'awaiting_approval'] as const) {
+    for (const status of ['new', 'triaged', 'fixing', 'pr_open', 'awaiting_approval'] as const) {
       expect(transition({ ...fixing(1), status }, { type: 'kill' }).status).toBe('killed');
     }
   });
@@ -75,6 +80,9 @@ describe('issue transitions', () => {
     ).toThrow(TransitionError);
     for (const status of ['resolved', 'failed', 'killed'] as const) {
       expect(() => transition({ ...fixing(1), status }, { type: 'kill' })).toThrow(TransitionError);
+      expect(() => transition({ ...fixing(1), status }, { type: 'approve' })).toThrow(
+        TransitionError,
+      );
     }
   });
 
