@@ -147,10 +147,6 @@ describe('parseAction', () => {
       'text after the closing marker',
       ['a.ts', '<<<<<<< SEARCH', 'a', '=======', 'b', '>>>>>>> REPLACE', 'c'],
     ],
-    [
-      'two dividers',
-      ['a.ts', '<<<<<<< SEARCH', 'a', '=======', 'b', '=======', 'c', '>>>>>>> REPLACE'],
-    ],
   ])('refuses an edit with %s', (_name, lines) => {
     expect(errorOf(fence('page_edit', lines.join('\n')))).toContain('<<<<<<< SEARCH');
   });
@@ -161,6 +157,75 @@ describe('parseAction', () => {
       ok: false,
       error: 'The SEARCH and REPLACE text are the same, so the edit would change nothing.',
     });
+  });
+
+  it('keeps fenced code lines inside an edit', () => {
+    const body = [
+      'README.md',
+      '<<<<<<< SEARCH',
+      '```ts',
+      'old()',
+      '```',
+      '=======',
+      '```ts',
+      'renamed()',
+      '```',
+      '>>>>>>> REPLACE',
+    ].join('\n');
+    expect(parseAction(fence('page_edit', body))).toMatchObject({
+      ok: true,
+      action: { call: { oldText: '```ts\nold()\n```', newText: '```ts\nrenamed()\n```' } },
+    });
+  });
+
+  it('still counts the blocks around an edit that holds fences', () => {
+    const body = ['a.md', '<<<<<<< SEARCH', '```', '=======', '', '>>>>>>> REPLACE'].join('\n');
+    const reply = `${fence('page_bash', 'ls')}\n${fence('page_edit', body)}`;
+    expect(errorOf(reply)).toBe('Expected exactly 1 action, found 2.');
+  });
+
+  it('accepts trailing spaces after the markers', () => {
+    const body = ['a.ts', '<<<<<<< SEARCH  ', 'x', '======= ', 'y', '>>>>>>> REPLACE\t'].join('\n');
+    expect(parseAction(fence('page_edit', body))).toMatchObject({
+      ok: true,
+      action: { call: { oldText: 'x', newText: 'y' } },
+    });
+  });
+
+  it('accepts blank lines before the closing fence', () => {
+    const body = ['a.ts', '<<<<<<< SEARCH', 'x', '=======', 'y', '>>>>>>> REPLACE', '', ''].join(
+      '\n',
+    );
+    expect(parseAction(fence('page_edit', body))).toMatchObject({
+      ok: true,
+      action: { call: { oldText: 'x', newText: 'y' } },
+    });
+  });
+
+  it('takes the first divider, so the new text may hold a ======= line', () => {
+    const body = [
+      'README.md',
+      '<<<<<<< SEARCH',
+      'Title',
+      '=======',
+      'Title',
+      '=======',
+      '>>>>>>> REPLACE',
+    ].join('\n');
+    expect(parseAction(fence('page_edit', body))).toMatchObject({
+      ok: true,
+      action: { call: { oldText: 'Title', newText: 'Title\n=======' } },
+    });
+  });
+
+  it('ignores a block that never closes', () => {
+    expect(errorOf('THOUGHT: run it.\n```page_bash\nls')).toBe(
+      'Expected exactly 1 action, found 0.',
+    );
+  });
+
+  it('refuses an edit that is only a path', () => {
+    expect(errorOf(fence('page_edit', 'a.ts'))).toContain('<<<<<<< SEARCH');
   });
 
   it('accepts CRLF line endings', () => {
