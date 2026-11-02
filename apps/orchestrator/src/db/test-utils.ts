@@ -29,13 +29,31 @@ function simpleWhenNoParams(target: Pick<PGlite, 'query' | 'exec'>): Query {
   }) as Query;
 }
 
+/**
+ * Migrates and starts pg-boss, and runs `close` if either fails. pg-boss reports background
+ * errors as events, which a throwing listener would turn into an uncaught exception that
+ * kills the test worker, so they are collected and thrown from close() instead.
+ */
 async function start(db: Db, boss: PgBoss, close: () => Promise<void>): Promise<TestDeps> {
-  await migrate(db, await loadMigrations());
-  boss.on('error', (err) => {
+  const errors: unknown[] = [];
+  boss.on('error', (err) => errors.push(err));
+  try {
+    await migrate(db, await loadMigrations());
+    await boss.start();
+    const fixJobs = await createFixJobQueue(boss);
+    return {
+      db,
+      boss,
+      fixJobs,
+      async close() {
+        await close();
+        if (errors.length) throw new AggregateError(errors, 'pg-boss reported errors');
+      },
+    };
+  } catch (err) {
+    await close().catch(() => undefined);
     throw err;
-  });
-  await boss.start();
-  return { db, boss, fixJobs: await createFixJobQueue(boss), close };
+  }
 }
 
 /** In-memory Postgres with migrations and pg-boss installed, so unit tests need no network. */
@@ -86,17 +104,32 @@ export async function createSchemaDeps(): Promise<TestDeps & { url: string }> {
   const schema = `orchestrator_test_${suffix}`;
   const bossSchema = `pgboss_test_${suffix}`;
   const admin = new pg.Pool({ connectionString: url });
-  await admin.query(`create schema ${schema}`);
   const pool = new pg.Pool({ connectionString: url, options: `-c search_path=${schema}` });
   const db = new Kysely<Database>({ dialect: new PostgresDialect({ pool }) });
   const boss = new PgBoss({ connectionString: url, schema: bossSchema });
-
-  const deps = await start(db, boss, async () => {
-    await boss.stop({ graceful: false });
-    await db.destroy();
-    await admin.query(`drop schema ${schema} cascade`);
-    await admin.query(`drop schema if exists ${bossSchema} cascade`);
+  // Runs every step even if one fails, so a broken run still drops its schemas.
+  const close = async () => {
+    const results: PromiseSettledResult<unknown>[] = await Promise.allSettled([
+      boss.stop({ graceful: false }),
+      db.destroy(),
+    ]);
+    results.push(
+      ...(await Promise.allSettled([
+        admin.query(`drop schema if exists ${schema} cascade`),
+        admin.query(`drop schema if exists ${bossSchema} cascade`),
+      ])),
+    );
     await admin.end();
-  });
+    const failed = results.flatMap((r): unknown[] => (r.status === 'rejected' ? [r.reason] : []));
+    if (failed.length) throw new AggregateError(failed, 'test schema cleanup failed');
+  };
+
+  try {
+    await admin.query(`create schema ${schema}`);
+  } catch (err) {
+    await close().catch(() => undefined);
+    throw err;
+  }
+  const deps = await start(db, boss, close);
   return { ...deps, url };
 }
