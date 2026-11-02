@@ -1,48 +1,30 @@
-import type { Tier } from '@page/contracts';
 import { checkCommand } from '../policy/policy.ts';
 import { err, ok, type Result } from '../result.ts';
-import type { ExecRunner } from './runner.ts';
+import { runEdit } from './edit.ts';
 import { combineOutput, DEFAULT_OUTPUT_BUDGET, trimOutput } from './trim.ts';
+import type { ExecCall, ExecContext, ExecErr, ExecOk, StepBase, ToolCall } from './types.ts';
 
 /** Under the sandbox's 15 minute wall clock, with room for a slow test run. */
 export const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
-export type ToolCall = { kind: 'exec'; command: string };
-
-export interface ExecContext {
-  tier: Tier;
-  runner: ExecRunner;
-  timeoutMs?: number;
-  /** Characters of output the agent sees; see trimOutput. */
-  outputBudget?: number;
-}
-
-interface StepBase {
-  kind: ToolCall['kind'];
-  /** What the agent asked to run, as it asked. */
-  input: string;
-}
-
-export interface ExecOk extends StepBase {
-  exitCode: 0;
-  output: string;
-}
-
-export type ExecErr = StepBase &
-  (
-    | { type: 'refused'; message: string }
-    | { type: 'failed'; exitCode: number; output: string }
-    | { type: 'timed_out'; output: string }
-  );
-
 /**
- * The one way the agent runs anything. The command is checked against the tier's policy
+ * The one way the agent runs anything. A command is checked against the tier's policy
  * before the runner sees it; a refusal comes back as an error the agent can read, and the
  * runner is never called. Output is trimmed to the budget, keeping head and tail.
  */
 export async function execute(call: ToolCall, ctx: ExecContext): Promise<Result<ExecOk, ExecErr>> {
-  const base: StepBase = { kind: call.kind, input: call.command };
+  if (call.kind === 'edit') {
+    const { path, oldText, newText } = call;
+    return runEdit(call, ctx, { kind: 'edit', input: JSON.stringify({ path, oldText, newText }) });
+  }
+  return runExec(call, ctx, { kind: 'exec', input: call.command });
+}
 
+async function runExec(
+  call: ExecCall,
+  ctx: ExecContext,
+  base: StepBase,
+): Promise<Result<ExecOk, ExecErr>> {
   const verdict = checkCommand(call.command, ctx.tier);
   if (!verdict.allowed) {
     return err({ ...base, type: 'refused', message: `refused: ${verdict.reason}` });

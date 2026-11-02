@@ -1,5 +1,5 @@
 export { execute, DEFAULT_TIMEOUT_MS } from './exec/execute.ts';
-export type { ExecContext, ExecErr, ExecOk, ToolCall } from './exec/execute.ts';
+export type { EditCall, ExecCall, ExecContext, ExecErr, ExecOk, ToolCall } from './exec/types.ts';
 export { DockerExecRunner } from './exec/docker-runner.ts';
 export type { DockerExecRunnerOptions } from './exec/docker-runner.ts';
 export { FakeRunner } from './exec/fake-runner.ts';

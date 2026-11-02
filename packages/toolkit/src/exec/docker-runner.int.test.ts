@@ -27,6 +27,9 @@ beforeAll(() => {
       'no-new-privileges',
       '--user',
       'node',
+      // Writable by the node user, as /workspace is in the sandbox image.
+      '--tmpfs',
+      '/workspace:uid=1000,gid=1000',
       '--workdir',
       '/workspace',
       IMAGE,
@@ -84,5 +87,44 @@ describe('DockerExecRunner against a container', () => {
       { tier: 1, runner },
     );
     expect(result.ok).toBe(true);
+  });
+
+  it('runs the edit tool in the container: create, edit, refuse a bad path', async () => {
+    const runner = new DockerExecRunner({ container });
+    const ctx = { tier: 1 as const, runner };
+    const path = "src/it's $(x).ts";
+
+    const created = await execute({ kind: 'edit', path, oldText: '', newText: 'a = 1\n' }, ctx);
+    expect(created.ok).toBe(true);
+    const again = await execute({ kind: 'edit', path, oldText: '', newText: 'x' }, ctx);
+    expect(!again.ok && again.error.type === 'failed' && again.error.output).toContain(
+      'already exists',
+    );
+
+    const edited = await execute({ kind: 'edit', path, oldText: '1', newText: '2' }, ctx);
+    expect(edited.ok).toBe(true);
+    const content = await runner.run({ command: `cat 'src/it'\\''s $(x).ts'`, timeoutMs: 5000 });
+    expect(content.stdout).toBe('a = 2\n');
+
+    const missing = await execute(
+      { kind: 'edit', path: 'nope.ts', oldText: 'a', newText: 'b' },
+      ctx,
+    );
+    expect(!missing.ok && missing.error.type === 'failed' && missing.error.output).toContain(
+      'does not exist',
+    );
+
+    const big = await runner.run({
+      command: 'head -c 600000 /dev/zero | tr "\\0" a > big.txt',
+      timeoutMs: 5000,
+    });
+    expect(big).toMatchObject({ status: 'exited', exitCode: 0 });
+    const tooBig = await execute(
+      { kind: 'edit', path: 'big.txt', oldText: 'a', newText: 'b' },
+      ctx,
+    );
+    expect(!tooBig.ok && tooBig.error.type === 'failed' && tooBig.error.output).toContain(
+      'is over 500000 bytes',
+    );
   });
 });
