@@ -63,11 +63,11 @@ describe('checkCommand', () => {
       ['ls *', 'glob'],
 
       // Writes outside the repo or into protected directories.
-      ['echo > ../x', 'outside the repo'],
-      ['ls > ../x', 'outside the repo'],
+      ['echo > ../x', 'uses ..'],
+      ['ls > ../x', 'uses ..'],
       ['ls >> /etc/passwd', 'outside the repo'],
       ['ls 2> /tmp/x', 'outside the repo'],
-      ['ls >& ../x', 'outside the repo'],
+      ['ls >& ../x', 'uses ..'],
       ['git diff > .github/workflows/ci.yml', 'under .github/'],
       ['cat a > .git/config', 'under .git/'],
       ['ls <&file', 'not a file descriptor'],

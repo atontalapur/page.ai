@@ -49,6 +49,12 @@ const PNPM_SCRIPTS = new Set(['test', 'lint', 'typecheck']);
 const PNPM_BINS = new Set(['vitest', 'tsc', 'eslint']);
 
 // The test runner, through pnpm only. Workspace filters may come first.
+//
+// This is arbitrary execution, and the policy doesn't pretend otherwise: `pnpm test` runs
+// the repo's scripts, configs and test files, all of which the agent can change with the
+// edit tool. Protecting package.json or *.config.* wouldn't close that, since any test file
+// runs code. The sandbox (#5: no network, nothing writable outside the repo and /tmp) is the
+// boundary; this rule only keeps an honest agent from writing outside the repo by accident.
 const pnpm: ArgRule = (args) => {
   let i = 0;
   while (i < args.length) {

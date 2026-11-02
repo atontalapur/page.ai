@@ -131,7 +131,7 @@ describe('execute edit', () => {
   });
 
   it.each([
-    ['../outside.ts', 'outside the repo'],
+    ['../outside.ts', 'uses ..'],
     ['/etc/passwd', 'outside the repo'],
     ['.github/workflows/ci.yml', 'under .github/'],
     ['.git/config', 'under .git/'],
