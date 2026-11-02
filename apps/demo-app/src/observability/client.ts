@@ -15,6 +15,7 @@ export interface PostHogBrowserClient {
 }
 
 let reporter: ErrorReporter = new FakeErrorReporter();
+let serverRenderFailed = false;
 
 /**
  * Starts posthog-js with exception autocapture (window errors and unhandled rejections).
@@ -33,11 +34,12 @@ export function initClientReporting(
     capture_pageview: false,
     disable_session_recording: true,
   });
+  // A super property, so autocaptured window errors carry the release too.
   client.register({ release: config.release });
   reporter = {
     captureException(error: unknown, context: ErrorContext) {
       try {
-        client.captureException(error, errorProperties(error, context, config.release));
+        client.captureException(error, errorProperties(error, context));
       } catch (err) {
         console.error('PostHog capture failed', err);
       }
@@ -51,14 +53,22 @@ export function clientReporter(): ErrorReporter {
 }
 
 /**
+ * Set while the page is the client-side fallback for a failed server render. A component
+ * that threw there throws again in the browser, and `onRequestError` already reported it.
+ */
+export function setServerRenderFailed(failed: boolean): void {
+  serverRenderFailed = failed;
+}
+
+/**
  * Reports an error an error boundary caught. A server error arrives with a digest and was
- * already reported by `onRequestError`, so only browser errors are captured. Returns
- * whether it reported.
+ * already reported by `onRequestError`, as was a client component error that also failed
+ * the server render, so only browser-only errors are captured. Returns whether it reported.
  */
 export function reportBoundaryError(error: unknown): boolean {
   const digest =
     typeof error === 'object' && error !== null && 'digest' in error ? error.digest : undefined;
-  if (digest !== undefined) return false;
+  if (digest !== undefined || serverRenderFailed) return false;
   void reporter.captureException(error, { source: 'client' });
   return true;
 }
@@ -66,4 +76,5 @@ export function reportBoundaryError(error: unknown): boolean {
 /** Tests only. */
 export function resetClientReporting(): void {
   reporter = new FakeErrorReporter();
+  serverRenderFailed = false;
 }

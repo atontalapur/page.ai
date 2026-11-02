@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadReportingConfig, safeReportingConfig } from './config.ts';
+import { browserReportingEnv, loadReportingConfig, safeReportingConfig } from './config.ts';
 
 describe('loadReportingConfig', () => {
   it('defaults to no key, the US cloud host and a dev release', () => {
@@ -41,5 +41,21 @@ describe('safeReportingConfig', () => {
 
   it('passes a good config through', () => {
     expect(safeReportingConfig({ POSTHOG_KEY: 'phc_test' }).key).toBe('phc_test');
+  });
+});
+
+describe('browserReportingEnv', () => {
+  it('maps the config to the values next.config.ts inlines', () => {
+    expect(
+      browserReportingEnv({ POSTHOG_KEY: 'phc_test', RAILWAY_GIT_COMMIT_SHA: 'abc123' }),
+    ).toEqual({
+      NEXT_PUBLIC_POSTHOG_KEY: 'phc_test',
+      NEXT_PUBLIC_POSTHOG_HOST: 'https://us.i.posthog.com',
+      NEXT_PUBLIC_RELEASE: 'abc123',
+    });
+  });
+
+  it('inlines an empty key when unset, so the browser keeps the fake', () => {
+    expect(browserReportingEnv({}).NEXT_PUBLIC_POSTHOG_KEY).toBe('');
   });
 });

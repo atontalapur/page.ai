@@ -4,7 +4,6 @@ import {
   createServerReporter,
   PostHogErrorReporter,
   resetServerReporter,
-  SERVER_DISTINCT_ID,
   serverReporter,
 } from './server.ts';
 
@@ -42,14 +41,14 @@ describe('serverReporter', () => {
 });
 
 describe('PostHogErrorReporter', () => {
-  it('sends the exception immediately with route, release and error name', async () => {
+  it('sends a person-less exception immediately with route, release and error name', async () => {
     const client = { captureExceptionImmediate: vi.fn(() => Promise.resolve()) };
     const error = new RangeError('bad');
     await new PostHogErrorReporter(client, 'sha').captureException(error, {
       route: '/orders/[id]',
       source: 'render',
     });
-    expect(client.captureExceptionImmediate).toHaveBeenCalledWith(error, SERVER_DISTINCT_ID, {
+    expect(client.captureExceptionImmediate).toHaveBeenCalledWith(error, undefined, {
       error_name: 'RangeError',
       release: 'sha',
       route: '/orders/[id]',

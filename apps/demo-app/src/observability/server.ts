@@ -16,9 +16,6 @@ export interface PostHogServerClient {
   ): Promise<void>;
 }
 
-// Server errors aren't tied to a browser user, so they all share one distinct id.
-export const SERVER_DISTINCT_ID = 'demo-app-server';
-
 export class PostHogErrorReporter implements ErrorReporter {
   private readonly client: PostHogServerClient;
   private readonly release: string;
@@ -31,10 +28,11 @@ export class PostHogErrorReporter implements ErrorReporter {
   async captureException(error: unknown, context: ErrorContext): Promise<void> {
     try {
       // Immediate, not batched: a staging error should reach PostHog within the minute
-      // even if the process is replaced right after.
+      // even if the process is replaced right after. No distinct id: server errors have
+      // no user, and posthog-node then sends a person-less event.
       await this.client.captureExceptionImmediate(
         error,
-        SERVER_DISTINCT_ID,
+        undefined,
         errorProperties(error, context, this.release),
       );
     } catch (err) {

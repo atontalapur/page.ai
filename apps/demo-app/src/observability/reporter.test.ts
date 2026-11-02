@@ -25,6 +25,10 @@ describe('errorProperties', () => {
       ),
     ).toEqual({ error_name: 'RangeError', release: 'abc123', route: '/orders/[id]' });
   });
+
+  it('leaves the release out when none is given', () => {
+    expect(errorProperties(new Error('x'), {})).toEqual({ error_name: 'Error' });
+  });
 });
 
 describe('FakeErrorReporter', () => {

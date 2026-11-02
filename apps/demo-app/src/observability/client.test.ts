@@ -4,6 +4,7 @@ import {
   initClientReporting,
   reportBoundaryError,
   resetClientReporting,
+  setServerRenderFailed,
   type PostHogBrowserClient,
 } from './client.ts';
 import { FakeErrorReporter } from './reporter.ts';
@@ -41,9 +42,9 @@ describe('initClientReporting', () => {
 
     const error = new TypeError('boom');
     await clientReporter().captureException(error, { source: 'client' });
+    // The release goes out once, as the super property registered above.
     expect(captureException).toHaveBeenCalledWith(error, {
       error_name: 'TypeError',
-      release: 'sha',
       source: 'client',
     });
   });
@@ -72,5 +73,13 @@ describe('reportBoundaryError', () => {
   it('skips a server error, which onRequestError already reported', () => {
     expect(reportBoundaryError(Object.assign(new Error('x'), { digest: '123' }))).toBe(false);
     expect((clientReporter() as FakeErrorReporter).captured).toEqual([]);
+  });
+
+  it('skips a client error that already failed the server render, until the next route', () => {
+    setServerRenderFailed(true);
+    expect(reportBoundaryError(new Error('render'))).toBe(false);
+    setServerRenderFailed(false);
+    expect(reportBoundaryError(new Error('render'))).toBe(true);
+    expect((clientReporter() as FakeErrorReporter).captured).toHaveLength(1);
   });
 });

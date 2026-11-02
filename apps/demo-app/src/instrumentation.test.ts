@@ -41,6 +41,14 @@ describe('onRequestError', () => {
     ]);
   });
 
+  it('drops a digest that is not a string', async () => {
+    vi.stubEnv('NEXT_RUNTIME', 'nodejs');
+    vi.stubEnv('POSTHOG_KEY', '');
+    await onRequestError(Object.assign(new Error('x'), { digest: undefined }), request, context);
+    const [captured] = (serverReporter() as FakeErrorReporter).captured;
+    expect(captured?.properties).not.toHaveProperty('digest');
+  });
+
   it('skips the edge runtime', async () => {
     vi.stubEnv('NEXT_RUNTIME', 'edge');
     vi.stubEnv('POSTHOG_KEY', '');

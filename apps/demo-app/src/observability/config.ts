@@ -1,6 +1,5 @@
 import { z } from 'zod';
-
-type Env = Record<string, string | undefined>;
+import type { Env } from '../config.ts';
 
 // Apart from the shop settings so a seeded config bug can't switch error reporting off.
 const schema = z.object({
@@ -38,4 +37,17 @@ export function safeReportingConfig(env: Env = process.env): ReportingConfig {
     console.error('Error reporting is off: bad POSTHOG_* config', err);
     return { key: undefined, host: '', release: 'dev' };
   }
+}
+
+/**
+ * The browser config, for next.config.ts to inline at build time. Browser code can't read
+ * runtime env, so the Docker build needs POSTHOG_* and RAILWAY_GIT_COMMIT_SHA as build args.
+ */
+export function browserReportingEnv(env: Env = process.env): Record<string, string> {
+  const config = safeReportingConfig(env);
+  return {
+    NEXT_PUBLIC_POSTHOG_KEY: config.key ?? '',
+    NEXT_PUBLIC_POSTHOG_HOST: config.host,
+    NEXT_PUBLIC_RELEASE: config.release,
+  };
 }

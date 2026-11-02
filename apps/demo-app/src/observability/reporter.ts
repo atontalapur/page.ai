@@ -35,13 +35,17 @@ export function errorName(error: unknown): string {
   return typeof error === 'string' ? 'StringError' : 'NonError';
 }
 
-/** Properties attached to every captured exception. Undefined context fields are left out. */
+/**
+ * Properties attached to every captured exception. Undefined context fields are left out,
+ * and so is `release` when the client already sends it as a super property.
+ */
 export function errorProperties(
   error: unknown,
   context: ErrorContext,
-  release: string,
+  release?: string,
 ): Record<string, string> {
-  const properties: Record<string, string> = { error_name: errorName(error), release };
+  const properties: Record<string, string> = { error_name: errorName(error) };
+  if (release) properties.release = release;
   for (const [key, value] of Object.entries(context)) {
     if (typeof value === 'string' && value) properties[key] = value;
   }

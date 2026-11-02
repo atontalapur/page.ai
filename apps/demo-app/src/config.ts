@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-type Env = Record<string, string | undefined>;
+export type Env = Record<string, string | undefined>;
 
 // Kept apart from the shop settings so a bad setting can't take the database (or the
 // healthcheck) down with it.
