@@ -2,7 +2,7 @@ import { posix } from 'node:path';
 import { WORKSPACE, writePathRefusal } from '../policy/paths.ts';
 import { err, ok, type Result } from '../result.ts';
 import type { RunResult } from './runner.ts';
-import { combineOutput } from './trim.ts';
+import { combineOutput, DEFAULT_OUTPUT_BUDGET, trimOutput } from './trim.ts';
 import type { EditCall, ExecContext, ExecErr, ExecOk, StepBase } from './types.ts';
 
 /** Reading or writing one file should take well under this. */
@@ -17,9 +17,10 @@ export const shellQuote = (value: string): string => `'${value.replaceAll("'", `
 const failed = (base: StepBase, output: string, exitCode = 1) =>
   err<ExecErr>({ ...base, type: 'failed', exitCode, output });
 
+// Overlapping matches count: `aa` in `aaa` matches twice, so the edit is ambiguous.
 function countOccurrences(text: string, part: string): number {
   let count = 0;
-  for (let at = text.indexOf(part); at !== -1; at = text.indexOf(part, at + part.length)) {
+  for (let at = text.indexOf(part); at !== -1; at = text.indexOf(part, at + 1)) {
     count += 1;
   }
   return count;
@@ -47,7 +48,12 @@ export async function runEdit(
       return err({ ...base, type: 'timed_out', output: `${call.path}: timed out` });
     }
     if (result.exitCode !== 0) {
-      return failed(base, combineOutput(result.stdout, result.stderr), result.exitCode);
+      const output = combineOutput(result.stdout, result.stderr);
+      return failed(
+        base,
+        trimOutput(output, ctx.outputBudget ?? DEFAULT_OUTPUT_BUDGET),
+        result.exitCode,
+      );
     }
     return null;
   };

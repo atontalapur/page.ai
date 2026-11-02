@@ -94,11 +94,13 @@ describe('execute edit', () => {
     expect(files[`${W}/a.ts`]).toBe('x-x-x');
   });
 
-  it('counts matches that do not overlap', async () => {
+  it('counts overlapping matches as ambiguous', async () => {
     const files = { [`${W}/a.ts`]: 'aaa' };
     const result = await execute(edit('a.ts', 'aa', 'b'), { tier: 1, runner: fsRunner(files) });
-    expect(result.ok).toBe(true);
-    expect(files[`${W}/a.ts`]).toBe('ba');
+    expect(!result.ok && result.error.type === 'failed' && result.error.output).toContain(
+      'appears 2 times',
+    );
+    expect(files[`${W}/a.ts`]).toBe('aaa');
   });
 
   it('passes on a failed read', async () => {
@@ -107,6 +109,15 @@ describe('execute edit', () => {
       ok: false,
       error: { type: 'failed', exitCode: 1, output: '[stderr]\nmissing\n' },
     });
+  });
+
+  it('trims the output of a failed step to the budget', async () => {
+    const runner = new FakeRunner(() => FakeRunner.exited(2, 'x'.repeat(50_000)));
+    const result = await execute(edit('a.ts', 'a', 'b'), { tier: 1, runner, outputBudget: 100 });
+    expect(result).toMatchObject({ ok: false, error: { type: 'failed', exitCode: 2 } });
+    const output = !result.ok && result.error.type === 'failed' ? result.error.output : '';
+    expect(output).toContain('characters trimmed');
+    expect(output.length).toBeLessThan(200);
   });
 
   it('refuses a file that is not UTF-8', async () => {
