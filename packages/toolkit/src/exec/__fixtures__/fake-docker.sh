@@ -1,14 +1,15 @@
 #!/bin/sh
 # Stands in for `docker` in DockerExecRunner's unit tests. Expects the runner's argv:
-#   exec -i -e PAGE_EXEC=<id> -w <dir> <container> sh -c <wrapper> page-exec <secs> <command>
+#   exec -i -e PAGE_EXEC=<id> -e NO_COLOR=1 -e FORCE_COLOR=0 -w <dir> <container> sh -c <wrapper>
+#   page-exec <secs> <command>
 # and runs `sh -c <command>` locally. The container name picks a failure to fake.
 
 # The cleanup after a killed client: exec <container> sh -c <script> <id>.
 if [ "$3" = sh ]; then exit 0; fi
-container="$7"
+container="${11}"
 # Echo the argv the runner built, one per line.
 if [ "$container" = argv ]; then printf '%s\n' "$@"; exit 0; fi
-shift 12
+shift 16
 case "$container" in
   missing) echo "Error response from daemon: No such container: missing" >&2; exit 1 ;;
   oci) echo 'OCI runtime exec failed: exec failed: unable to start container process: chdir to cwd ("/workspace") set in config.json failed' >&2; exit 127 ;;

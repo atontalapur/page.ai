@@ -113,7 +113,8 @@ export class DockerExecRunner implements ExecRunner {
     const done = await this.spawn(
       // Always the workspace: the policy and the edit tool resolve relative paths against it.
       // prettier-ignore
-      ['exec', '-i', '-e', `${EXEC_TAG}=${tag}`, '-w', WORKSPACE, this.container,
+      ['exec', '-i', '-e', `${EXEC_TAG}=${tag}`, '-e', 'NO_COLOR=1', '-e', 'FORCE_COLOR=0',
+        '-w', WORKSPACE, this.container,
         'sh', '-c', RUN, 'page-exec', String(seconds), command],
       stdin ?? '',
       seconds * 1000 + this.clientGraceMs,

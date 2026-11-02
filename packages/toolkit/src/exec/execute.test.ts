@@ -117,6 +117,16 @@ describe('execute', () => {
     expect(result.ok && result.value.output).toBe('aaaaa\n[... 90 characters trimmed ...]\nbbbbb');
   });
 
+  it('strips colour codes before counting the budget', async () => {
+    const coloured = '\x1b[31m' + 'a'.repeat(10) + '\x1b[39m';
+    const runner = new FakeRunner(() => FakeRunner.exited(0, coloured));
+    const result = await execute(
+      { kind: 'exec', command: 'pnpm test' },
+      { tier: 1, runner, outputBudget: 10 },
+    );
+    expect(result).toMatchObject({ ok: true, value: { output: 'a'.repeat(10) } });
+  });
+
   it('lets runner failures throw, since they are bugs and not command results', async () => {
     const runner = new FakeRunner(() => Promise.reject(new Error('docker is gone')));
     await expect(execute(exec('ls'), { tier: 1, runner, steps: testSteps() })).rejects.toThrow(

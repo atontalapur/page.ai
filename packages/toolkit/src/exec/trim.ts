@@ -14,8 +14,20 @@ export function trimOutput(text: string, budget = DEFAULT_OUTPUT_BUDGET): string
   return `${text.slice(0, head)}\n[... ${dropped} characters trimmed ...]\n${tail > 0 ? text.slice(-tail) : ''}`;
 }
 
-/** stdout, then stderr under a label, as one block for the agent to read. */
-export function combineOutput(stdout: string, stderr: string): string {
+// CSI sequences (colour, cursor movement, line clearing) and OSC sequences (hyperlinks,
+// window titles) ended by BEL or ESC \. NO_COLOR covers most tools; this catches the rest.
+// eslint-disable-next-line no-control-regex
+const ANSI = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
+
+/** Terminal escape codes cost budget and mean nothing to the agent. */
+export function stripAnsi(text: string): string {
+  return text.replace(ANSI, '');
+}
+
+/** stdout, then stderr under a label, as one block for the agent to read, without escapes. */
+export function combineOutput(rawStdout: string, rawStderr: string): string {
+  const stdout = stripAnsi(rawStdout);
+  const stderr = stripAnsi(rawStderr);
   if (stderr === '') return stdout;
   const label = '[stderr]\n';
   if (stdout === '') return `${label}${stderr}`;
