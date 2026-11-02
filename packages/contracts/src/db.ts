@@ -114,19 +114,28 @@ const approvalBase = {
   requestedAt: timestampSchema,
 };
 
+export const APPROVAL_DECISIONS = ['approved', 'rejected'] as const;
+
+export const pendingApprovalSchema = z.strictObject({
+  ...approvalBase,
+  decision: z.literal('pending'),
+  decidedBy: z.null(),
+  decidedAt: z.null(),
+});
+
+export const decidedApprovalSchema = z.strictObject({
+  ...approvalBase,
+  decision: z.enum(APPROVAL_DECISIONS),
+  // Set by the server from the deciding socket's identity, never from a client payload.
+  decidedBy: z.string().min(1),
+  decidedAt: timestampSchema,
+});
+
 export const approvalSchema = z.discriminatedUnion('decision', [
-  z.strictObject({
-    ...approvalBase,
-    decision: z.literal('pending'),
-    decidedBy: z.null(),
-    decidedAt: z.null(),
-  }),
-  z.strictObject({
-    ...approvalBase,
-    decision: z.literal(['approved', 'rejected']),
-    decidedBy: z.string().min(1),
-    decidedAt: timestampSchema,
-  }),
+  pendingApprovalSchema,
+  decidedApprovalSchema,
 ]);
 
 export type Approval = z.infer<typeof approvalSchema>;
+export type PendingApproval = z.infer<typeof pendingApprovalSchema>;
+export type DecidedApproval = z.infer<typeof decidedApprovalSchema>;

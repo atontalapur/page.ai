@@ -1,6 +1,15 @@
 import { z } from 'zod';
 import { idSchema, prUrlSchema } from './common.ts';
-import { approvalSchema, issueSchema, RUN_STATUSES, runSchema, stepSchema } from './db.ts';
+import {
+  APPROVAL_DECISIONS,
+  approvalSchema,
+  decidedApprovalSchema,
+  issueSchema,
+  pendingApprovalSchema,
+  RUN_STATUSES,
+  runSchema,
+  stepSchema,
+} from './db.ts';
 import { escalationNoteSchema } from './escalation.ts';
 
 // Socket.IO events, one map per direction. Every payload carries a literal `v`; a breaking
@@ -19,16 +28,19 @@ export const serverToUiEvents = {
   'run.diff': runDiff,
   'run.finished': z.strictObject({ v, run: runSchema, note: escalationNoteSchema.nullable() }),
   'approval.requested': z.strictObject({ v, approval: approvalSchema }),
+  // Sent to every tab once an approval is decided, so none keeps showing it as pending.
+  'approval.updated': z.strictObject({ v, approval: decidedApprovalSchema }),
 };
 
 export const uiToServerEvents = {
   'run.kill': runKill,
   'run.chat': runChat,
+  // No `decidedBy`: the server takes it from the socket's identity, so a client can't
+  // record a decision under someone else's name.
   'approval.decide': z.strictObject({
     v,
     approvalId: idSchema,
-    decision: z.enum(['approved', 'rejected']),
-    decidedBy: z.string().min(1),
+    decision: z.enum(APPROVAL_DECISIONS),
   }),
 };
 
@@ -46,12 +58,22 @@ export const nodeToServerEvents = {
     prUrl: prUrlSchema.nullable(),
     note: escalationNoteSchema.nullable(),
   }),
+  // A Tier 3 agent asks to run a gated host tool such as `ops.restart`. The node picks the
+  // approval id so it can match the `approval.decided` that answers it.
+  'node.approval.request': z.strictObject({
+    v,
+    approvalId: idSchema,
+    runId: idSchema,
+    action: pendingApprovalSchema.shape.action,
+    args: pendingApprovalSchema.shape.args,
+  }),
 };
 
-/** UI requests the server relays to the node running the run (#9). */
+/** UI requests the server relays to the node running the run (#9), and approval outcomes. */
 export const serverToNodeEvents = {
   'run.kill': runKill,
   'run.chat': runChat,
+  'approval.decided': z.strictObject({ v, approval: decidedApprovalSchema }),
 };
 
 type Handlers<T extends Record<string, z.ZodType>> = {

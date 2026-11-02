@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
   nodeToServerEventFixtures,
+  pendingApprovalFixture,
   serverToNodeEventFixtures,
   serverToUiEventFixtures,
   uiToServerEventFixtures,
@@ -49,4 +50,19 @@ it('rejects a node prUrl that is not https github.com', () => {
       prUrl: 'javascript:alert(1)',
     }),
   ).toThrow();
+});
+
+it('rejects a UI decision that names its own decider', () => {
+  expect(() =>
+    uiToServerEvents['approval.decide'].parse({
+      ...uiToServerEventFixtures['approval.decide'],
+      decidedBy: 'someone-else',
+    }),
+  ).toThrow();
+});
+
+it('rejects a pending approval sent as a decision to the node or the UI', () => {
+  const pending = { v: 1, approval: pendingApprovalFixture };
+  expect(() => serverToNodeEvents['approval.decided'].parse(pending)).toThrow();
+  expect(() => serverToUiEvents['approval.updated'].parse(pending)).toThrow();
 });

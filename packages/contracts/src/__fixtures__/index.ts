@@ -1,6 +1,6 @@
 // Valid fixtures for every contract. Consumer tests import these from
 // `@page/contracts/fixtures` instead of building their own.
-import type { Approval, Escalation, Issue, Run, Step } from '../db.ts';
+import type { DecidedApproval, Escalation, Issue, PendingApproval, Run, Step } from '../db.ts';
 import type { EscalationNote } from '../escalation.ts';
 import type {
   NodeToServerEvents,
@@ -73,7 +73,7 @@ export const escalationFixture: Escalation = {
   createdAt: later,
 };
 
-export const pendingApprovalFixture: Approval = {
+export const pendingApprovalFixture: PendingApproval = {
   id: approvalId,
   runId,
   action: 'ops.restart',
@@ -84,7 +84,7 @@ export const pendingApprovalFixture: Approval = {
   decidedAt: null,
 };
 
-export const decidedApprovalFixture: Approval = {
+export const decidedApprovalFixture: DecidedApproval = {
   ...pendingApprovalFixture,
   decision: 'approved',
   decidedBy: 'arjun',
@@ -108,12 +108,13 @@ export const serverToUiEventFixtures: Payloads<ServerToUiEvents> = {
     note: escalationNoteFixture,
   },
   'approval.requested': { v: 1, approval: pendingApprovalFixture },
+  'approval.updated': { v: 1, approval: decidedApprovalFixture },
 };
 
 export const uiToServerEventFixtures: Payloads<UiToServerEvents> = {
   'run.kill': { v: 1, runId },
   'run.chat': { v: 1, runId, message: 'Check the pricing config first.' },
-  'approval.decide': { v: 1, approvalId, decision: 'approved', decidedBy: 'arjun' },
+  'approval.decide': { v: 1, approvalId, decision: 'approved' },
 };
 
 export const nodeToServerEventFixtures: Payloads<NodeToServerEvents> = {
@@ -126,11 +127,19 @@ export const nodeToServerEventFixtures: Payloads<NodeToServerEvents> = {
     prUrl: 'https://github.com/atontalapur/page-demo/pull/7',
     note: null,
   },
+  'node.approval.request': {
+    v: 1,
+    approvalId,
+    runId,
+    action: pendingApprovalFixture.action,
+    args: pendingApprovalFixture.args,
+  },
 };
 
 export const serverToNodeEventFixtures: Payloads<ServerToNodeEvents> = {
   'run.kill': uiToServerEventFixtures['run.kill'],
   'run.chat': uiToServerEventFixtures['run.chat'],
+  'approval.decided': { v: 1, approval: decidedApprovalFixture },
 };
 
 export const posthogWebhookFixture: PosthogWebhook = {
