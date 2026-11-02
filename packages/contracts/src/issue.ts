@@ -30,12 +30,16 @@ export type NewIssue = z.infer<typeof newIssueSchema>;
 
 const reason = z.string().trim().min(1).max(2000);
 
-/** Everything that moves an issue between statuses. */
+/**
+ * Everything that moves an issue between statuses. The node daemon's events carry the
+ * `runId` of the fix job they report on, so a retried or late event from an earlier run
+ * is refused instead of applied to the current one.
+ */
 export const issueEventSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('triage'), class: bugClassSchema, severity: severitySchema }),
   z.strictObject({ type: z.literal('start_fix') }),
-  z.strictObject({ type: z.literal('patch_ready') }),
-  z.strictObject({ type: z.literal('escalate'), reason }),
+  z.strictObject({ type: z.literal('patch_ready'), runId: idSchema }),
+  z.strictObject({ type: z.literal('escalate'), runId: idSchema, reason }),
   z.strictObject({ type: z.literal('approve') }),
   z.strictObject({ type: z.literal('reject'), reason }),
   z.strictObject({ type: z.literal('kill') }),

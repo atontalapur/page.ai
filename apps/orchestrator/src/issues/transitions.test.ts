@@ -2,6 +2,7 @@ import type { IssueEvent, Tier } from '@page/contracts';
 import { describe, expect, it } from 'vitest';
 import { isTerminal, transition, TransitionError, type IssueState } from './transitions.ts';
 
+const runId = '7f6c2c1e-3d5b-4f0a-9a43-1c2b3d4e5f60';
 const fresh: IssueState = { status: 'new', class: null, severity: null, currentTier: null };
 const fixing = (currentTier: Tier): IssueState => ({
   status: 'fixing',
@@ -29,12 +30,12 @@ describe('issue transitions', () => {
     });
     expect(run(triaged, { type: 'start_fix' })).toMatchObject({ status: 'fixing', currentTier: 1 });
     expect(
-      run(triaged, { type: 'start_fix' }, { type: 'patch_ready' }, { type: 'approve' }),
+      run(triaged, { type: 'start_fix' }, { type: 'patch_ready', runId }, { type: 'approve' }),
     ).toMatchObject({ status: 'resolved', currentTier: 1 });
   });
 
   it('escalates one tier at a time, then hands off to a human', () => {
-    const escalate: IssueEvent = { type: 'escalate', reason: 'tests still fail' };
+    const escalate: IssueEvent = { type: 'escalate', runId, reason: 'tests still fail' };
     expect(transition(fixing(1), escalate)).toMatchObject({ status: 'fixing', currentTier: 2 });
     expect(transition(fixing(2), escalate)).toMatchObject({ status: 'fixing', currentTier: 3 });
     expect(transition(fixing(3), escalate)).toMatchObject({ status: 'failed', currentTier: 3 });
@@ -42,7 +43,9 @@ describe('issue transitions', () => {
 
   it('treats a missing tier as tier 1', () => {
     const state: IssueState = { ...fixing(1), currentTier: null };
-    expect(transition(state, { type: 'escalate', reason: 'x' })).toMatchObject({ currentTier: 2 });
+    expect(transition(state, { type: 'escalate', runId, reason: 'x' })).toMatchObject({
+      currentTier: 2,
+    });
   });
 
   it('escalates when a human rejects the patch', () => {

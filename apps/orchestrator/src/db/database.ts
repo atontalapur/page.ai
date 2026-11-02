@@ -10,6 +10,7 @@ export interface IssuesTable {
   class: BugClass | null;
   severity: Severity | null;
   current_tier: Tier | null;
+  current_run_id: string | null;
   occurrences: Generated<number>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;

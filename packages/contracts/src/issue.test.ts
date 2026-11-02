@@ -19,6 +19,14 @@ describe('issue contracts', () => {
       issueEventSchema.safeParse({ type: 'triage', class: 'backend', severity: 'high' }).success,
     ).toBe(false);
     expect(issueEventSchema.safeParse({ type: 'escalate' }).success).toBe(false);
+    expect(issueEventSchema.safeParse({ type: 'escalate', reason: 'x' }).success).toBe(false);
+    expect(issueEventSchema.safeParse({ type: 'patch_ready' }).success).toBe(false);
+    expect(
+      issueEventSchema.safeParse({
+        type: 'patch_ready',
+        runId: '7f6c2c1e-3d5b-4f0a-9a43-1c2b3d4e5f60',
+      }).success,
+    ).toBe(true);
     expect(issueEventSchema.safeParse({ type: 'deploy' }).success).toBe(false);
   });
 });

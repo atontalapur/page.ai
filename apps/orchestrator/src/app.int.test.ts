@@ -32,11 +32,39 @@ describe('orchestrator on real Postgres', () => {
 
     // What apps/node will do: claim the next job and read it through the shared contract.
     const [job] = await deps.boss.fetch(FIX_QUEUE);
-    expect(fixJobSchema.parse(job?.data)).toMatchObject({
-      issueId: issue.id,
-      fingerprint: 'int-1',
-      tier: 1,
+    const claimed = fixJobSchema.parse(job?.data);
+    expect(claimed).toMatchObject({ issueId: issue.id, fingerprint: 'int-1', tier: 1 });
+
+    // The daemon gives up on tier 1. Its active job is cancelled, so tier 2 is claimable
+    // at once, and a retry of the same escalate is refused.
+    const escalate = { type: 'escalate', runId: claimed.runId, reason: 'tests still fail' };
+    const url = `/issues/${issue.id}/events`;
+    expect((await app.inject({ method: 'POST', url, payload: escalate })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url, payload: escalate })).statusCode).toBe(409);
+
+    const [next] = await deps.boss.fetch(FIX_QUEUE);
+    expect(fixJobSchema.parse(next?.data)).toMatchObject({ issueId: issue.id, tier: 2 });
+    const [tier1] = await deps.boss.findJobs(FIX_QUEUE, { id: claimed.runId });
+    expect(tier1?.state).toBe('cancelled');
+  });
+
+  it('cancels a queued fix job when the issue is killed', async () => {
+    const reported = await app.inject({
+      method: 'POST',
+      url: '/issues',
+      payload: { fingerprint: 'int-2', title: 'boom' },
     });
+    const { issue } = reported.json<{ issue: Issue }>();
+    for (const payload of [
+      { type: 'triage', class: 'frontend', severity: 'low' },
+      { type: 'start_fix' },
+      { type: 'kill' },
+    ]) {
+      await app.inject({ method: 'POST', url: `/issues/${issue.id}/events`, payload });
+    }
+    const jobs = await deps.boss.findJobs(FIX_QUEUE, { data: { issueId: issue.id } });
+    expect(jobs.map((j) => j.state)).toEqual(['cancelled']);
+    expect(await deps.boss.fetch(FIX_QUEUE)).toEqual([]);
   });
 
   it('reports healthy', async () => {

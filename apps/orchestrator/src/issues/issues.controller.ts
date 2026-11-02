@@ -20,7 +20,7 @@ import {
   type NewIssue,
 } from '@page/contracts';
 import { z } from 'zod';
-import { IssueNotFoundError, IssuesService } from './issues.service.ts';
+import { IssueNotFoundError, IssuesService, StaleRunError } from './issues.service.ts';
 import { TransitionError } from './transitions.ts';
 
 const issueId = z.uuid();
@@ -30,7 +30,9 @@ async function asHttp<T>(work: Promise<T>): Promise<T> {
     return await work;
   } catch (err) {
     if (err instanceof IssueNotFoundError) throw new NotFoundException(err.message);
-    if (err instanceof TransitionError) throw new ConflictException(err.message);
+    if (err instanceof TransitionError || err instanceof StaleRunError) {
+      throw new ConflictException(err.message);
+    }
     throw err;
   }
 }
@@ -64,7 +66,7 @@ export class IssuesController {
     return asHttp(this.issues.events(id));
   }
 
-  /** Applies one event. 409 when the issue's status doesn't allow it. */
+  /** Applies one event. 409 when the issue's status doesn't allow it or the run is stale. */
   @Post(':id/events')
   @HttpCode(200)
   apply(

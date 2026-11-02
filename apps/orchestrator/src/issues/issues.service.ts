@@ -11,12 +11,23 @@ import { sql, type Selectable } from 'kysely';
 import type { Db, IssueEventsTable, IssuesTable } from '../db/database.ts';
 import type { FixJobQueue } from '../queue/fix-jobs.ts';
 import { DB, FIX_JOB_QUEUE } from '../tokens.ts';
-import { transition } from './transitions.ts';
+import { isTerminal, transition } from './transitions.ts';
 
 export class IssueNotFoundError extends Error {
   constructor(readonly id: string) {
     super(`issue ${id} not found`);
     this.name = 'IssueNotFoundError';
+  }
+}
+
+/** A daemon event names a run that is no longer the issue's current one. */
+export class StaleRunError extends Error {
+  constructor(
+    readonly id: string,
+    readonly runId: string,
+  ) {
+    super(`run ${runId} is not the current run of issue ${id}`);
+    this.name = 'StaleRunError';
   }
 }
 
@@ -105,8 +116,10 @@ export class IssuesService {
   }
 
   /**
-   * Applies `event`, records it, and queues a fix job when the issue enters a new tier,
-   * all in one transaction. Throws TransitionError if the event does not apply.
+   * Applies `event`, records it, and keeps the fix queue in step, all in one transaction:
+   * entering a tier queues a job for it, and entering a new tier or a terminal status
+   * cancels the job it replaces. Throws TransitionError if the event does not apply, and
+   * StaleRunError if a daemon event names a run other than the current one.
    */
   async apply(id: string, event: IssueEvent): Promise<Issue> {
     return this.db.transaction().execute(async (trx) => {
@@ -127,6 +140,26 @@ export class IssuesService {
         },
         event,
       );
+      // A retried or late event from an earlier run must not move the current one.
+      if ('runId' in event && event.runId !== current.current_run_id) {
+        throw new StaleRunError(id, event.runId);
+      }
+
+      const enteredTier =
+        next.status === 'fixing' &&
+        (current.status !== 'fixing' || current.current_tier !== next.currentTier);
+      if ((enteredTier || isTerminal(next.status)) && current.current_run_id) {
+        await this.fixJobs.cancel(current.current_run_id, trx);
+      }
+      let runId = current.current_run_id;
+      if (enteredTier && next.currentTier !== null) {
+        const job = await this.fixJobs.send(
+          { issueId: id, fingerprint: current.fingerprint, tier: next.currentTier },
+          trx,
+        );
+        runId = job.runId;
+      }
+
       const updated = await trx
         .updateTable('issues')
         .set({
@@ -134,6 +167,7 @@ export class IssuesService {
           class: next.class,
           severity: next.severity,
           current_tier: next.currentTier,
+          current_run_id: runId,
           updated_at: sql<Date>`now()`,
         })
         .where('id', '=', id)
@@ -150,16 +184,6 @@ export class IssuesService {
           current_tier: next.currentTier,
         })
         .execute();
-
-      const enteredTier =
-        next.status === 'fixing' &&
-        (current.status !== 'fixing' || current.current_tier !== next.currentTier);
-      if (enteredTier && next.currentTier !== null) {
-        await this.fixJobs.send(
-          { issueId: id, fingerprint: current.fingerprint, tier: next.currentTier },
-          trx,
-        );
-      }
       return toIssue(updated);
     });
   }

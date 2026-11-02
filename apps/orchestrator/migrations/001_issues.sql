@@ -8,6 +8,8 @@ create table issues (
   class text check (class in ('frontend', 'backend-api', 'database', 'infra-config')),
   severity text check (severity in ('low', 'medium', 'high', 'critical')),
   current_tier smallint check (current_tier between 1 and 3),
+  -- The fix job for current_tier (its pg-boss job id). Daemon events must name it.
+  current_run_id uuid,
   occurrences integer not null default 1 check (occurrences > 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

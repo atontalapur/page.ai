@@ -19,8 +19,15 @@ kill from any open status    ─▶ killed
 
 `src/issues/transitions.ts` holds the rules. Every applied event is written to
 `issue_events`, and entering a tier queues one `fix` job (`fixJobSchema` in `@page/contracts`) in the same
-transaction as the status change. The queue uses pg-boss's `singleton` policy keyed on
-`fingerprint`, so an issue has at most one active fix job. A repeat report with the
+transaction as the status change. The job's `runId` is also its pg-boss job id and is stored
+on the issue as `current_run_id`. Entering a new tier or a terminal status cancels the job it
+replaces, so a killed issue's job is never claimed and a superseded job is never retried. The
+queue uses pg-boss's `singleton` policy keyed on `fingerprint`, so an issue has at most one
+active fix job.
+
+The daemon's events (`patch_ready`, `escalate`) carry the `runId` of the job they report on.
+An event for any run other than the current one returns 409, so a retried `escalate` cannot
+skip a tier. A repeat report with the
 same `fingerprint` bumps `occurrences` on the open issue; after a terminal status it opens a
 new one.
 
@@ -35,8 +42,8 @@ new one.
 | GET    | `/issues/:id/events` |                                            |
 | POST   | `/issues/:id/events` | an `issueEvent`, e.g. `{ "type": "kill" }` |
 
-Bodies are validated against the zod contracts (400). Unknown ids return 404, and events
-the current status doesn't allow return 409.
+Bodies are validated against the zod contracts (400). Unknown ids return 404. Events the
+current status doesn't allow, and daemon events for a stale run, return 409.
 
 ## Run locally
 
