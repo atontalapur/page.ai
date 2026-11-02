@@ -1,7 +1,8 @@
-import { FIX_JOB_QUEUE, fixJob, type Issue } from '@page/contracts';
+import { fixJobSchema, type Issue } from '@page/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
 import { createSchemaDeps } from './db/test-utils.ts';
+import { FIX_QUEUE } from './queue/fix-jobs.ts';
 
 const deps = await createSchemaDeps();
 const app = await createApp(deps, false);
@@ -22,7 +23,7 @@ describe('orchestrator on real Postgres', () => {
     const { issue } = reported.json<{ issue: Issue }>();
 
     for (const payload of [
-      { type: 'triage', category: 'database', severity: 'critical' },
+      { type: 'triage', class: 'database', severity: 'critical' },
       { type: 'start_fix' },
     ]) {
       const res = await app.inject({ method: 'POST', url: `/issues/${issue.id}/events`, payload });
@@ -30,8 +31,12 @@ describe('orchestrator on real Postgres', () => {
     }
 
     // What apps/node will do: claim the next job and read it through the shared contract.
-    const [job] = await deps.boss.fetch(FIX_JOB_QUEUE);
-    expect(fixJob.parse(job?.data)).toEqual({ issueId: issue.id, tier: 1 });
+    const [job] = await deps.boss.fetch(FIX_QUEUE);
+    expect(fixJobSchema.parse(job?.data)).toMatchObject({
+      issueId: issue.id,
+      fingerprint: 'int-1',
+      tier: 1,
+    });
   });
 
   it('reports healthy', async () => {

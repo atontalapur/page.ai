@@ -1,6 +1,7 @@
-import { FIX_JOB_QUEUE, type IssueEvent } from '@page/contracts';
+import type { IssueEvent } from '@page/contracts';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestDeps } from '../db/test-utils.ts';
+import { FIX_QUEUE, type FixJob } from '../queue/fix-jobs.ts';
 import { IssueNotFoundError, IssuesService } from './issues.service.ts';
 import { TransitionError } from './transitions.ts';
 
@@ -8,13 +9,13 @@ const deps = await createTestDeps();
 afterAll(() => deps.close());
 const service = new IssuesService(deps.db, deps.fixJobs);
 
-const triage: IssueEvent = { type: 'triage', category: 'backend', severity: 'high' };
+const triage: IssueEvent = { type: 'triage', class: 'backend-api', severity: 'high' };
 const escalate: IssueEvent = { type: 'escalate', reason: 'tests still fail' };
 let n = 0;
 const report = () => service.report({ fingerprint: `fp-${++n}`, title: 'TypeError in /api/cart' });
 
 async function jobsFor(issueId: string) {
-  const jobs = await deps.boss.findJobs<{ issueId: string; tier: number }>(FIX_JOB_QUEUE, {
+  const jobs = await deps.boss.findJobs<FixJob>(FIX_QUEUE, {
     data: { issueId },
   });
   return jobs.map((j) => j.data.tier).sort();
@@ -28,7 +29,7 @@ describe('IssuesService', () => {
   it('opens an issue, then counts repeats of it', async () => {
     const first = await service.report({ fingerprint: 'dup', title: 'Boom' });
     expect(first.created).toBe(true);
-    expect(first.issue).toMatchObject({ status: 'detected', occurrences: 1, tier: null });
+    expect(first.issue).toMatchObject({ status: 'new', occurrences: 1, currentTier: null });
 
     const again = await service.report({ fingerprint: 'dup', title: 'Boom' });
     expect(again.created).toBe(false);
@@ -48,12 +49,12 @@ describe('IssuesService', () => {
     await service.apply(issue.id, triage);
     expect(await jobsFor(issue.id)).toEqual([]);
 
-    expect(await service.apply(issue.id, { type: 'start_fix' })).toMatchObject({ tier: 1 });
+    expect(await service.apply(issue.id, { type: 'start_fix' })).toMatchObject({ currentTier: 1 });
     await service.apply(issue.id, escalate);
     await service.apply(issue.id, escalate);
     expect(await jobsFor(issue.id)).toEqual([1, 2, 3]);
 
-    expect(await service.apply(issue.id, escalate)).toMatchObject({ status: 'unresolved' });
+    expect(await service.apply(issue.id, escalate)).toMatchObject({ status: 'failed' });
     expect(await jobsFor(issue.id)).toEqual([1, 2, 3]);
   });
 
@@ -66,7 +67,7 @@ describe('IssuesService', () => {
 
     const events = await service.events(issue.id);
     expect(events.map((e) => [e.event.type, e.fromStatus, e.toStatus])).toEqual([
-      ['triage', 'detected', 'triaged'],
+      ['triage', 'new', 'triaged'],
       ['start_fix', 'triaged', 'fixing'],
       ['patch_ready', 'fixing', 'awaiting_approval'],
       ['approve', 'awaiting_approval', 'resolved'],
@@ -74,7 +75,7 @@ describe('IssuesService', () => {
     expect(events[0]?.event).toEqual(triage);
     expect(await service.get(issue.id)).toMatchObject({
       status: 'resolved',
-      category: 'backend',
+      class: 'backend-api',
       severity: 'high',
     });
   });
@@ -83,7 +84,7 @@ describe('IssuesService', () => {
     const { issue } = await report();
     await expect(service.apply(issue.id, { type: 'approve' })).rejects.toThrow(TransitionError);
     expect(await service.events(issue.id)).toEqual([]);
-    expect((await service.get(issue.id)).status).toBe('detected');
+    expect((await service.get(issue.id)).status).toBe('new');
   });
 
   it('lists issues, optionally by status', async () => {

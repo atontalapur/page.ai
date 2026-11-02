@@ -1,5 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Issue, IssueEvent, IssueEventRecord, IssueStatus, NewIssue } from '@page/contracts';
+import {
+  TERMINAL_ISSUE_STATUSES,
+  type Issue,
+  type IssueEvent,
+  type IssueEventRecord,
+  type IssueStatus,
+  type NewIssue,
+} from '@page/contracts';
 import { sql, type Selectable } from 'kysely';
 import type { Db, IssueEventsTable, IssuesTable } from '../db/database.ts';
 import type { FixJobQueue } from '../queue/fix-jobs.ts';
@@ -19,13 +26,12 @@ function toIssue(row: Selectable<IssuesTable>): Issue {
     fingerprint: row.fingerprint,
     title: row.title,
     status: row.status,
-    category: row.category,
+    class: row.class,
     severity: row.severity,
-    tier: row.tier,
     occurrences: row.occurrences,
+    currentTier: row.current_tier,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
-    lastSeenAt: row.last_seen_at.toISOString(),
   };
 }
 
@@ -36,7 +42,7 @@ function toEventRecord(row: Selectable<IssueEventsTable>): IssueEventRecord {
     event: row.event,
     fromStatus: row.from_status,
     toStatus: row.to_status,
-    tier: row.tier,
+    currentTier: row.current_tier,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -57,7 +63,7 @@ export class IssuesService {
         oc
           .column('fingerprint')
           // Must match the predicate of the issues_open_fingerprint partial index.
-          .where('status', 'not in', ['resolved', 'unresolved', 'killed'])
+          .where('status', 'not in', [...TERMINAL_ISSUE_STATUSES])
           .doUpdateSet({
             occurrences: sql<number>`issues.occurrences + 1`,
             last_seen_at: sql<Date>`now()`,
@@ -112,10 +118,24 @@ export class IssuesService {
         .executeTakeFirst();
       if (!current) throw new IssueNotFoundError(id);
 
-      const next = transition(current, event);
+      const next = transition(
+        {
+          status: current.status,
+          class: current.class,
+          severity: current.severity,
+          currentTier: current.current_tier,
+        },
+        event,
+      );
       const updated = await trx
         .updateTable('issues')
-        .set({ ...next, updated_at: sql<Date>`now()` })
+        .set({
+          status: next.status,
+          class: next.class,
+          severity: next.severity,
+          current_tier: next.currentTier,
+          updated_at: sql<Date>`now()`,
+        })
         .where('id', '=', id)
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -127,14 +147,18 @@ export class IssuesService {
           event: JSON.stringify(event),
           from_status: current.status,
           to_status: next.status,
-          tier: next.tier,
+          current_tier: next.currentTier,
         })
         .execute();
 
       const enteredTier =
-        next.status === 'fixing' && (current.status !== 'fixing' || current.tier !== next.tier);
-      if (enteredTier && next.tier !== null) {
-        await this.fixJobs.send({ issueId: id, tier: next.tier }, trx);
+        next.status === 'fixing' &&
+        (current.status !== 'fixing' || current.current_tier !== next.currentTier);
+      if (enteredTier && next.currentTier !== null) {
+        await this.fixJobs.send(
+          { issueId: id, fingerprint: current.fingerprint, tier: next.currentTier },
+          trx,
+        );
       }
       return toIssue(updated);
     });

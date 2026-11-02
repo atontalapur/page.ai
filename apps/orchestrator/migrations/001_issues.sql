@@ -2,12 +2,12 @@ create table issues (
   id uuid primary key default gen_random_uuid(),
   fingerprint text not null,
   title text not null,
-  status text not null default 'detected' check (
-    status in ('detected', 'triaged', 'fixing', 'awaiting_approval', 'resolved', 'unresolved', 'killed')
+  status text not null default 'new' check (
+    status in ('new', 'triaged', 'fixing', 'pr_open', 'awaiting_approval', 'resolved', 'failed', 'killed')
   ),
-  category text check (category in ('frontend', 'backend', 'database', 'infra')),
+  class text check (class in ('frontend', 'backend-api', 'database', 'infra-config')),
   severity text check (severity in ('low', 'medium', 'high', 'critical')),
-  tier smallint check (tier between 1 and 3),
+  current_tier smallint check (current_tier between 1 and 3),
   occurrences integer not null default 1 check (occurrences > 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -16,7 +16,7 @@ create table issues (
 
 -- One open issue per fingerprint. A recurrence after a terminal status opens a new issue.
 create unique index issues_open_fingerprint on issues (fingerprint)
-  where status not in ('resolved', 'unresolved', 'killed');
+  where status not in ('resolved', 'failed', 'killed');
 
 create index issues_updated_at on issues (updated_at desc);
 
@@ -26,7 +26,7 @@ create table issue_events (
   event jsonb not null,
   from_status text not null,
   to_status text not null,
-  tier smallint,
+  current_tier smallint,
   created_at timestamptz not null default now()
 );
 

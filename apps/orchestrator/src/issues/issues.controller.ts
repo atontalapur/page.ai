@@ -10,9 +10,9 @@ import {
   Query,
 } from '@nestjs/common';
 import {
-  issueEvent,
-  issueStatus,
-  newIssue,
+  issueEventSchema,
+  issueStatusSchema,
+  newIssueSchema,
   type Issue,
   type IssueEvent,
   type IssueEventRecord,
@@ -41,13 +41,15 @@ export class IssuesController {
 
   /** Opens an issue, or counts a repeat of the open one with the same fingerprint. */
   @Post()
-  report(@Body({ schema: newIssue }) body: NewIssue): Promise<{ issue: Issue; created: boolean }> {
+  report(
+    @Body({ schema: newIssueSchema }) body: NewIssue,
+  ): Promise<{ issue: Issue; created: boolean }> {
     return this.issues.report(body);
   }
 
   @Get()
   list(
-    @Query('status', { schema: issueStatus.optional() }) status?: IssueStatus,
+    @Query('status', { schema: issueStatusSchema.optional() }) status?: IssueStatus,
   ): Promise<Issue[]> {
     return this.issues.list(status);
   }
@@ -67,7 +69,7 @@ export class IssuesController {
   @HttpCode(200)
   apply(
     @Param('id', { schema: issueId }) id: string,
-    @Body({ schema: issueEvent }) event: IssueEvent,
+    @Body({ schema: issueEventSchema }) event: IssueEvent,
   ): Promise<Issue> {
     return asHttp(this.issues.apply(id, event));
   }

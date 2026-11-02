@@ -1,4 +1,4 @@
-import type { IssueCategory, IssueEvent, IssueStatus, Severity } from '@page/contracts';
+import type { BugClass, IssueEvent, IssueStatus, Severity, Tier } from '@page/contracts';
 import { Kysely, PostgresDialect, type ColumnType, type Generated } from 'kysely';
 import pg from 'pg';
 
@@ -7,9 +7,9 @@ export interface IssuesTable {
   fingerprint: string;
   title: string;
   status: Generated<IssueStatus>;
-  category: IssueCategory | null;
+  class: BugClass | null;
   severity: Severity | null;
-  tier: number | null;
+  current_tier: Tier | null;
   occurrences: Generated<number>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
@@ -24,7 +24,7 @@ export interface IssueEventsTable {
   event: ColumnType<IssueEvent, string, never>;
   from_status: IssueStatus;
   to_status: IssueStatus;
-  tier: number | null;
+  current_tier: Tier | null;
   created_at: Generated<Date>;
 }
 

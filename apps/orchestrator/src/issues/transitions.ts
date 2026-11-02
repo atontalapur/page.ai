@@ -1,13 +1,13 @@
 import {
   MAX_TIER,
-  terminalStatuses,
+  TERMINAL_ISSUE_STATUSES,
   type Issue,
   type IssueEvent,
   type IssueStatus,
 } from '@page/contracts';
 
 /** The part of an issue that events change. */
-export type IssueState = Pick<Issue, 'status' | 'category' | 'severity' | 'tier'>;
+export type IssueState = Pick<Issue, 'status' | 'class' | 'severity' | 'currentTier'>;
 
 export class TransitionError extends Error {
   constructor(
@@ -20,7 +20,7 @@ export class TransitionError extends Error {
 }
 
 export function isTerminal(status: IssueStatus): boolean {
-  return (terminalStatuses as readonly IssueStatus[]).includes(status);
+  return (TERMINAL_ISSUE_STATUSES as readonly IssueStatus[]).includes(status);
 }
 
 /**
@@ -28,10 +28,9 @@ export function isTerminal(status: IssueStatus): boolean {
  * tier has failed too.
  */
 function escalate(state: IssueState): IssueState {
-  const tier = state.tier ?? 1;
-  return tier < MAX_TIER
-    ? { ...state, status: 'fixing', tier: tier + 1 }
-    : { ...state, status: 'unresolved' };
+  const tier = state.currentTier ?? 1;
+  if (tier === MAX_TIER) return { ...state, status: 'failed' };
+  return { ...state, status: 'fixing', currentTier: tier === 1 ? 2 : 3 };
 }
 
 /** Returns the state after `event`, or throws TransitionError if `event` is not allowed. */
@@ -40,11 +39,11 @@ export function transition(state: IssueState, event: IssueEvent): IssueState {
   if (event.type === 'kill' && !isTerminal(status)) return { ...state, status: 'killed' };
 
   switch (`${status}:${event.type}`) {
-    case 'detected:triage':
+    case 'new:triage':
       if (event.type !== 'triage') break;
-      return { ...state, status: 'triaged', category: event.category, severity: event.severity };
+      return { ...state, status: 'triaged', class: event.class, severity: event.severity };
     case 'triaged:start_fix':
-      return { ...state, status: 'fixing', tier: 1 };
+      return { ...state, status: 'fixing', currentTier: 1 };
     case 'fixing:patch_ready':
       return { ...state, status: 'awaiting_approval' };
     case 'fixing:escalate':

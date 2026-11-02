@@ -6,5 +6,4 @@ export * from './events.ts';
 export * from './jobs.ts';
 export * from './scenario.ts';
 export * from './issue.ts';
-export * from './fix-job.ts';
 export * from './webhook.ts';

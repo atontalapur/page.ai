@@ -30,16 +30,16 @@ describe('orchestrator HTTP API', () => {
 
     const triaged = await http('POST', `/issues/${issue.id}/events`, {
       type: 'triage',
-      category: 'frontend',
+      class: 'frontend',
       severity: 'low',
     });
     expect(triaged.statusCode).toBe(200);
     expect(triaged.json<Issue>().status).toBe('triaged');
 
     const fixing = await http('POST', `/issues/${issue.id}/events`, { type: 'start_fix' });
-    expect(fixing.json<Issue>()).toMatchObject({ status: 'fixing', tier: 1 });
+    expect(fixing.json<Issue>()).toMatchObject({ status: 'fixing', currentTier: 1 });
 
-    expect((await http('GET', `/issues/${issue.id}`)).json<Issue>().tier).toBe(1);
+    expect((await http('GET', `/issues/${issue.id}`)).json<Issue>().currentTier).toBe(1);
     expect((await http('GET', `/issues/${issue.id}/events`)).json()).toHaveLength(2);
     const listed = await http('GET', '/issues?status=fixing');
     expect(listed.json<Issue[]>().map((i) => i.id)).toContain(issue.id);
@@ -68,7 +68,7 @@ describe('orchestrator HTTP API', () => {
     const conflict = await http('POST', `/issues/${issue.id}/events`, { type: 'approve' });
     expect(conflict.statusCode).toBe(409);
     expect(conflict.json<{ message: string }>().message).toBe(
-      'cannot approve an issue that is detected',
+      'cannot approve an issue that is new',
     );
   });
 });

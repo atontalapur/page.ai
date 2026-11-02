@@ -7,19 +7,20 @@ through Kysely, moves them through a state machine, and queues fix jobs on pg-bo
 ## Issue lifecycle
 
 ```
-detected ─triage─▶ triaged ─start_fix─▶ fixing (tier 1)
+new ──────triage─▶ triaged ─start_fix─▶ fixing (tier 1)
                                          │  ▲
                               patch_ready│  │escalate / reject (tier + 1)
                                          ▼  │
                                   awaiting_approval ─approve─▶ resolved
 
-escalate or reject at tier 3 ─▶ unresolved (a human takes over)
+escalate or reject at tier 3 ─▶ failed (a human takes over)
 kill from any open status    ─▶ killed
 ```
 
 `src/issues/transitions.ts` holds the rules. Every applied event is written to
-`issue_events`, and entering a tier queues one `fix-jobs` job (`{ issueId, tier }`, schema
-in `@page/contracts`) in the same transaction as the status change. A repeat report with the
+`issue_events`, and entering a tier queues one `fix` job (`fixJobSchema` in `@page/contracts`) in the same
+transaction as the status change. The queue uses pg-boss's `singleton` policy keyed on
+`fingerprint`, so an issue has at most one active fix job. A repeat report with the
 same `fingerprint` bumps `occurrences` on the open issue; after a terminal status it opens a
 new one.
 
