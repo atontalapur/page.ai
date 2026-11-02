@@ -1,5 +1,6 @@
 {
   "class": "database",
   "expectedTier": 2,
-  "description": "Migration renames products.price_cents but cart and checkout queries still select the old column"
+  "description": "Migration renames products.price_cents but cart and checkout queries still select the old column",
+  "report": "POST /api/cart/items returned 500\n\nerror: column p.price_cents does not exist\n    code: 42703\n    at getCart (apps/demo-app/src/shop/cart.ts:43)"
 }

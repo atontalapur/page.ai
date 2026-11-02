@@ -1,5 +1,6 @@
 {
   "class": "backend-api",
   "expectedTier": 2,
-  "description": "placeOrder stops re-checking stock, so a second cart's checkout violates products_stock_check"
+  "description": "placeOrder stops re-checking stock, so a second cart's checkout violates products_stock_check",
+  "report": "POST /api/orders returned 500\n\nerror: new row for relation \"products\" violates check constraint \"products_stock_check\"\n    code: 23514\n    at placeOrder (apps/demo-app/src/shop/orders.ts:63)"
 }

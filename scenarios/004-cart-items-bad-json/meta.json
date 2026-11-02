@@ -1,5 +1,6 @@
 {
   "class": "backend-api",
   "expectedTier": 1,
-  "description": "POST /api/cart/items stops catching req.json(), so a malformed body returns 500 instead of 400"
+  "description": "POST /api/cart/items stops catching req.json(), so a malformed body returns 500 instead of 400",
+  "report": "POST /api/cart/items returned 500\nRequest body: {\"productId\":\n\nSyntaxError: Unexpected end of JSON input\n    at JSON.parse (<anonymous>)\n    at Request.json (node:internal/deps/undici/undici)\n    at POST (apps/demo-app/src/app/api/cart/items/route.ts:14)"
 }
