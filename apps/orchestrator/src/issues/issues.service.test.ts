@@ -116,6 +116,13 @@ describe('IssuesService', () => {
     expect(await jobsFor(issue.id)).toEqual([1, 2]);
   });
 
+  it('keeps a recurring issue at the top of the list', async () => {
+    const { issue: old } = await report();
+    await report();
+    await service.report({ fingerprint: `fp-${n - 1}`, title: 'TypeError in /api/cart' });
+    expect((await service.list())[0]?.id).toBe(old.id);
+  });
+
   it('records every applied event in order', async () => {
     const issue = await fixingIssue();
     await fromDaemon(issue.id, { type: 'patch_ready' });

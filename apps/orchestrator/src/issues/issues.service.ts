@@ -78,6 +78,8 @@ export class IssuesService {
           .doUpdateSet({
             occurrences: sql<number>`issues.occurrences + 1`,
             last_seen_at: sql<Date>`now()`,
+            // list() sorts by updated_at, so a recurring issue stays near the top.
+            updated_at: sql<Date>`now()`,
           }),
       )
       .returningAll()

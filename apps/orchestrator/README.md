@@ -43,7 +43,8 @@ new one.
 | POST   | `/issues/:id/events` | an `issueEvent`, e.g. `{ "type": "kill" }` |
 
 Bodies are validated against the zod contracts (400). Unknown ids return 404. Events the
-current status doesn't allow, and daemon events for a stale run, return 409.
+current status doesn't allow, and daemon events for a stale run, return 409. `GET /issues`
+returns at most 200 issues, most recently updated first; a repeat report counts as an update.
 
 ## Run locally
 
