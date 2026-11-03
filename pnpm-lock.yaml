@@ -173,6 +173,9 @@ catalogs:
     '@types/node':
       specifier: ^24.19.2
       version: 24.19.2
+    '@types/pg':
+      specifier: ^8.23.1
+      version: 8.23.1
     '@types/react':
       specifier: ^19.3.0
       version: 19.3.0
@@ -191,6 +194,12 @@ catalogs:
     eslint-config-prettier:
       specifier: ^10.1.8
       version: 10.1.8
+    pg:
+      specifier: ^8.23.1
+      version: 8.23.1
+    pino:
+      specifier: ^10.4.0
+      version: 10.4.0
     prettier:
       specifier: ^3.9.10
       version: 3.9.10
@@ -254,7 +263,7 @@ importers:
         specifier: 16.4.3
         version: 16.4.3(@babel/core@7.29.7(supports-color@7.2.0))(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       pg:
-        specifier: ^8.23.1
+        specifier: 'catalog:'
         version: 8.23.1
       react:
         specifier: 19.3.1
@@ -279,7 +288,7 @@ importers:
         specifier: 'catalog:'
         version: 24.19.2
       '@types/pg':
-        specifier: ^8.23.1
+        specifier: 'catalog:'
         version: 8.23.1
       '@types/react':
         specifier: ^19.3.0
@@ -339,7 +348,7 @@ importers:
         specifier: ^0.29.7
         version: 0.29.7
       pg:
-        specifier: ^8.23.1
+        specifier: 'catalog:'
         version: 8.23.1
       pg-boss:
         specifier: ^12.38.0
@@ -367,7 +376,7 @@ importers:
         specifier: 'catalog:'
         version: 24.19.2
       '@types/pg':
-        specifier: ^8.23.1
+        specifier: 'catalog:'
         version: 8.23.1
       '@vitest/coverage-v8':
         specifier: 'catalog:'
@@ -644,6 +653,9 @@ importers:
       '@page/contracts':
         specifier: workspace:*
         version: link:../contracts
+      pino:
+        specifier: 'catalog:'
+        version: 10.4.0
     devDependencies:
       '@page/config':
         specifier: workspace:*
@@ -651,12 +663,18 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
+      '@types/pg':
+        specifier: 'catalog:'
+        version: 8.23.1
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       eslint:
         specifier: 'catalog:'
         version: 10.13.0(jiti@2.7.0)(supports-color@7.2.0)
+      pg:
+        specifier: 'catalog:'
+        version: 8.23.1
       typescript:
         specifier: 'catalog:'
         version: 6.0.3

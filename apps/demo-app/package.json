@@ -20,7 +20,7 @@
     "@next/eslint-plugin-next": "16.4.3",
     "@page/config": "workspace:*",
     "@types/node": "catalog:",
-    "@types/pg": "^8.23.1",
+    "@types/pg": "catalog:",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitest/coverage-v8": "catalog:",
@@ -30,7 +30,7 @@
   },
   "dependencies": {
     "next": "16.4.3",
-    "pg": "^8.23.1",
+    "pg": "catalog:",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "zod": "catalog:"
