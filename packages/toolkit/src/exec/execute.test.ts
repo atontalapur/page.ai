@@ -122,7 +122,7 @@ describe('execute', () => {
     const runner = new FakeRunner(() => FakeRunner.exited(0, coloured));
     const result = await execute(
       { kind: 'exec', command: 'pnpm test' },
-      { tier: 1, runner, outputBudget: 10 },
+      { tier: 1, runner, steps: testSteps(), outputBudget: 10 },
     );
     expect(result).toMatchObject({ ok: true, value: { output: 'a'.repeat(10) } });
   });
