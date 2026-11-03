@@ -20,7 +20,11 @@ map other failures to 1 yourself.
 
 `trigger.sh` runs outside the sandbox, from the eval runner's host, against a deployed
 demo app (staging, for the PostHog demo). It needs the network and `curl`. The self-test
-doesn't run it.
+doesn't run it. Host `sh` may be dash, so print variables with `printf '%s\n'`, not `echo`.
+
+Unlike `check.sh`, a trigger runs from its file, so triggers can share code. Shared
+helpers are plain files in `scenarios/`, sourced with `. "$(dirname "$0")/../<file>"`.
+`checkout-trigger.sh` puts one product in a fresh cart and checks it out (025, 028, 029).
 
 Keep all three executable.
 

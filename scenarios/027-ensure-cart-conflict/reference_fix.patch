@@ -1,0 +1,13 @@
+diff --git a/apps/demo-app/src/shop/cart.ts b/apps/demo-app/src/shop/cart.ts
+index 1d4e77a..d711195 100644
+--- a/apps/demo-app/src/shop/cart.ts
++++ b/apps/demo-app/src/shop/cart.ts
+@@ -26,7 +26,7 @@ export function shippingFor(subtotalCents: number, settings: ShopSettings): numb
+ /** Returns `id` if given (recreating the row if the database was reset), else a new cart id. */
+ export async function ensureCart(db: Queryable, id?: string): Promise<string> {
+   if (id) {
+-    await db.query('insert into carts (id) values ($1)', [id]);
++    await db.query('insert into carts (id) values ($1) on conflict (id) do nothing', [id]);
+     return id;
+   }
+   const { rows } = await db.query<{ id: string }>('insert into carts default values returning id');

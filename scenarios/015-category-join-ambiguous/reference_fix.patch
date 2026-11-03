@@ -1,0 +1,25 @@
+diff --git a/apps/demo-app/src/shop/products.ts b/apps/demo-app/src/shop/products.ts
+index 1f410c6..1e5658a 100644
+--- a/apps/demo-app/src/shop/products.ts
++++ b/apps/demo-app/src/shop/products.ts
+@@ -10,17 +10,17 @@ export interface Product {
+   category: string | null;
+ }
+ 
+-const columns = `id, slug, name, description, price_cents as "priceCents", stock,
++const columns = `p.id, p.slug, p.name, p.description, p.price_cents as "priceCents", p.stock,
+   c.name as category`;
+ const fromProducts = `products p left join categories c on c.id = p.category_id`;
+ 
+ export async function listProducts(db: Queryable): Promise<Product[]> {
+-  const { rows } = await db.query<Product>(`select ${columns} from ${fromProducts} order by name`);
++  const { rows } = await db.query<Product>(`select ${columns} from ${fromProducts} order by p.name`);
+   return rows;
+ }
+ 
+ export async function getProduct(db: Queryable, slug: string): Promise<Product | null> {
+-  const { rows } = await db.query<Product>(`select ${columns} from ${fromProducts} where slug = $1`, [
++  const { rows } = await db.query<Product>(`select ${columns} from ${fromProducts} where p.slug = $1`, [
+     slug,
+   ]);
+   return rows[0] ?? null;

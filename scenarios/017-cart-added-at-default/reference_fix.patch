@@ -1,0 +1,8 @@
+diff --git a/apps/demo-app/migrations/003_cart_items_added_at_default.sql b/apps/demo-app/migrations/003_cart_items_added_at_default.sql
+new file mode 100644
+index 0000000..03fd7ef
+--- /dev/null
++++ b/apps/demo-app/migrations/003_cart_items_added_at_default.sql
+@@ -0,0 +1,2 @@
++-- 002 dropped the default, but addItem doesn't set added_at. Default it to the insert time.
++alter table cart_items alter column added_at set default now();

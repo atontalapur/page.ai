@@ -1,0 +1,5 @@
+{
+  "class": "frontend",
+  "expectedTier": 2,
+  "description": "orShowError returns work() without awaiting it, so a ShopError escapes its catch and the add-to-cart and checkout actions return 500"
+}
