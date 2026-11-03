@@ -19,8 +19,9 @@ export function trimOutput(text: string, budget = DEFAULT_OUTPUT_BUDGET): string
 // String sequences (OSC hyperlinks and window titles, DCS, SOS, PM, APC) end with BEL or
 // ST. The body may not cross a newline: Capture can cut off a terminator, and an unbounded
 // body would then eat everything up to the next BEL, including Capture's own marker.
-// eslint-disable-next-line no-control-regex
-const STRING_SEQUENCE = /(?:\x1b[P\]X^_]|[\x90\x98\x9d-\x9f])[^\x07\x1b\x9c\n]*(?:\x07|\x1b\\|\x9c)/g;
+const STRING_SEQUENCE =
+  // eslint-disable-next-line no-control-regex
+  /(?:\x1b[P\]X^_]|[\x90\x98\x9d-\x9f])[^\x07\x1b\x9c\n]*(?:\x07|\x1b\\|\x9c)/g;
 // Introducers left without a terminator, and BELs left without an introducer. Dropping them
 // keeps stripVTControlCharacters from reading on past the newline.
 // eslint-disable-next-line no-control-regex
