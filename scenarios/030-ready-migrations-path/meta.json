@@ -1,0 +1,5 @@
+{
+  "class": "infra-config",
+  "expectedTier": 1,
+  "description": "A new readiness check reads migrations from a repo-root path, which doesn't exist where the app runs, so /api/health/ready returns 500"
+}

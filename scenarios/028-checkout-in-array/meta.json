@@ -1,0 +1,5 @@
+{
+  "class": "database",
+  "expectedTier": 2,
+  "description": "Checkout clears the cart with product_id in ($2) and an array parameter, which Postgres can't cast to integer, so every checkout returns 500"
+}

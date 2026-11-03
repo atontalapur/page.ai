@@ -1,0 +1,13 @@
+diff --git a/apps/demo-app/src/shop/orders.ts b/apps/demo-app/src/shop/orders.ts
+index bff706a..5d526d5 100644
+--- a/apps/demo-app/src/shop/orders.ts
++++ b/apps/demo-app/src/shop/orders.ts
+@@ -67,7 +67,7 @@ export async function placeOrder(
+         line.productId,
+       ]);
+     }
+-    await tx.query('delete from cart_items where cart_id = $1 and product_id in ($2)', [
++    await tx.query('delete from cart_items where cart_id = $1 and product_id = any($2::int[])', [
+       cartId,
+       lines.map((line) => line.productId),
+     ]);
