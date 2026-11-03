@@ -1,0 +1,5 @@
+{
+  "class": "database",
+  "expectedTier": 2,
+  "description": "getProduct matches \"id = $1 or slug = $1\", which Postgres types as an integer, so every product lookup throws"
+}

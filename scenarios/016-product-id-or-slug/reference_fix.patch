@@ -1,0 +1,19 @@
+diff --git a/apps/demo-app/src/shop/products.ts b/apps/demo-app/src/shop/products.ts
+index d7b71e8..0bf55a7 100644
+--- a/apps/demo-app/src/shop/products.ts
++++ b/apps/demo-app/src/shop/products.ts
+@@ -18,9 +18,10 @@ export async function listProducts(db: Queryable): Promise<Product[]> {
+ 
+ /** Finds a product by slug, or by id, so /products/<id> URLs resolve too. */
+ export async function getProduct(db: Queryable, slugOrId: string): Promise<Product | null> {
+-  const { rows } = await db.query<Product>(
+-    `select ${columns} from products where id = $1 or slug = $1`,
+-    [slugOrId],
+-  );
++  // Query one column: a value that fits an int4 id is an id, anything else is a slug.
++  const isId = /^\d+$/.test(slugOrId) && Number(slugOrId) <= 2_147_483_647;
++  const { rows } = isId
++    ? await db.query<Product>(`select ${columns} from products where id = $1`, [Number(slugOrId)])
++    : await db.query<Product>(`select ${columns} from products where slug = $1`, [slugOrId]);
+   return rows[0] ?? null;
+ }

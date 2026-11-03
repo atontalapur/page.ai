@@ -1,0 +1,5 @@
+{
+  "class": "database",
+  "expectedTier": 2,
+  "description": "Product queries join a new categories table but keep unqualified id, slug and name, so every product query is ambiguous"
+}
