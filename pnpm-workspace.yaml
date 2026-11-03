@@ -31,3 +31,7 @@ catalog:
   tailwindcss: ^4.3.3
   # vitest 5 pulls in vite 8, keep them in step
   vite: ^8.3.5
+
+# Dependency install scripts pnpm may run. core-js (via posthog-js) only prints a banner.
+allowBuilds:
+  core-js: false

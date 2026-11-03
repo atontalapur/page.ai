@@ -37,6 +37,22 @@ each deploy, and gates on `/api/health`. One-time service setup:
    find it on its own outside the root).
 3. Add a Postgres service and set `DATABASE_URL=${{Postgres.DATABASE_URL}}` on this one.
 4. Generate a public domain. Optional shop settings are listed in `.env.example`.
+5. Set `POSTHOG_KEY` (and `POSTHOG_HOST` if the project isn't on US cloud) so errors
+   reach PostHog Error Tracking. Railway's `RAILWAY_GIT_COMMIT_SHA` tags each error with
+   its release. The Dockerfile takes all three as build args, since the browser's copy is
+   inlined at build time, so a changed key needs a redeploy.
+
+## Error reporting
+
+`src/instrumentation.ts` reports every unhandled server error (pages, route handlers,
+server actions) through `onRequestError`, tagged with the route file path, release and
+error name. In the browser, `src/instrumentation-client.ts` starts posthog-js before
+hydration, so it captures uncaught errors and unhandled rejections from the first render,
+and `global-error.tsx` reports what React catches. A client component that already failed
+the server render isn't reported again from the browser. Both sides go through an
+`ErrorReporter` (`src/observability/`) that falls back to an in-memory fake when
+`POSTHOG_KEY` is unset. `handle()` and `orShowError` turn a `ShopError` into a 4xx, so it
+isn't reported; one that escapes them is a 500 and is reported like any other crash.
 
 ## Notes
 

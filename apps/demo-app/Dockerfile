@@ -14,6 +14,11 @@ RUN pnpm install --frozen-lockfile --filter @page/demo-app... --ignore-scripts
 
 COPY packages/config packages/config
 COPY apps/demo-app apps/demo-app
+# Browser error reporting is inlined at build time (next.config.ts). Railway passes service
+# variables, RAILWAY_GIT_COMMIT_SHA included, to the build args a Dockerfile declares.
+ARG POSTHOG_KEY
+ARG POSTHOG_HOST
+ARG RAILWAY_GIT_COMMIT_SHA
 RUN pnpm --filter @page/demo-app build
 
 # Production dependencies only (no vitest, eslint, typescript or pglite). The app has no
