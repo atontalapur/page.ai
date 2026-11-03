@@ -64,10 +64,14 @@ try {
   // build one.
   const task = { task: report };
   // Setup (container start, break.sh) comes out of the budget. Saving the shortened limit
-  // in the config keeps the replay exact.
+  // in the config keeps the replay exact. At least 1 ms: the agent reads 0 or less as no
+  // limit, so setup that overran the budget would otherwise leave the run unbounded.
   const config = {
     ...DEFAULT_AGENT_CONFIG,
-    wallTimeLimitMs: DEFAULT_AGENT_CONFIG.wallTimeLimitMs - (Date.now() - containerStartedAt),
+    wallTimeLimitMs: Math.max(
+      1,
+      DEFAULT_AGENT_CONFIG.wallTimeLimitMs - (Date.now() - containerStartedAt),
+    ),
   };
   const run = await runAgent(task, recording.deps, config);
 

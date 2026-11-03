@@ -94,6 +94,19 @@ describe('replayDeps', () => {
     expect(replayed.exitStatus).toBe('time_limit');
   });
 
+  // The recorded fixtures ran on a free model, so this is the only replay of the cost limit.
+  it('replays a run that ended on the cost limit', async () => {
+    const model = new ScriptedModel([bash('ls'), bash('ls'), bash('ls')], 0.01);
+    const config = { costLimitUsd: 0.025 };
+    const recording = recordingDeps({ model, ...fakeExecute() });
+    const run = await runAgent(task, recording.deps, config);
+
+    const replayed = await runAgent(task, replayDeps(recording).deps, config);
+    expect(replayed).toEqual(run);
+    expect(replayed.exitStatus).toBe('cost_limit');
+    expect(replayed.costUsd).toBeCloseTo(0.03);
+  });
+
   it('fails when the loop runs a different command than was recorded', async () => {
     const turns: Turn[] = [
       modelTurn(bash('ls')),

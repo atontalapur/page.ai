@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { testSteps } from '../audit/test-utils.ts';
 import { execute } from './execute.ts';
-import { MAX_EDIT_BYTES, shellQuote } from './edit.ts';
+import { EDIT_TIMEOUT_MS, MAX_EDIT_BYTES, shellQuote } from './edit.ts';
 import { FakeRunner } from './fake-runner.ts';
 import type { RunRequest, RunResult } from './runner.ts';
 
@@ -169,6 +169,23 @@ describe('execute edit', () => {
       ok: false,
       error: { type: 'timed_out', output: 'a.ts: timed out' },
     });
+  });
+
+  it("bounds both steps by the caller's time left", async () => {
+    const runner = new FakeRunner(() => FakeRunner.exited(0, 'a'));
+    await execute(edit('a.ts', 'a', 'b'), { tier: 1, runner, timeoutMs: 5_000 });
+    expect(runner.requests).toHaveLength(2);
+    for (const { timeoutMs } of runner.requests) {
+      expect(timeoutMs).toBeGreaterThan(0);
+      expect(timeoutMs).toBeLessThanOrEqual(5_000);
+    }
+  });
+
+  it('caps an edit at EDIT_TIMEOUT_MS when the caller has more time', async () => {
+    const runner = new FakeRunner(() => FakeRunner.exited(0, 'a'));
+    await execute(edit('a.ts', 'a', 'b'), { tier: 1, runner, timeoutMs: 10 * EDIT_TIMEOUT_MS });
+    for (const { timeoutMs } of runner.requests)
+      expect(timeoutMs).toBeLessThanOrEqual(EDIT_TIMEOUT_MS);
   });
 
   it.each([
