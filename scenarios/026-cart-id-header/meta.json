@@ -1,0 +1,5 @@
+{
+  "class": "backend-api",
+  "expectedTier": 2,
+  "description": "GET /api/cart takes the cart id from an x-cart-id header without validating it, so a header that isn't a uuid returns 500"
+}

@@ -1,9 +1,9 @@
 import { posix } from 'node:path';
-import { WORKSPACE, writePathRefusal } from '../policy/paths.ts';
-import { err, ok, type Result } from '../result.ts';
+import { WORKSPACE } from '../policy/paths.ts';
+import { err, ok } from '../result.ts';
 import type { RunResult } from './runner.ts';
 import { combineOutput, DEFAULT_OUTPUT_BUDGET, trimOutput } from './trim.ts';
-import type { EditCall, ExecContext, ExecErr, ExecOk, StepBase } from './types.ts';
+import type { EditCall, ExecContext, RunErr, RunOutcome, StepBase } from './types.ts';
 
 /** Reading or writing one file should take well under this. */
 export const EDIT_TIMEOUT_MS = 30_000;
@@ -15,7 +15,7 @@ export const MAX_EDIT_BYTES = 500_000;
 export const shellQuote = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
 
 const failed = (base: StepBase, output: string, exitCode = 1) =>
-  err<ExecErr>({ ...base, type: 'failed', exitCode, output });
+  err<RunErr>({ ...base, type: 'failed', exitCode, output });
 
 // Overlapping matches count: `aa` in `aaa` matches twice, so the edit is ambiguous.
 function countOccurrences(text: string, part: string): number {
@@ -27,23 +27,20 @@ function countOccurrences(text: string, part: string): number {
 }
 
 /**
- * The file-edit tool. The path gets the same check as a redirect; the content goes over
- * stdin, so it never passes through a shell command line.
+ * The file-edit tool. execute() has already checked the path the same way as a redirect;
+ * the content goes over stdin, so it never passes through a shell command line.
  */
 export async function runEdit(
   call: EditCall,
   ctx: ExecContext,
   base: StepBase,
-): Promise<Result<ExecOk, ExecErr>> {
-  const refusal = writePathRefusal(call.path);
-  if (refusal !== null) return err({ ...base, type: 'refused', message: `refused: ${refusal}` });
-
+): Promise<RunOutcome> {
   // Absolute, so a path such as `-x` can't be read as an option.
   const absolute = posix.resolve(WORKSPACE, call.path);
   const path = shellQuote(absolute);
   const run = (command: string, stdin?: string): Promise<RunResult> =>
     ctx.runner.run({ command, timeoutMs: EDIT_TIMEOUT_MS, stdin });
-  const problem = (result: RunResult): Result<ExecOk, ExecErr> | null => {
+  const problem = (result: RunResult): RunOutcome | null => {
     if (result.status === 'timed_out') {
       return err({ ...base, type: 'timed_out', output: `${call.path}: timed out` });
     }

@@ -1,0 +1,5 @@
+{
+  "class": "backend-api",
+  "expectedTier": 1,
+  "description": "POST /api/orders answers with Response.redirect to a relative path, which throws after the order commits, so every API checkout returns 500"
+}

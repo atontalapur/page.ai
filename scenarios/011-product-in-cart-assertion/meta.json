@@ -1,0 +1,5 @@
+{
+  "class": "frontend",
+  "expectedTier": 1,
+  "description": "Product page asserts the product is already in the cart, so it throws a TypeError for anyone who hasn't added it"
+}

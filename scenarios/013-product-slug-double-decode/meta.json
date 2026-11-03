@@ -1,0 +1,5 @@
+{
+  "class": "backend-api",
+  "expectedTier": 1,
+  "description": "GET /api/products/[slug] decodes the already-decoded slug again, so a slug with a % throws URIError and returns 500 instead of 404"
+}

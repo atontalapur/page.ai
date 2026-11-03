@@ -19,12 +19,15 @@
   "devDependencies": {
     "@page/config": "workspace:*",
     "@types/node": "catalog:",
+    "@types/pg": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
+    "pg": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
   "dependencies": {
-    "@page/contracts": "workspace:*"
+    "@page/contracts": "workspace:*",
+    "pino": "catalog:"
   }
 }

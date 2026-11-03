@@ -1,0 +1,5 @@
+{
+  "class": "database",
+  "expectedTier": 1,
+  "description": "ensureCart drops on conflict do nothing, so any request with an existing cart violates carts_pkey and a second add to cart returns 500"
+}

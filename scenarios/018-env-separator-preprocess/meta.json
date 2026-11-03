@@ -1,0 +1,5 @@
+{
+  "class": "infra-config",
+  "expectedTier": 2,
+  "description": "A separator-stripping preprocess turns an unset MAX_ITEM_QUANTITY into \"undefined\", so defaults never apply and every shop page throws"
+}

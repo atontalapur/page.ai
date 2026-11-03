@@ -1,0 +1,13 @@
+diff --git a/apps/demo-app/src/config.ts b/apps/demo-app/src/config.ts
+index e3e3313..24ef61c 100644
+--- a/apps/demo-app/src/config.ts
++++ b/apps/demo-app/src/config.ts
+@@ -10,7 +10,7 @@ const databaseSchema = z.object({
+ 
+ // Lets ops write amounts with separators, like 5,000 or 5_000.
+ const envInt = <T extends z.ZodType>(schema: T) =>
+-  z.preprocess((v) => String(v).replace(/[,_]/g, ''), schema);
++  z.preprocess((v) => (typeof v === 'string' ? v.replace(/[,_]/g, '') : v), schema);
+ 
+ // The config surface the infra/config seeded bugs break.
+ const shopSchema = z.object({

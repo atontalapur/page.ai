@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { testSteps } from '../audit/test-utils.ts';
 import { execute } from './execute.ts';
 import { MAX_EDIT_BYTES, shellQuote } from './edit.ts';
 import { FakeRunner } from './fake-runner.ts';
@@ -45,6 +46,7 @@ describe('execute edit', () => {
     const result = await execute(edit('src/a.ts', 'a = 1', 'a = 3'), {
       tier: 1,
       runner: fsRunner(files),
+      steps: testSteps(),
     });
     expect(result).toEqual({
       ok: true,
@@ -60,7 +62,11 @@ describe('execute edit', () => {
 
   it('writes newText literally, even with $ patterns', async () => {
     const files = { [`${W}/a.ts`]: 'x' };
-    await execute(edit('a.ts', 'x', "$&$'$1"), { tier: 1, runner: fsRunner(files) });
+    await execute(edit('a.ts', 'x', "$&$'$1"), {
+      tier: 1,
+      runner: fsRunner(files),
+      steps: testSteps(),
+    });
     expect(files[`${W}/a.ts`]).toBe("$&$'$1");
   });
 
@@ -69,6 +75,7 @@ describe('execute edit', () => {
     const result = await execute(edit('src/new.ts', '', 'export {};\n'), {
       tier: 1,
       runner: fsRunner(files),
+      steps: testSteps(),
     });
     expect(result.ok && result.value.output).toBe('created src/new.ts');
     expect(files[`${W}/src/new.ts`]).toBe('export {};\n');
@@ -76,7 +83,11 @@ describe('execute edit', () => {
 
   it('will not create over an existing file', async () => {
     const files = { [`${W}/a.ts`]: 'old' };
-    const result = await execute(edit('a.ts', '', 'new'), { tier: 1, runner: fsRunner(files) });
+    const result = await execute(edit('a.ts', '', 'new'), {
+      tier: 1,
+      runner: fsRunner(files),
+      steps: testSteps(),
+    });
     expect(result).toMatchObject({ ok: false, error: { type: 'failed', exitCode: 1 } });
     expect(files[`${W}/a.ts`]).toBe('old');
   });
@@ -89,6 +100,7 @@ describe('execute edit', () => {
     const result = await execute(edit('a.ts', oldText, 'y'), {
       tier: 1,
       runner: fsRunner(files),
+      steps: testSteps(),
     });
     expect(result).toMatchObject({ ok: false, error: { type: 'failed', output: message } });
     expect(files[`${W}/a.ts`]).toBe('x-x-x');
@@ -96,7 +108,11 @@ describe('execute edit', () => {
 
   it('counts overlapping matches as ambiguous', async () => {
     const files = { [`${W}/a.ts`]: 'aaa' };
-    const result = await execute(edit('a.ts', 'aa', 'b'), { tier: 1, runner: fsRunner(files) });
+    const result = await execute(edit('a.ts', 'aa', 'b'), {
+      tier: 1,
+      runner: fsRunner(files),
+      steps: testSteps(),
+    });
     expect(!result.ok && result.error.type === 'failed' && result.error.output).toContain(
       'appears 2 times',
     );
@@ -104,7 +120,11 @@ describe('execute edit', () => {
   });
 
   it('passes on a failed read', async () => {
-    const result = await execute(edit('gone.ts', 'a', 'b'), { tier: 1, runner: fsRunner({}) });
+    const result = await execute(edit('gone.ts', 'a', 'b'), {
+      tier: 1,
+      runner: fsRunner({}),
+      steps: testSteps(),
+    });
     expect(result).toMatchObject({
       ok: false,
       error: { type: 'failed', exitCode: 1, output: '[stderr]\nmissing\n' },
@@ -113,7 +133,12 @@ describe('execute edit', () => {
 
   it('trims the output of a failed step to the budget', async () => {
     const runner = new FakeRunner(() => FakeRunner.exited(2, 'x'.repeat(50_000)));
-    const result = await execute(edit('a.ts', 'a', 'b'), { tier: 1, runner, outputBudget: 100 });
+    const result = await execute(edit('a.ts', 'a', 'b'), {
+      tier: 1,
+      runner,
+      steps: testSteps(),
+      outputBudget: 100,
+    });
     expect(result).toMatchObject({ ok: false, error: { type: 'failed', exitCode: 2 } });
     const output = !result.ok && result.error.type === 'failed' ? result.error.output : '';
     expect(output).toContain('characters trimmed');
@@ -125,6 +150,7 @@ describe('execute edit', () => {
     const result = await execute(edit('logo.png', 'PNG', 'x'), {
       tier: 1,
       runner: fsRunner(files),
+      steps: testSteps(),
     });
     expect(result).toMatchObject({
       ok: false,
@@ -134,7 +160,11 @@ describe('execute edit', () => {
 
   it('reports a timeout', async () => {
     const runner = new FakeRunner(() => FakeRunner.timedOut());
-    const result = await execute(edit('a.ts', 'a', 'b'), { tier: 1, runner });
+    const result = await execute(edit('a.ts', 'a', 'b'), {
+      tier: 1,
+      runner,
+      steps: testSteps(),
+    });
     expect(result).toMatchObject({
       ok: false,
       error: { type: 'timed_out', output: 'a.ts: timed out' },
@@ -149,7 +179,11 @@ describe('execute edit', () => {
     ['', 'empty path'],
   ])('refuses %j without calling the runner', async (path, reason) => {
     const runner = new FakeRunner();
-    const result = await execute(edit(path, 'a', 'b'), { tier: 1, runner });
+    const result = await execute(edit(path, 'a', 'b'), {
+      tier: 1,
+      runner,
+      steps: testSteps(),
+    });
     expect(result).toMatchObject({ ok: false, error: { type: 'refused' } });
     expect(!result.ok && result.error.type === 'refused' && result.error.message).toContain(reason);
     expect(runner.requests).toEqual([]);
@@ -157,7 +191,11 @@ describe('execute edit', () => {
 
   it('uses absolute, quoted paths and a size guard in its commands', async () => {
     const runner = new FakeRunner(() => FakeRunner.exited(0, 'a'));
-    await execute(edit("it's.ts", 'a', 'b'), { tier: 1, runner });
+    await execute(edit("it's.ts", 'a', 'b'), {
+      tier: 1,
+      runner,
+      steps: testSteps(),
+    });
     const [read, write] = runner.requests.map((request) => request.command);
     expect(read).toContain(`[ -f '${W}/it'\\''s.ts' ]`);
     expect(read).toContain(`-le ${MAX_EDIT_BYTES}`);

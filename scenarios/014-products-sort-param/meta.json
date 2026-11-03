@@ -1,0 +1,5 @@
+{
+  "class": "backend-api",
+  "expectedTier": 2,
+  "description": "GET /api/products passes ?sort= straight into ORDER BY, so a sort key that isn't a column returns 500"
+}
