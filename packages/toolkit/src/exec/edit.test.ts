@@ -173,7 +173,12 @@ describe('execute edit', () => {
 
   it("bounds both steps by the caller's time left", async () => {
     const runner = new FakeRunner(() => FakeRunner.exited(0, 'a'));
-    await execute(edit('a.ts', 'a', 'b'), { tier: 1, runner, timeoutMs: 5_000 });
+    await execute(edit('a.ts', 'a', 'b'), {
+      tier: 1,
+      runner,
+      steps: testSteps(),
+      timeoutMs: 5_000,
+    });
     expect(runner.requests).toHaveLength(2);
     for (const { timeoutMs } of runner.requests) {
       expect(timeoutMs).toBeGreaterThan(0);
@@ -183,7 +188,12 @@ describe('execute edit', () => {
 
   it('caps an edit at EDIT_TIMEOUT_MS when the caller has more time', async () => {
     const runner = new FakeRunner(() => FakeRunner.exited(0, 'a'));
-    await execute(edit('a.ts', 'a', 'b'), { tier: 1, runner, timeoutMs: 10 * EDIT_TIMEOUT_MS });
+    await execute(edit('a.ts', 'a', 'b'), {
+      tier: 1,
+      runner,
+      steps: testSteps(),
+      timeoutMs: 10 * EDIT_TIMEOUT_MS,
+    });
     for (const { timeoutMs } of runner.requests)
       expect(timeoutMs).toBeLessThanOrEqual(EDIT_TIMEOUT_MS);
   });

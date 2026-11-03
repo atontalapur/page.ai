@@ -51,6 +51,17 @@ describe('observationPrompt', () => {
   });
 });
 
+describe('observationPrompt for an unaudited step', () => {
+  it('throws, since the loop ends the run first', () => {
+    expect(() =>
+      observationPrompt({
+        ok: false,
+        error: { ...exec, type: 'audit_failed', ran: false, message: 'sink down' },
+      }),
+    ).toThrow(/unaudited step: sink down/);
+  });
+});
+
 describe('formatErrorPrompt', () => {
   it('repeats the error and the expected format', () => {
     const text = formatErrorPrompt('Expected exactly 1 action, found 2.', 'stop');

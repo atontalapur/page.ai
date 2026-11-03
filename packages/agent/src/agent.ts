@@ -48,7 +48,13 @@ export const DEFAULT_AGENT_CONFIG: AgentConfig = {
 };
 
 export type ExitStatus =
-  'submitted' | 'step_limit' | 'cost_limit' | 'time_limit' | 'format_errors' | 'model_error';
+  | 'submitted'
+  | 'step_limit'
+  | 'cost_limit'
+  | 'time_limit'
+  | 'format_errors'
+  | 'model_error'
+  | 'audit_failed';
 
 export interface AgentRun {
   exitStatus: ExitStatus;
@@ -57,6 +63,8 @@ export interface AgentRun {
   costUsd: number;
   /** Set when exitStatus is `model_error`. */
   error?: ModelError;
+  /** Set when exitStatus is `audit_failed`: why the step couldn't be written. */
+  auditError?: string;
 }
 
 const reached = (limit: number, value: number) => limit > 0 && value >= limit;
@@ -130,6 +138,10 @@ export async function runAgent(
     if (parsed.action.kind === 'submit') return finish('submitted');
     if (outOfTime()) return finish('time_limit');
     const result = await deps.execute(parsed.action.call, withTimeout(timeLeft()));
+    // Nothing may run unaudited, so a step the log couldn't take ends the run.
+    if (!result.ok && result.error.type === 'audit_failed') {
+      return { ...finish('audit_failed'), auditError: result.error.message };
+    }
     messages.push({ role: 'user', content: observationPrompt(result) });
   }
 }

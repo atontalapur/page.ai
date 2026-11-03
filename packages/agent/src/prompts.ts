@@ -128,6 +128,9 @@ export function observationPrompt(result: Result<ExecOk, ExecErr>): string {
       return `<timed_out/>\n${output(e.output)}`;
     case 'refused':
       return `<refused>${e.message}</refused>\nThe command was refused, so nothing ran. Try a different command that the rules allow.`;
+    case 'audit_failed':
+      // runAgent ends the run on this before it builds an observation.
+      throw new Error(`no observation for an unaudited step: ${e.message}`);
   }
 }
 

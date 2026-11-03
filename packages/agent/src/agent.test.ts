@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { err, type ExecErr } from '@page/toolkit';
 import { runAgent } from './agent.ts';
 import { bash, failedResult, fakeExecute, okResult, ScriptedModel, submit } from './test-utils.ts';
 
+const lsCall = { kind: 'exec', command: 'ls' } as const;
+const lsStep = { kind: 'exec', input: 'ls' } as const;
 const task = { task: 'GET /products returns 500: RangeError: Invalid currency code : USDD' };
 
 describe('runAgent', () => {
@@ -195,5 +198,23 @@ describe('runAgent', () => {
     const model = new ScriptedModel([bash('ls'), error]);
     const result = await runAgent(task, { model, ...fakeExecute() });
     expect(result).toMatchObject({ exitStatus: 'model_error', modelCalls: 1, error });
+  });
+
+  it.each([
+    ['before it ran', { type: 'audit_failed', ran: false, message: 'sink down' }],
+    [
+      'after it ran',
+      { type: 'audit_failed', ran: true, message: 'sink down', result: okResult(lsCall) },
+    ],
+  ] as const)('ends the run when a step could not be audited %s', async (_when, failure) => {
+    const model = new ScriptedModel([bash('ls'), bash('ls')]);
+    const fake = fakeExecute(() => err<ExecErr>({ ...lsStep, ...failure }));
+    const result = await runAgent(task, { model, ...fake });
+    expect(result).toMatchObject({
+      exitStatus: 'audit_failed',
+      modelCalls: 1,
+      auditError: 'sink down',
+    });
+    expect(fake.calls).toHaveLength(1);
   });
 });

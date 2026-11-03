@@ -2,6 +2,7 @@
 // Breaks a fresh sandbox with the scenario's break.sh, lets the agent try to fix it with a
 // real model, runs check.sh, and saves the run as a replay fixture for @page/agent. Run
 // from the repo root. Prints the run's outcome and the agent's diff.
+import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -13,7 +14,13 @@ import {
   type Transcript,
 } from '@page/agent';
 import { OpenRouterClient, withRetries } from '@page/model-client';
-import { DEFAULT_TIMEOUT_MS, DockerExecRunner, execute } from '@page/toolkit';
+import {
+  DEFAULT_TIMEOUT_MS,
+  DockerExecRunner,
+  execute,
+  InMemoryAuditSink,
+  StepLog,
+} from '@page/toolkit';
 import { loadScenario } from '../src/scenario.ts';
 import { shellIn, startSandbox, stopSandbox } from './sandbox.ts';
 
@@ -55,10 +62,16 @@ try {
 
   const runner = new DockerExecRunner({ container: name });
   const tier = scenario.meta.expectedTier;
+  // A recording isn't a real issue, so its audit trail stays in memory.
+  const steps = new StepLog({
+    sink: new InMemoryAuditSink(),
+    issueId: randomUUID(),
+    runId: randomUUID(),
+  });
   const recording = recordingDeps({
     model: withRetries(new OpenRouterClient({ apiKey, model: values.model })),
     execute: (call, { timeoutMs = Infinity }) =>
-      execute(call, { tier, runner, timeoutMs: Math.min(DEFAULT_TIMEOUT_MS, timeoutMs) }),
+      execute(call, { tier, runner, steps, timeoutMs: Math.min(DEFAULT_TIMEOUT_MS, timeoutMs) }),
   });
   // The scenario's report stands in for the triaged error report until ingest (#30) can
   // build one.
@@ -97,7 +110,8 @@ try {
   const path = join(values.out, `${id}.json`);
   await writeFile(path, `${JSON.stringify(transcript, null, 2)}\n`);
 
-  console.log(`exit:       ${run.exitStatus}${run.error ? ` (${run.error.message})` : ''}`);
+  const why = run.error?.message ?? run.auditError;
+  console.log(`exit:       ${run.exitStatus}${why === undefined ? '' : ` (${why})`}`);
   console.log(`model:      ${values.model}, ${run.modelCalls} calls, $${run.costUsd.toFixed(4)}`);
   console.log(`check.sh:   ${check.code === 0 ? 'passed' : `failed (exit ${check.code})`}`);
   console.log(`transcript: ${path}`);
