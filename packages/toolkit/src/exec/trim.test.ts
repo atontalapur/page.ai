@@ -49,6 +49,16 @@ describe('stripAnsi', () => {
     expect(stripAnsi('\x1b]8;;https://x.dev\x1b\\docs\x1b]8;;\x1b\\')).toBe('docs');
   });
 
+  it('removes single-character escapes, 8-bit CSI and DCS', () => {
+    expect(stripAnsi('a\x1b(Bb\x9b31mc\x1b7e')).toBe('abce');
+    expect(stripAnsi('a\x1bP1$r0m\x1b\\b')).toBe('ab');
+  });
+
+  it('keeps the text after an OSC that lost its terminator', () => {
+    const cut = 'x\x1b]0;title-no-term\n[... 5 characters dropped ...]\nmore text\x07end';
+    expect(stripAnsi(cut)).toBe('x0;title-no-term\n[... 5 characters dropped ...]\nmore textend');
+  });
+
   it('leaves plain text, tabs and newlines alone', () => {
     expect(stripAnsi('a\tb\n  c [x] ~')).toBe('a\tb\n  c [x] ~');
   });
