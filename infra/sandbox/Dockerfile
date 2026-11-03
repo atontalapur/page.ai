@@ -28,6 +28,11 @@ RUN pnpm install --frozen-lockfile --filter @page/demo-app... --ignore-scripts \
 COPY --chown=node:node packages/config packages/config
 COPY --chown=node:node apps/demo-app apps/demo-app
 
+# Route types, so the agent's direct eslint and tsc calls see them without running
+# `next` (tier 1 doesn't allow it). Before the baseline commit, so nothing generated
+# here shows up in the agent's diff.
+RUN NEXT_TELEMETRY_DISABLED=1 pnpm --filter @page/demo-app exec next typegen
+
 # .git is excluded from the build context, so start a fresh repo with the baked-in
 # source as the baseline. The agent's diff is everything after this commit.
 RUN git init -q -b main \
