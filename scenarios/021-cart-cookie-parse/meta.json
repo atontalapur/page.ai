@@ -1,0 +1,5 @@
+{
+  "class": "frontend",
+  "expectedTier": 1,
+  "description": "readCartId parses the cart cookie with parse() instead of safeParse(), so a malformed cookie makes the cart page return 500"
+}

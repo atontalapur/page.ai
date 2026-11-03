@@ -1,0 +1,13 @@
+diff --git a/apps/demo-app/src/app/ids.ts b/apps/demo-app/src/app/ids.ts
+index a30bff1..9715b8b 100644
+--- a/apps/demo-app/src/app/ids.ts
++++ b/apps/demo-app/src/app/ids.ts
+@@ -1,7 +1,7 @@
+ import { z } from 'zod';
+ 
+ /** A `serial` primary key: a positive Postgres int4. */
+-export const idSchema = z.number().int().positive();
++export const idSchema = z.number().int().min(1).max(2_147_483_647);
+ 
+ /** Parses an id from a route param or form field; undefined if it isn't a valid id. */
+ export function parseId(value: unknown): number | undefined {

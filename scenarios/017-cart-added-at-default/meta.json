@@ -1,0 +1,5 @@
+{
+  "class": "database",
+  "expectedTier": 1,
+  "description": "Migration adds cart_items.added_at as not null and drops its default, so every add to cart violates the constraint"
+}

@@ -1,0 +1,13 @@
+diff --git a/apps/demo-app/src/app/products/[slug]/page.tsx b/apps/demo-app/src/app/products/[slug]/page.tsx
+index a38db33..5130d61 100644
+--- a/apps/demo-app/src/app/products/[slug]/page.tsx
++++ b/apps/demo-app/src/app/products/[slug]/page.tsx
+@@ -12,7 +12,7 @@ export default async function ProductPage(props: PageProps<'/products/[slug]'>)
+   const product = await getProduct(db, slug);
+   if (!product) notFound();
+   const cart = await getCart(db, readCartId(cookies), settings);
+-  const inCart = cart.lines.find((line) => line.productId === product.id)!.quantity;
++  const inCart = cart.lines.find((line) => line.productId === product.id)?.quantity ?? 0;
+ 
+   const soldOut = product.stock === 0;
+   return (

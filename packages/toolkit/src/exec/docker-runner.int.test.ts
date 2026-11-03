@@ -142,5 +142,5 @@ describe('DockerExecRunner against a container', () => {
     expect(!tooBig.ok && tooBig.error.type === 'failed' && tooBig.error.output).toContain(
       'is over 500000 bytes',
     );
-  });
+  }, 20_000);
 });

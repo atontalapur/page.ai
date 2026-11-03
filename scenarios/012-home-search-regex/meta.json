@@ -1,0 +1,5 @@
+{
+  "class": "frontend",
+  "expectedTier": 1,
+  "description": "Home page search builds a RegExp from the query, so searching for \"(\" throws a SyntaxError"
+}
