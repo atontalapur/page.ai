@@ -11,6 +11,10 @@ digits and a kebab-case slug (`001-bad-currency-code`).
 | `reference_fix.patch` | A known fix, applied on top of `break.sh` with `git apply`.                         |
 | `meta.json`           | `class`, `expectedTier` and a one-line `description` (`ScenarioMeta` in contracts). |
 
+`meta.json` may also carry a `report`: the request, the status and the error with its stack,
+as on-call would see it. The agent gets it as its task, so it must not say why the bug
+happens or how to fix it. `description` names the cause and is for people only.
+
 `break.sh` and `check.sh` run in the sandbox image (Alpine, busybox `sh`, no bash) from
 `/workspace`, the repo root, as the sandbox user. They get no network. `check.sh` must
 exit 1 for the bug, so the self-test can tell it apart from a check that crashed or a

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    // Node runs these files by stripping types, which rejects enums, parameter properties
+    // and namespaces.
+    "erasableSyntaxOnly": true
+  }
+}

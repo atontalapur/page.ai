@@ -23,5 +23,9 @@
     "eslint": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@page/model-client": "workspace:*",
+    "@page/toolkit": "workspace:*"
   }
 }

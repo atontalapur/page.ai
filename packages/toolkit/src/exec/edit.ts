@@ -5,7 +5,7 @@ import type { RunResult } from './runner.ts';
 import { combineOutput, DEFAULT_OUTPUT_BUDGET, trimOutput } from './trim.ts';
 import type { EditCall, ExecContext, RunErr, RunOutcome, StepBase } from './types.ts';
 
-/** Reading or writing one file should take well under this. */
+/** An edit (read, then write) should take well under this. */
 export const EDIT_TIMEOUT_MS = 30_000;
 // The runner keeps only the head and tail of very long output, so a bigger file would come
 // back cut and be written back corrupted. Source files are far smaller.
@@ -38,8 +38,11 @@ export async function runEdit(
   // Absolute, so a path such as `-x` can't be read as an option.
   const absolute = posix.resolve(WORKSPACE, call.path);
   const path = shellQuote(absolute);
+  // The read and the write share one deadline, capped by the caller's time left, so an
+  // edit near the end of a run can't outlast it.
+  const deadline = Date.now() + Math.min(EDIT_TIMEOUT_MS, ctx.timeoutMs ?? EDIT_TIMEOUT_MS);
   const run = (command: string, stdin?: string): Promise<RunResult> =>
-    ctx.runner.run({ command, timeoutMs: EDIT_TIMEOUT_MS, stdin });
+    ctx.runner.run({ command, timeoutMs: Math.max(1, deadline - Date.now()), stdin });
   const problem = (result: RunResult): RunOutcome | null => {
     if (result.status === 'timed_out') {
       return err({ ...base, type: 'timed_out', output: `${call.path}: timed out` });

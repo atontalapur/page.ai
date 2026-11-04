@@ -8,6 +8,7 @@
     "./eslint": "./eslint.js",
     "./prettier": "./prettier.js",
     "./tsconfig/base.json": "./tsconfig/base.json",
+    "./tsconfig/node-ts.json": "./tsconfig/node-ts.json",
     "./tsconfig/react.json": "./tsconfig/react.json",
     "./vitest": "./vitest.js"
   },

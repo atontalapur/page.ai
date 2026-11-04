@@ -445,9 +445,18 @@ importers:
 
   eval:
     dependencies:
+      '@page/agent':
+        specifier: workspace:*
+        version: link:../packages/agent
       '@page/contracts':
         specifier: workspace:*
         version: link:../packages/contracts
+      '@page/model-client':
+        specifier: workspace:*
+        version: link:../packages/model-client
+      '@page/toolkit':
+        specifier: workspace:*
+        version: link:../packages/toolkit
     devDependencies:
       '@page/config':
         specifier: workspace:*
@@ -469,6 +478,13 @@ importers:
         version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/coverage-v8@5.0.5)(vite@8.3.5(@types/node@24.19.2)(jiti@2.7.0))
 
   packages/agent:
+    dependencies:
+      '@page/model-client':
+        specifier: workspace:*
+        version: link:../model-client
+      '@page/toolkit':
+        specifier: workspace:*
+        version: link:../toolkit
     devDependencies:
       '@page/config':
         specifier: workspace:*
@@ -634,6 +650,10 @@ importers:
         version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/coverage-v8@5.0.5)(vite@8.3.5(@types/node@24.19.2)(jiti@2.7.0))
 
   packages/model-client:
+    dependencies:
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
     devDependencies:
       '@page/config':
         specifier: workspace:*
