@@ -13,11 +13,16 @@ describe('DockerExecRunner', () => {
     const result = await runner('argv').run({ command: 'ls -la', timeoutMs: 1500 });
     const argv = result.stdout.trimEnd().split('\n');
     expect(argv[3]).toMatch(/^PAGE_EXEC=[0-9a-f-]{36}$/);
-    expect(argv[9]).toContain('timeout -s KILL "$1" sh -c "$2"');
-    expect([...argv.slice(0, 3), ...argv.slice(4, 9), ...argv.slice(10)]).toEqual([
+    expect(argv[13]).toContain('timeout -s KILL "$1" sh -c "$2"');
+    expect([...argv.slice(0, 3), ...argv.slice(4, 13), ...argv.slice(14)]).toEqual([
       'exec',
       '-i',
       '-e',
+      // Colour off, so escape codes don't eat the agent's output budget.
+      '-e',
+      'NO_COLOR=1',
+      '-e',
+      'FORCE_COLOR=0',
       '-w',
       '/workspace',
       'argv',
@@ -31,7 +36,7 @@ describe('DockerExecRunner', () => {
 
   it('rounds sub-second timeouts up to one second', async () => {
     const result = await runner('argv').run({ command: 'x', timeoutMs: 10 });
-    expect(result.stdout.split('\n')[11]).toBe('1');
+    expect(result.stdout.split('\n')[15]).toBe('1');
   });
 
   it('returns exit code, stdout and stderr', async () => {
