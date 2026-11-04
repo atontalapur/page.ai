@@ -1,5 +1,6 @@
 {
   "class": "infra-config",
   "expectedTier": 1,
-  "description": "CHECKOUT_ENABLED loses its default, so every shop page throws where the variable is unset"
+  "description": "CHECKOUT_ENABLED loses its default, so every shop page throws where the variable is unset",
+  "report": "GET / returned 500\n\nZodError: [\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"CHECKOUT_ENABLED\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]\n    at loadShopSettings (apps/demo-app/src/config.ts:31:29)"
 }

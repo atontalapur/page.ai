@@ -1,5 +1,6 @@
 {
   "class": "backend-api",
   "expectedTier": 1,
-  "description": "addItem swaps its missing-product check for a non-null assertion, so an unknown productId throws a TypeError instead of a 404"
+  "description": "addItem swaps its missing-product check for a non-null assertion, so an unknown productId throws a TypeError instead of a 404",
+  "report": "POST /api/cart/items returned 500\nRequest body: {\"productId\":999999}\n\nTypeError: Cannot read properties of undefined (reading 'inCart')\n    at addItem (apps/demo-app/src/shop/cart.ts:90:27)"
 }
