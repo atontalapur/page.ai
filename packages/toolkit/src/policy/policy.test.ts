@@ -24,6 +24,8 @@ describe('checkCommand', () => {
       'pnpm -r lint',
       'pnpm exec tsc --noEmit',
       'pnpm exec eslint --fix src/cart.ts',
+      'pnpm exec vitest run src/related.test.ts',
+      'pnpm test related',
       'cat a.ts | head -n 5',
       'git diff > changes.patch',
       'pnpm test > test.log 2>&1',
@@ -113,6 +115,11 @@ describe('checkCommand', () => {
       ['pnpm exec tsc --outDir /tmp/out', 'pnpm /tmp/out'],
       ['pnpm exec eslint -o ../report.txt', 'pnpm ../report.txt'],
       ['pnpm vitest --outputFile=/tmp/x', 'pnpm --outputFile=/tmp/x'],
+      ['pnpm exec vitest run nope.test.ts --passWithNoTests', 'pnpm --passWithNoTests'],
+      ['pnpm vitest run --pass-with-no-tests', 'pnpm --pass-with-no-tests'],
+      ['pnpm test --passWithNoTests=true', 'pnpm --passWithNoTests=true'],
+      ['pnpm exec vitest related src/cart.ts --run', 'pnpm vitest related'],
+      ['pnpm -F @page/demo-app vitest related src/cart.ts', 'pnpm vitest related'],
     ])('refuses %j', (command, reason) => {
       const verdict = checkCommand(command, tier);
       expect(verdict.allowed).toBe(false);

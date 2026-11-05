@@ -47,6 +47,7 @@ const git: ArgRule = (args) => {
 
 const PNPM_SCRIPTS = new Set(['test', 'lint', 'typecheck']);
 const PNPM_BINS = new Set(['vitest', 'tsc', 'eslint']);
+const PASS_WITH_NO_TESTS = /^--pass-?with-?no-?tests(=|$)/i;
 
 // The test runner, through pnpm only. Workspace filters may come first.
 //
@@ -54,7 +55,8 @@ const PNPM_BINS = new Set(['vitest', 'tsc', 'eslint']);
 // the repo's scripts, configs and test files, all of which the agent can change with the
 // edit tool. Protecting package.json or *.config.* wouldn't close that, since any test file
 // runs code. The sandbox (#5: no network, nothing writable outside the repo and /tmp) is the
-// boundary; this rule only keeps an honest agent from writing outside the repo by accident.
+// boundary; this rule only keeps an honest agent from writing outside the repo or misreading
+// a test run by accident.
 const pnpm: ArgRule = (args) => {
   let i = 0;
   while (i < args.length) {
@@ -69,6 +71,14 @@ const pnpm: ArgRule = (args) => {
     (sub === 'run' && next !== undefined && PNPM_SCRIPTS.has(next)) ||
     (sub === 'exec' && next !== undefined && PNPM_BINS.has(next));
   if (!ok) return 'pnpm may only run test, lint, typecheck, vitest, tsc or eslint';
+  // These override the demo app's `passWithNoTests: false`, so a test that never ran would
+  // exit 0 and read as a pass (#65).
+  const passes = args.find((arg) => PASS_WITH_NO_TESTS.test(arg));
+  if (passes !== undefined) return `pnpm ${passes} is not allowed: no tests would exit 0`;
+  const vitest = sub === 'vitest' || (sub === 'exec' && next === 'vitest');
+  if (vitest && args.includes('related')) {
+    return 'pnpm vitest related is not allowed: no tests would exit 0';
+  }
   // Tools like tsc --outDir or eslint -o write wherever they're told. Nothing the test
   // runner needs lives outside the repo, so refuse any path that leaves it.
   const outside = args.find((arg) => {
