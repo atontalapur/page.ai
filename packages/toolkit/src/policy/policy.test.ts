@@ -1,3 +1,4 @@
+import { vitestConfig } from '@page/config/vitest';
 import type { Tier } from '@page/contracts';
 import { describe, expect, it } from 'vitest';
 import { checkCommand } from './policy.ts';
@@ -135,5 +136,13 @@ describe('checkCommand', () => {
       allowed: false,
       reason: 'make is not allowed at tier 2',
     });
+  });
+});
+
+describe('vitestConfig', () => {
+  // The policy refuses flags that undo this. `--changed` turns the setting on when it's unset,
+  // so leaving it to vitest's default would let a run with no test files exit 0 (#73).
+  it('sets passWithNoTests to false', () => {
+    expect(vitestConfig().test?.passWithNoTests).toBe(false);
   });
 });

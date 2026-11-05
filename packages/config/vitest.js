@@ -26,6 +26,8 @@ const gated = '{{tier,approval}*,*{Tier,Approval}*,*[-_.]{tier,approval}*}';
 export function vitestConfig({ coverage = 70 } = {}) {
   return defineConfig({
     test: {
+      // Set, not left to the default: `--changed` turns it on when it's unset.
+      passWithNoTests: false,
       coverage: {
         provider: 'v8',
         include: ['src/**/*.{ts,tsx}'],
