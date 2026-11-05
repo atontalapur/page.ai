@@ -19,7 +19,8 @@ const gated = '{{tier,approval}*,*{Tier,Approval}*,*[-_.]{tier,approval}*}';
  * A run that matches no test files fails, so a renamed test or a mistyped filter can't read
  * as a pass (#65, #73). A package with no tests for a project yet adds `--passWithNoTests` to
  * that script, and drops it with its first test. A mistyped path still passes if another path
- * in the same run matched.
+ * in the same run matched, and a path filter run across packages fails in any package that
+ * doesn't have the file.
  *
  * @param {{ coverage?: number }} [options] global coverage threshold in percent
  */
