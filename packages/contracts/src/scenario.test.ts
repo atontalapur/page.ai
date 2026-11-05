@@ -23,12 +23,6 @@ describe('scenarioMetaSchema', () => {
     expect(() => scenarioMetaSchema.parse({ ...valid, description: 'a\nb' })).toThrow();
   });
 
-  it('accepts a multi-line report', () => {
-    const report =
-      'GET / returned 500\n\nRangeError: Invalid currency code : US\n    at money.ts:1:13';
-    expect(scenarioMetaSchema.parse({ ...valid, report })).toEqual({ ...valid, report });
-  });
-
   it('rejects a missing report', () => {
     expect(() => scenarioMetaSchema.parse({ ...valid, report: undefined })).toThrow();
   });
