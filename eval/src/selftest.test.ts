@@ -66,6 +66,7 @@ describe('selfTest', () => {
       NO_CHECK_IN_SANDBOX,
       'CHECK',
       'BREAK',
+      framesExistScript([]),
       'CHECK',
       expect.stringContaining('+++ b/x\nPAGE_PATCH_EOF\n'),
       'CHECK',

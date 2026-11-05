@@ -108,21 +108,13 @@ export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<Se
   // appear in a patch line, which always starts with a space, +, - or a header.
   const body = patch.endsWith('\n') ? patch : `${patch}\n`;
   const apply = `git apply --whitespace=nowarn - <<'PAGE_PATCH_EOF'\n${body}PAGE_PATCH_EOF\n`;
-  const frames = reportFrames(scenario.meta.report);
+  const frames = framesExistScript(reportFrames(scenario.meta.report));
 
   const plan: { step: string; script: string; expect: 'pass' | 'fail' }[] = [
     { step: 'check.sh is not in the sandbox', script: NO_CHECK_IN_SANDBOX, expect: 'pass' },
     { step: 'check passes on the clean app', script: check, expect: 'pass' },
     { step: 'break.sh runs', script: breakScript, expect: 'pass' },
-    ...(frames.length > 0
-      ? [
-          {
-            step: 'report frames exist after break.sh',
-            script: framesExistScript(frames),
-            expect: 'pass' as const,
-          },
-        ]
-      : []),
+    { step: 'report frames exist after break.sh', script: frames, expect: 'pass' },
     { step: 'check fails after break.sh', script: check, expect: 'fail' },
     { step: 'reference_fix.patch applies', script: apply, expect: 'pass' },
     { step: 'check passes after the fix', script: check, expect: 'pass' },
