@@ -3,7 +3,8 @@ import { vitestConfig } from '@page/config/vitest';
 import { configDefaults, mergeConfig } from 'vitest/config';
 
 // Vitest fails a run only if something failed, so a `-t` that matches no test exits 0 with
-// every test skipped. The agent would read that as a pass (#66).
+// every test skipped. The agent would read that as a pass (#66). This checks the whole run,
+// so a file with every test skipped still passes if another file ran a test.
 const failWhenNoTestRan = {
   onTestRunEnd(modules, _errors, reason) {
     if (reason !== 'passed' || modules.length === 0) return;
@@ -16,7 +17,8 @@ const failWhenNoTestRan = {
 
 export default mergeConfig(vitestConfig(), {
   test: {
-    // Spread the defaults so CI keeps its github-actions reporter.
+    // Spread the defaults so CI keeps its github-actions reporter. A CLI --reporter replaces
+    // this list, so the toolkit policy refuses that flag for the agent.
     reporters: [...configDefaults.reporters, failWhenNoTestRan],
     // V8's optimizing compiler needs over 1 GB to compile PGlite's wasm, which the agent
     // sandbox (#5) doesn't have, so the sandbox image sets PAGE_SANDBOX and tests there
@@ -25,7 +27,8 @@ export default mergeConfig(vitestConfig(), {
     execArgv: process.env.PAGE_SANDBOX ? ['--liftoff-only'] : [],
     globalSetup: ['vitest.global-setup.ts'],
     // This app has tests, so a filter that matches none is a mistake. The agent would
-    // read the shared config's exit 0 as a pass (#65).
+    // read the shared config's exit 0 as a pass (#65). A mistyped path still passes if
+    // another path in the same run matched.
     passWithNoTests: false,
     // The first PGlite test in each file compiles the wasm and boots Postgres, which took
     // 1.6-5.8s in CI with other turbo tasks running beside it (#62).
