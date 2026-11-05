@@ -180,6 +180,21 @@ describe('reportFrames', () => {
     expect(reportFrames("scandir 'apps/demo-app/migrations'")).toEqual([]);
   });
 
+  it('finds a frame in a route group', () => {
+    const report = 'at CartPage (apps/demo-app/src/app/(shop)/cart/page.tsx:18:44)';
+    expect(reportFrames(report)).toEqual([
+      { path: 'apps/demo-app/src/app/(shop)/cart/page.tsx', line: 18, column: 44 },
+    ]);
+  });
+
+  it('skips dependency and build output frames under a workspace', () => {
+    const report = [
+      'at apps/demo-app/node_modules/foo/index.js:1:2',
+      'at f (apps/demo-app/.next/server/chunk.js:3:4)',
+    ].join('\n');
+    expect(reportFrames(report)).toEqual([]);
+  });
+
   it('lists a repeated frame once', () => {
     const frame = 'apps/demo-app/a.ts:1:2';
     expect(reportFrames(`at ${frame}\nat f (${frame})`)).toEqual([

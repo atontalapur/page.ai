@@ -47,13 +47,16 @@ export interface ReportFrame {
 }
 
 // A repo-relative path with its line and column. The lookbehind skips the same names inside
-// node_modules or an absolute path.
-const FRAME = /(?<![\w./@-])((?:apps|packages)\/[^\s():]+):(\d+):(\d+)/g;
+// node_modules or an absolute path. Parentheses stay in the path for Next.js route groups.
+const FRAME = /(?<![\w./@-])((?:apps|packages)\/[^\s:]+):(\d+):(\d+)/g;
+// Not source: these change without anyone editing the repo.
+const GENERATED = new Set(['node_modules', '.next']);
 
 /** The stack frames in a report that point into this repo, without repeats. */
 export function reportFrames(report: string): ReportFrame[] {
   const frames = new Map<string, ReportFrame>();
   for (const [frame, path, line, column] of report.matchAll(FRAME)) {
+    if (path!.split('/').some((part) => GENERATED.has(part))) continue;
     frames.set(frame, { path: path!, line: Number(line), column: Number(column) });
   }
   return [...frames.values()];
