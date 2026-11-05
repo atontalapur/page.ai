@@ -1,8 +1,6 @@
 # page.ai
 
 [![CI](https://github.com/atontalapur/page.ai/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/atontalapur/page.ai/actions/workflows/ci.yml)
-[![Sandbox image](https://github.com/atontalapur/page.ai/actions/workflows/sandbox-image.yml/badge.svg?branch=main)](https://github.com/atontalapur/page.ai/actions/workflows/sandbox-image.yml)
-[![Scenarios](https://github.com/atontalapur/page.ai/actions/workflows/scenarios.yml/badge.svg?branch=main)](https://github.com/atontalapur/page.ai/actions/workflows/scenarios.yml)
 
 [![Node.js 24](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![pnpm 12](https://img.shields.io/badge/pnpm-12-F69220?logo=pnpm&logoColor=white)](https://pnpm.io)
