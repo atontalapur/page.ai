@@ -16,26 +16,6 @@ const shopSchema = z.object({
   CHECKOUT_ENABLED: z.stringbool().default(true),
 });
 
-/** The env names the shop settings are read from, and that runtime config may set. */
-export type ShopSettingKey = keyof typeof shopSchema.shape;
-
-export const SHOP_SETTING_KEYS = Object.keys(shopSchema.shape) as ShopSettingKey[];
-
-export function isShopSettingKey(key: string): key is ShopSettingKey {
-  return Object.hasOwn(shopSchema.shape, key);
-}
-
-/**
- * Checks one override value the way loadShopSettings reads it: null when it's valid, else
- * why not. Stricter than env in one way: a blank value is refused.
- */
-export function checkShopSetting(key: ShopSettingKey, value: string): string | null {
-  // z.coerce.number() reads '' as 0, so an empty override would silently mean zero.
-  if (value.trim() === '') return 'must not be empty (delete the override to clear it)';
-  const parsed = shopSchema.shape[key].safeParse(value);
-  return parsed.success ? null : (parsed.error.issues[0]?.message ?? 'invalid value');
-}
-
 export interface ShopSettings {
   shippingFlatCents: number;
   freeShippingMinCents: number;
@@ -55,4 +35,24 @@ export function loadShopSettings(env: Env = process.env): ShopSettings {
     maxItemQuantity: config.MAX_ITEM_QUANTITY,
     checkoutEnabled: config.CHECKOUT_ENABLED,
   };
+}
+
+/** The env names the shop settings are read from, and that runtime config may set. */
+export type ShopSettingKey = keyof typeof shopSchema.shape;
+
+export const SHOP_SETTING_KEYS = Object.keys(shopSchema.shape) as ShopSettingKey[];
+
+export function isShopSettingKey(key: string): key is ShopSettingKey {
+  return Object.hasOwn(shopSchema.shape, key);
+}
+
+/**
+ * Checks one override value the way loadShopSettings reads it: null when it's valid, else
+ * why not. Stricter than env in one way: a blank value is refused.
+ */
+export function checkShopSetting(key: ShopSettingKey, value: string): string | null {
+  // z.coerce.number() reads '' as 0, so an empty override would silently mean zero.
+  if (value.trim() === '') return 'must not be empty (delete the override to clear it)';
+  const parsed = shopSchema.shape[key].safeParse(value);
+  return parsed.success ? null : (parsed.error.issues[0]?.message ?? 'invalid value');
 }
