@@ -16,12 +16,16 @@ const gated = '{{tier,approval}*,*{Tier,Approval}*,*[-_.]{tier,approval}*}';
  * Inline projects inherit the root `test` options (Vitest 5 default), so a package can
  * `mergeConfig(vitestConfig(), { test: { environment: 'jsdom' } })` and reach both.
  *
+ * A run that matches no test files fails, so a renamed test or a mistyped filter can't read
+ * as a pass (#65, #73). A package with no tests for a project yet adds `--passWithNoTests` to
+ * that script, and drops it with its first test. A mistyped path still passes if another path
+ * in the same run matched.
+ *
  * @param {{ coverage?: number }} [options] global coverage threshold in percent
  */
 export function vitestConfig({ coverage = 70 } = {}) {
   return defineConfig({
     test: {
-      passWithNoTests: true,
       coverage: {
         provider: 'v8',
         include: ['src/**/*.{ts,tsx}'],
