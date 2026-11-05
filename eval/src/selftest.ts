@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { shellQuote } from '@page/toolkit';
 import type { Scenario } from './scenario.ts';
 
 export interface ExecResult {
@@ -85,10 +86,9 @@ frame() {
  * can't tell if a line moved but stayed inside the file.
  */
 export function framesExistScript(frames: ReportFrame[]): string {
-  const calls = frames.map(({ path, line, column }) => {
-    const quoted = `'${path.replaceAll("'", `'\\''`)}'`;
-    return `frame ${quoted} ${line} ${column}\n`;
-  });
+  const calls = frames.map(
+    ({ path, line, column }) => `frame ${shellQuote(path)} ${line} ${column}\n`,
+  );
   return `${FRAME_CHECK}${calls.join('')}exit "$status"\n`;
 }
 

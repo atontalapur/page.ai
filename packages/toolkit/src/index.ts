@@ -12,6 +12,7 @@ export type {
 export { DockerExecRunner } from './exec/docker-runner.ts';
 export type { DockerExecRunnerOptions } from './exec/docker-runner.ts';
 export { FakeRunner } from './exec/fake-runner.ts';
+export { shellQuote } from './exec/edit.ts';
 export type { ExecRunner, RunRequest, RunResult } from './exec/runner.ts';
 export { DEFAULT_OUTPUT_BUDGET, trimOutput } from './exec/trim.ts';
 export { checkCommand } from './policy/policy.ts';
