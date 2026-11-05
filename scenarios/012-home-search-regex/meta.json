@@ -1,5 +1,6 @@
 {
   "class": "frontend",
   "expectedTier": 1,
-  "description": "Home page search builds a RegExp from the query, so searching for \"(\" throws a SyntaxError"
+  "description": "Home page search builds a RegExp from the query, so searching for \"(\" throws a SyntaxError",
+  "report": "GET /?q=%28 returned 500\n\nSyntaxError: Invalid regular expression: /(/i: Unterminated group\n    at new RegExp (<anonymous>)\n    at apps/demo-app/src/app/page.tsx:11:46\n    at Array.filter (<anonymous>)\n    at HomePage (apps/demo-app/src/app/page.tsx:11:32)"
 }
