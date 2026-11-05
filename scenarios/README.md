@@ -13,7 +13,8 @@ digits and a kebab-case slug (`001-bad-currency-code`).
 
 `report` is the request, the status and the error with its stack, as on-call would see it.
 The agent gets it as its task, so it must not say why the bug happens or how to fix it.
-`description` names the cause and is for people only.
+`description` names the cause and is for people only. Keep the error as thrown, but remove
+anything that points at the fix, such as a Postgres `hint`.
 
 `break.sh` and `check.sh` run in the sandbox image (Alpine, busybox `sh`, no bash) from
 `/workspace`, the repo root, as the sandbox user. They get no network. `check.sh` must
