@@ -55,6 +55,6 @@ expect_failure 'No test files found' \
 echo "ok: a filter that matches no test files fails"
 
 # A name filter that matches nothing skips every test, which is the same false pass (#66).
-sx pnpm --filter @page/demo-app exec vitest run src/shop/money.test.ts -t no-such-test-name \
-  && fail "vitest exits 0 when every test is skipped"
+expect_failure 'No tests ran: every test was skipped' \
+  sx pnpm --filter @page/demo-app exec vitest run src/shop/money.test.ts -t no-such-test-name
 echo "ok: a run where every test is skipped fails"
