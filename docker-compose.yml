@@ -26,6 +26,10 @@ services:
     environment:
       # Own database on the shared server; `db.ts migrate` creates it on first run.
       DATABASE_URL: postgres://page:page@postgres:5432/demo
+      # Turns on the ops API (#13). Set it to 32+ characters to try config, restart locally.
+      OPS_SECRET: ${OPS_SECRET:-}
+    # POST /api/ops/restart exits non-zero and relies on this to come back, as on Railway.
+    restart: on-failure
     command: >-
       sh -c "node scripts/db.ts migrate && node scripts/db.ts seed && exec node_modules/.bin/next start"
     ports:

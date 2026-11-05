@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { databaseUrl, loadShopSettings } from './config.ts';
+import {
+  checkShopSetting,
+  databaseUrl,
+  isShopSettingKey,
+  loadShopSettings,
+  SHOP_SETTING_KEYS,
+} from './config.ts';
 
 describe('databaseUrl', () => {
   it('accepts a postgres url', () => {
@@ -43,5 +49,20 @@ describe('loadShopSettings', () => {
 
   it('rejects a bad setting', () => {
     expect(() => loadShopSettings({ MAX_ITEM_QUANTITY: '0' })).toThrow();
+  });
+});
+
+describe('shop setting keys', () => {
+  it('lists the env names the shop reads', () => {
+    expect(SHOP_SETTING_KEYS).toContain('MAX_ITEM_QUANTITY');
+    expect(isShopSettingKey('CHECKOUT_ENABLED')).toBe(true);
+    expect(isShopSettingKey('DATABASE_URL')).toBe(false);
+    expect(isShopSettingKey('toString')).toBe(false);
+  });
+
+  it('checks one value the way loadShopSettings reads it', () => {
+    expect(checkShopSetting('MAX_ITEM_QUANTITY', '3')).toBeNull();
+    expect(checkShopSetting('MAX_ITEM_QUANTITY', '0')).toMatch(/>=1|1/);
+    expect(checkShopSetting('CHECKOUT_ENABLED', 'maybe')).not.toBeNull();
   });
 });
