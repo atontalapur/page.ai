@@ -11,6 +11,17 @@ trap 'docker stop -t 1 "$name" >/dev/null 2>&1 || true' EXIT
 sx() { docker exec "$name" "$@"; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+# Runs a command that should fail, and passes only on exit 1 with the expected message.
+# Any other code (125-127 from docker exec, 137 from the OOM killer) means the sandbox
+# broke, not that the command failed the way it should.
+expect_failure() {
+  local message="$1" output code=0
+  shift
+  output="$("$@" 2>&1)" || code=$?
+  [ "$code" = 1 ] || fail "expected exit 1 with '$message', got exit $code: $output"
+  [[ "$output" == *"$message"* ]] || fail "exit 1 without '$message': $output"
+}
+
 uid="$(sx id -u)"
 [ "$uid" != 0 ] || fail "runs as root"
 echo "ok: uid $uid"
@@ -36,3 +47,9 @@ echo "ok: no network"
 
 sx pnpm --filter @page/demo-app test
 echo "ok: demo app tests pass offline"
+
+# The agent passes repo-relative paths here by mistake. An exit 0 would read as a test
+# that passed when it never ran (#65).
+expect_failure 'No test files found' \
+  sx pnpm --filter @page/demo-app exec vitest run apps/demo-app/src/app/pages.test.tsx
+echo "ok: a filter that matches no test files fails"
