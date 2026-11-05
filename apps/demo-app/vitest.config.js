@@ -10,6 +10,9 @@ export default mergeConfig(vitestConfig(), {
     // NODE_OPTIONS, so it goes here.
     execArgv: process.env.PAGE_SANDBOX ? ['--liftoff-only'] : [],
     globalSetup: ['vitest.global-setup.ts'],
+    // This app has tests, so a filter that matches none is a mistake. The agent would
+    // read the shared config's exit 0 as a pass (#65).
+    passWithNoTests: false,
     // The first PGlite test in each file compiles the wasm and boots Postgres, which took
     // 1.6-5.8s in CI with other turbo tasks running beside it (#62).
     testTimeout: 15_000,

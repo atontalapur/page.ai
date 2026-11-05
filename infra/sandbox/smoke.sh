@@ -36,3 +36,9 @@ echo "ok: no network"
 
 sx pnpm --filter @page/demo-app test
 echo "ok: demo app tests pass offline"
+
+# The agent passes repo-relative paths here by mistake. An exit 0 would read as a test
+# that passed when it never ran (#65).
+sx pnpm --filter @page/demo-app exec vitest run apps/demo-app/src/app/pages.test.tsx \
+  && fail "vitest exits 0 when a filter matches no test files"
+echo "ok: a filter that matches no test files fails"
