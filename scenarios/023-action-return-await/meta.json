@@ -1,5 +1,6 @@
 {
   "class": "frontend",
   "expectedTier": 2,
-  "description": "orShowError returns work() without awaiting it, so a ShopError escapes its catch and the add-to-cart and checkout actions return 500"
+  "description": "orShowError returns work() without awaiting it, so a ShopError escapes its catch and the add-to-cart and checkout actions return 500",
+  "report": "POST /products/canvas-tote returned 500\nForm fields: productId=1, quantity=999\n\nShopError: At most 10 per item\n    at apps/demo-app/src/shop/cart.ts:93:13\n    at async Object.transaction (apps/demo-app/src/db/db.ts:32:24)\n    at async addItem (apps/demo-app/src/shop/cart.ts:78:3)\n    at async apps/demo-app/src/app/actions.ts:27:5\n    at async addToCart (apps/demo-app/src/app/actions.ts:23:3) {\n  code: 'invalid_quantity'\n}"
 }

@@ -1,5 +1,6 @@
 {
   "class": "database",
   "expectedTier": 1,
-  "description": "ensureCart drops on conflict do nothing, so any request with an existing cart violates carts_pkey and a second add to cart returns 500"
+  "description": "ensureCart drops on conflict do nothing, so any request with an existing cart violates carts_pkey and a second add to cart returns 500",
+  "report": "POST /api/cart/items returned 500\n\nerror: duplicate key value violates unique constraint \"carts_pkey\"\n    at async ensureCart (apps/demo-app/src/shop/cart.ts:29:5)\n    at async openCart (apps/demo-app/src/app/cart-session.ts:16:14)\n    at async apps/demo-app/src/app/api/cart/items/route.ts:19:20\n    at async handle (apps/demo-app/src/app/api/respond.ts:22:12) {\n  length: 215,\n  severity: 'ERROR',\n  code: '23505',\n  detail: 'Key (id)=(5ca5031b-7c1d-4f41-8aa6-b23f0206aaeb) already exists.',\n  hint: undefined,\n  position: undefined,\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: undefined,\n  schema: 'public',\n  table: 'carts',\n  column: undefined,\n  dataType: undefined,\n  constraint: 'carts_pkey',\n  file: 'nbtinsert.c',\n  line: '666',\n  routine: '_bt_check_unique'\n}"
 }

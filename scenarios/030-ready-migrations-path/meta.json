@@ -1,5 +1,6 @@
 {
   "class": "infra-config",
   "expectedTier": 1,
-  "description": "A new readiness check reads migrations from a repo-root path, which doesn't exist where the app runs, so /api/health/ready returns 500"
+  "description": "A new readiness check reads migrations from a repo-root path, which doesn't exist where the app runs, so /api/health/ready returns 500",
+  "report": "GET /api/health/ready returned 500\n\nError: ENOENT: no such file or directory, scandir '/workspace/apps/demo-app/apps/demo-app/migrations'\n    at async checkHealth (apps/demo-app/src/app/api/health/health.ts:17:8) {\n  errno: -2,\n  code: 'ENOENT',\n  syscall: 'scandir',\n  path: '/workspace/apps/demo-app/apps/demo-app/migrations'\n}"
 }
