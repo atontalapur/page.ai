@@ -1,5 +1,6 @@
 {
   "class": "backend-api",
   "expectedTier": 2,
-  "description": "GET /api/cart takes the cart id from an x-cart-id header without validating it, so a header that isn't a uuid returns 500"
+  "description": "GET /api/cart takes the cart id from an x-cart-id header without validating it, so a header that isn't a uuid returns 500",
+  "report": "GET /api/cart returned 500\nRequest header: x-cart-id: 42\n\nerror: invalid input syntax for type uuid: \"42\"\n    at async getCart (apps/demo-app/src/shop/cart.ts:43:9)\n    at async GET (apps/demo-app/src/app/api/cart/route.ts:9:24) {\n  length: 134,\n  severity: 'ERROR',\n  code: '22P02',\n  detail: undefined,\n  hint: undefined,\n  position: undefined,\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: \"unnamed portal parameter $1 = '...'\",\n  schema: undefined,\n  table: undefined,\n  column: undefined,\n  dataType: undefined,\n  constraint: undefined,\n  file: 'uuid.c',\n  line: '191',\n  routine: 'string_to_uuid'\n}"
 }

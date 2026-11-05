@@ -1,5 +1,6 @@
 {
   "class": "infra-config",
   "expectedTier": 2,
-  "description": "Dockerfile sets FREE_SHIPPING_MIN_CENTS with a trailing # note, which Docker keeps in the value, so every shop page throws in the image"
+  "description": "Dockerfile sets FREE_SHIPPING_MIN_CENTS with a trailing # note, which Docker keeps in the value, so every shop page throws in the image",
+  "report": "GET / returned 500\nSeen on: deployed image\n\nZodError: [\n  {\n    \"expected\": \"number\",\n    \"code\": \"invalid_type\",\n    \"received\": \"NaN\",\n    \"path\": [\n      \"FREE_SHIPPING_MIN_CENTS\"\n    ],\n    \"message\": \"Invalid input: expected number, received NaN\"\n  }\n]\n    at loadShopSettings (apps/demo-app/src/config.ts:31:29)\n    at shop (apps/demo-app/src/app/data.ts:24:32)\n    at async HomePage (apps/demo-app/src/app/page.tsx:7:18)"
 }

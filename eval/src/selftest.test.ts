@@ -14,7 +14,12 @@ beforeEach(async () => {
   scenario = {
     id: '001-sample',
     dir,
-    meta: { class: 'backend-api', expectedTier: 1, description: 'Sample' },
+    meta: {
+      class: 'backend-api',
+      expectedTier: 1,
+      description: 'Sample',
+      report: 'GET / returned 500',
+    },
   };
 });
 afterEach(async () => {

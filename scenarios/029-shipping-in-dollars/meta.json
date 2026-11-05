@@ -1,5 +1,6 @@
 {
   "class": "infra-config",
   "expectedTier": 1,
-  "description": "SHIPPING_FLAT_CENTS defaults to 4.99 (dollars) with .int() dropped, so checkout inserts a fraction into an integer column and returns 500"
+  "description": "SHIPPING_FLAT_CENTS defaults to 4.99 (dollars) with .int() dropped, so checkout inserts a fraction into an integer column and returns 500",
+  "report": "POST /api/orders returned 500\n\nerror: invalid input syntax for type integer: \"4.99\"\n    at async apps/demo-app/src/shop/orders.ts:52:22\n    at async Object.transaction (apps/demo-app/src/db/db.ts:32:24)\n    at async apps/demo-app/src/app/api/orders/route.ts:9:21\n    at async handle (apps/demo-app/src/app/api/respond.ts:22:12) {\n  length: 147,\n  severity: 'ERROR',\n  code: '22P02',\n  detail: undefined,\n  hint: undefined,\n  position: undefined,\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: \"unnamed portal parameter $2 = '...'\",\n  schema: undefined,\n  table: undefined,\n  column: undefined,\n  dataType: undefined,\n  constraint: undefined,\n  file: 'numutils.c',\n  line: '615',\n  routine: 'pg_strtoint32_safe'\n}"
 }

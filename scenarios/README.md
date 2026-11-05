@@ -3,17 +3,18 @@
 Seeded bugs for the demo app. Each one lives in `scenarios/<id>/`, where the id is three
 digits and a kebab-case slug (`001-bad-currency-code`).
 
-| File                  | What it does                                                                        |
-| --------------------- | ----------------------------------------------------------------------------------- |
-| `break.sh`            | Plants the bug in a clean demo app. Fails if it couldn't (the code it edits moved). |
-| `trigger.sh`          | Makes the bug fire on a running app at `$DEMO_APP_URL`, so PostHog sees it.         |
-| `check.sh`            | Exits 0 when the bug is fixed and 1 while it's there.                               |
-| `reference_fix.patch` | A known fix, applied on top of `break.sh` with `git apply`.                         |
-| `meta.json`           | `class`, `expectedTier` and a one-line `description` (`ScenarioMeta` in contracts). |
+| File                  | What it does                                                                                    |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| `break.sh`            | Plants the bug in a clean demo app. Fails if it couldn't (the code it edits moved).             |
+| `trigger.sh`          | Makes the bug fire on a running app at `$DEMO_APP_URL`, so PostHog sees it.                     |
+| `check.sh`            | Exits 0 when the bug is fixed and 1 while it's there.                                           |
+| `reference_fix.patch` | A known fix, applied on top of `break.sh` with `git apply`.                                     |
+| `meta.json`           | `class`, `expectedTier`, a one-line `description` and a `report` (`ScenarioMeta` in contracts). |
 
-`meta.json` may also carry a `report`: the request, the status and the error with its stack,
-as on-call would see it. The agent gets it as its task, so it must not say why the bug
-happens or how to fix it. `description` names the cause and is for people only.
+`report` is the request, the status and the error with its stack, as on-call would see it.
+The agent gets it as its task, so it must not say why the bug happens or how to fix it.
+`description` names the cause and is for people only. Keep the error as thrown, but remove
+anything that points at the fix, such as a Postgres `hint`.
 
 `break.sh` and `check.sh` run in the sandbox image (Alpine, busybox `sh`, no bash) from
 `/workspace`, the repo root, as the sandbox user. They get no network. `check.sh` must

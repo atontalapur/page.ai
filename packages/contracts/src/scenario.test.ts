@@ -5,6 +5,7 @@ const valid = {
   class: 'backend-api',
   expectedTier: 1,
   description: 'Cart total skips the last item',
+  report: 'GET /cart returned 500\n\nError: boom\n    at cart.ts:1:1',
 };
 
 describe('scenarioMetaSchema', () => {
@@ -22,10 +23,8 @@ describe('scenarioMetaSchema', () => {
     expect(() => scenarioMetaSchema.parse({ ...valid, description: 'a\nb' })).toThrow();
   });
 
-  it('accepts a multi-line report', () => {
-    const report =
-      'GET / returned 500\n\nRangeError: Invalid currency code : US\n    at money.ts:1:13';
-    expect(scenarioMetaSchema.parse({ ...valid, report })).toEqual({ ...valid, report });
+  it('rejects a missing report', () => {
+    expect(() => scenarioMetaSchema.parse({ ...valid, report: undefined })).toThrow();
   });
 
   it('rejects an empty or very long report', () => {

@@ -8,6 +8,7 @@ const meta = {
   class: 'backend-api',
   expectedTier: 1,
   description: 'Cart total skips the last item',
+  report: 'GET /cart returned 500\n\nError: boom\n    at cart.ts:1:1',
 };
 
 let root: string;

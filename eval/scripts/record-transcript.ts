@@ -21,7 +21,7 @@ import {
   InMemoryAuditSink,
   StepLog,
 } from '@page/toolkit';
-import { loadScenario } from '../src/scenario.ts';
+import { loadScenario, ScenarioError } from '../src/scenario.ts';
 import { shellIn, startSandbox, stopSandbox } from './sandbox.ts';
 
 const USAGE =
@@ -41,13 +41,13 @@ if (!image || !id || !values.model || !apiKey) {
   process.exit(2);
 }
 
-const scenario = await loadScenario(join('scenarios', id));
+const scenario = await loadScenario(join('scenarios', id)).catch((err: unknown) => {
+  if (!(err instanceof ScenarioError)) throw err;
+  console.error(err.message);
+  process.exit(2);
+});
 // The description names the cause, so the agent gets the report instead.
 const { report } = scenario.meta;
-if (report === undefined) {
-  console.error(`scenario ${id} has no report in meta.json; add one before recording`);
-  process.exit(2);
-}
 const [breakScript, checkScript] = await Promise.all(
   ['break.sh', 'check.sh'].map((f) => readFile(join(scenario.dir, f), 'utf8')),
 );

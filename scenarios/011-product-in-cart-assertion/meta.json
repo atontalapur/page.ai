@@ -1,5 +1,6 @@
 {
   "class": "frontend",
   "expectedTier": 1,
-  "description": "Product page asserts the product is already in the cart, so it throws a TypeError for anyone who hasn't added it"
+  "description": "Product page asserts the product is already in the cart, so it throws a TypeError for anyone who hasn't added it",
+  "report": "GET /products/canvas-tote returned 500\n\nTypeError: Cannot read properties of undefined (reading 'quantity')\n    at ProductPage (apps/demo-app/src/app/products/[slug]/page.tsx:15:73)"
 }
