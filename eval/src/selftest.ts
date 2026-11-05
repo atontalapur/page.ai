@@ -40,9 +40,59 @@ export const BUG_PRESENT = 1;
 // Lines of output kept for a failed step.
 const TAIL_LINES = 40;
 
+export interface ReportFrame {
+  path: string;
+  line: number;
+  column: number;
+}
+
+// A repo-relative path with its line and column. The lookbehind skips the same names inside
+// node_modules or an absolute path.
+const FRAME = /(?<![\w./@-])((?:apps|packages)\/[^\s():]+):(\d+):(\d+)/g;
+
+/** The stack frames in a report that point into this repo, without repeats. */
+export function reportFrames(report: string): ReportFrame[] {
+  const frames = new Map<string, ReportFrame>();
+  for (const [frame, path, line, column] of report.matchAll(FRAME)) {
+    frames.set(frame, { path: path!, line: Number(line), column: Number(column) });
+  }
+  return [...frames.values()];
+}
+
+const FRAME_CHECK = `status=0
+frame() {
+  if [ ! -f "$1" ]; then
+    echo "$1:$2:$3: no such file"
+    status=1
+    return
+  fi
+  length="$(awk -v n="$2" 'NR == n { print length($0); exit }' < "$1")"
+  if [ -z "$length" ]; then
+    echo "$1:$2:$3: past the end of the file"
+    status=1
+  elif [ "$length" -lt "$3" ]; then
+    echo "$1:$2:$3: past the end of the line"
+    status=1
+  fi
+}
+`;
+
+/**
+ * A script that exits 1 if a frame's file is gone or its line or column is past the end. It
+ * can't tell if a line moved but stayed inside the file.
+ */
+export function framesExistScript(frames: ReportFrame[]): string {
+  const calls = frames.map(({ path, line, column }) => {
+    const quoted = `'${path.replaceAll("'", `'\\''`)}'`;
+    return `frame ${quoted} ${line} ${column}\n`;
+  });
+  return `${FRAME_CHECK}${calls.join('')}exit "$status"\n`;
+}
+
 /**
  * The #6 self-test: on a clean demo app check.sh passes, after break.sh it fails, and
  * after reference_fix.patch it passes again. Stops at the first step that goes wrong.
+ * The report's stack frames must also fit the code break.sh leaves behind (#74).
  */
 export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<SelfTestResult> {
   const read = (file: string) => readFile(join(scenario.dir, file), 'utf8');
@@ -55,11 +105,21 @@ export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<Se
   // appear in a patch line, which always starts with a space, +, - or a header.
   const body = patch.endsWith('\n') ? patch : `${patch}\n`;
   const apply = `git apply --whitespace=nowarn - <<'PAGE_PATCH_EOF'\n${body}PAGE_PATCH_EOF\n`;
+  const frames = reportFrames(scenario.meta.report);
 
   const plan: { step: string; script: string; expect: 'pass' | 'fail' }[] = [
     { step: 'check.sh is not in the sandbox', script: NO_CHECK_IN_SANDBOX, expect: 'pass' },
     { step: 'check passes on the clean app', script: check, expect: 'pass' },
     { step: 'break.sh runs', script: breakScript, expect: 'pass' },
+    ...(frames.length > 0
+      ? [
+          {
+            step: 'report frames exist after break.sh',
+            script: framesExistScript(frames),
+            expect: 'pass' as const,
+          },
+        ]
+      : []),
     { step: 'check fails after break.sh', script: check, expect: 'fail' },
     { step: 'reference_fix.patch applies', script: apply, expect: 'pass' },
     { step: 'check passes after the fix', script: check, expect: 'pass' },

@@ -60,7 +60,8 @@ shapes are in use; copy one into a new `check.sh`, since the runner pipes it in 
 Every scenario must pass this before it counts:
 
 1. On a clean demo app, `check.sh` passes.
-2. After `break.sh`, it fails.
+2. After `break.sh`, every `path:line:column` frame in `report` that points into the repo
+   still fits its file, and `check.sh` fails.
 3. After `reference_fix.patch`, it passes again.
 
 Run it from the repo root against a built sandbox image:
