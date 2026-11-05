@@ -53,3 +53,8 @@ echo "ok: demo app tests pass offline"
 expect_failure 'No test files found' \
   sx pnpm --filter @page/demo-app exec vitest run apps/demo-app/src/app/pages.test.tsx
 echo "ok: a filter that matches no test files fails"
+
+# A name filter that matches nothing skips every test, which is the same false pass (#66).
+expect_failure 'No tests ran: every test was skipped' \
+  sx pnpm --filter @page/demo-app exec vitest run src/shop/money.test.ts -t no-such-test-name
+echo "ok: a run where every test is skipped fails"

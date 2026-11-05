@@ -118,6 +118,9 @@ describe('checkCommand', () => {
       ['pnpm exec vitest run nope.test.ts --passWithNoTests', 'pnpm --passWithNoTests'],
       ['pnpm vitest run --pass-with-no-tests', 'pnpm --pass-with-no-tests'],
       ['pnpm test --passWithNoTests=true', 'pnpm --passWithNoTests=true'],
+      ['pnpm exec vitest run src/a.test.ts -t typo --reporter=verbose', 'pnpm --reporter=verbose'],
+      ['pnpm test --reporter dot', 'pnpm --reporter'],
+      ['pnpm -F @page/demo-app vitest run --reporter=default', 'pnpm --reporter=default'],
       ['pnpm exec vitest related src/cart.ts --run', 'pnpm vitest related'],
       ['pnpm -F @page/demo-app vitest related src/cart.ts', 'pnpm vitest related'],
     ])('refuses %j', (command, reason) => {

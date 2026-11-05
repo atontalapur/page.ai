@@ -47,7 +47,7 @@ const git: ArgRule = (args) => {
 
 const PNPM_SCRIPTS = new Set(['test', 'lint', 'typecheck']);
 const PNPM_BINS = new Set(['vitest', 'tsc', 'eslint']);
-const PASS_WITH_NO_TESTS = /^--pass-?with-?no-?tests(=|$)/i;
+const UNDOES_TEST_GUARDS = /^--(pass-?with-?no-?tests|reporter)(=|$)/i;
 
 // The test runner, through pnpm only. Workspace filters may come first.
 //
@@ -71,10 +71,10 @@ const pnpm: ArgRule = (args) => {
     (sub === 'run' && next !== undefined && PNPM_SCRIPTS.has(next)) ||
     (sub === 'exec' && next !== undefined && PNPM_BINS.has(next));
   if (!ok) return 'pnpm may only run test, lint, typecheck, vitest, tsc or eslint';
-  // These override the demo app's `passWithNoTests: false`, so a test that never ran would
-  // exit 0 and read as a pass (#65).
-  const passes = args.find((arg) => PASS_WITH_NO_TESTS.test(arg));
-  if (passes !== undefined) return `pnpm ${passes} is not allowed: no tests would exit 0`;
+  // These override the demo app's `passWithNoTests: false` or replace its reporter that fails
+  // an all-skipped run, so a test that never ran would exit 0 and read as a pass (#65, #66).
+  const undoes = args.find((arg) => UNDOES_TEST_GUARDS.test(arg));
+  if (undoes !== undefined) return `pnpm ${undoes} is not allowed: no tests would exit 0`;
   const vitest = sub === 'vitest' || (sub === 'exec' && next === 'vitest');
   if (vitest && args.includes('related')) {
     return 'pnpm vitest related is not allowed: no tests would exit 0';
