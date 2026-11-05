@@ -7,11 +7,7 @@ import { configDefaults, mergeConfig } from 'vitest/config';
 const failWhenNoTestRan = {
   onTestRunEnd(modules, _errors, reason) {
     if (reason !== 'passed' || modules.length === 0) return;
-    const ran = modules.some((module) =>
-      [...module.children.allTests()].some((test) =>
-        ['passed', 'failed'].includes(test.result().state),
-      ),
-    );
+    const ran = modules.some((module) => !module.children.allTests('passed').next().done);
     if (ran) return;
     process.stderr.write('No tests ran: every test was skipped\n');
     process.exitCode = 1;
