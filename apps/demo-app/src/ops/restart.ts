@@ -1,5 +1,8 @@
-// Railway's ON_FAILURE restart policy (railway.json) and compose's `restart: on-failure`
-// start the app again after a non-zero exit, so exiting is the whole restart.
+// Railway's ALWAYS restart policy (railway.json) and compose's `restart: unless-stopped`
+// start the app again after it exits, so exiting is the whole restart. ALWAYS rather than
+// ON_FAILURE because ON_FAILURE gives up after a set number of restarts per deployment,
+// which repeated ops restarts would use up. The exit is non-zero all the same, so the
+// platform logs it as a stop the app didn't choose for itself.
 export const RESTART_EXIT_CODE = 1;
 // Long enough for the 202 to reach the caller before the process goes.
 export const RESTART_DELAY_MS = 500;

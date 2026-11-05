@@ -56,9 +56,13 @@ function unknownKey(key: string): Response {
   );
 }
 
-/** Settings fields whose value differs between what is served now and after a restart. */
-function changedFields(now: ShopSettings | undefined, next: SettingsResult): string[] {
-  if (!now || !next.ok) return [];
+/**
+ * Settings fields whose value differs between what is served now and after a restart, or
+ * null when that can't be told: nothing is loaded yet (no shop request since boot, or the
+ * settings failed to load), or the next settings won't load.
+ */
+function changedFields(now: ShopSettings | undefined, next: SettingsResult): string[] | null {
+  if (!now || !next.ok) return null;
   return (Object.keys(now) as (keyof ShopSettings)[]).filter((f) => now[f] !== next.settings[f]);
 }
 
@@ -126,7 +130,9 @@ export function deleteConfig(request: Request, key: string, deps: OpsDeps): Prom
 
 /**
  * POST /api/ops/restart: 202, then the process exits non-zero and the platform starts it
- * again. The preview shows which settings the restart would change.
+ * again. The preview shows which settings the restart would change. Refused with a 409
+ * when the settings a restart would load don't parse, so a restart never trades working
+ * settings for broken ones; fix the config first.
  */
 export function postRestart(request: Request, deps: OpsDeps): Promise<Response> {
   return guarded(request, deps, async (dryRun) => {
@@ -137,6 +143,16 @@ export function postRestart(request: Request, deps: OpsDeps): Promise<Response> 
       afterRestart: next,
       changed: changedFields(deps.loaded, next),
     };
+    if (!next.ok) {
+      return Response.json(
+        {
+          ...preview,
+          error: 'settings_invalid',
+          message: `a restart would load settings that don't parse: ${next.error}`,
+        },
+        { status: 409 },
+      );
+    }
     if (dryRun) return Response.json(preview);
     deps.restarter.schedule();
     return Response.json({ ...preview, restarting: true }, { status: 202 });

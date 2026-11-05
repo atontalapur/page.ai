@@ -18,7 +18,9 @@ export interface ShopContext {
 // Kept on globalThis: Next can load this module once per route bundle, and each copy
 // reading the table on its own first request would apply a change to some routes early.
 interface Loaded {
-  runtimeConfig?: RuntimeConfig;
+  // The read itself is cached, so concurrent first requests share one read and can't end
+  // up serving different snapshots. A failed read is dropped and retried.
+  runtimeConfig?: Promise<RuntimeConfig>;
   settings?: ShopSettings;
 }
 const cache = globalThis as { demoAppShop?: Loaded };
@@ -36,7 +38,14 @@ export async function shop(): Promise<ShopContext> {
   await connection();
   const db = getDb();
   const loaded = (cache.demoAppShop ??= {});
-  loaded.runtimeConfig ??= await readRuntimeConfig(db);
-  loaded.settings ??= loadShopSettings(withRuntimeConfig(process.env, loaded.runtimeConfig));
+  if (!loaded.runtimeConfig) {
+    const read = readRuntimeConfig(db);
+    loaded.runtimeConfig = read;
+    void read.catch(() => {
+      if (loaded.runtimeConfig === read) delete loaded.runtimeConfig;
+    });
+  }
+  const runtimeConfig = await loaded.runtimeConfig;
+  loaded.settings ??= loadShopSettings(withRuntimeConfig(process.env, runtimeConfig));
   return { db, settings: loaded.settings, cookies: await cookies() };
 }

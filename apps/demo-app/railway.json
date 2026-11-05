@@ -13,6 +13,6 @@
   "deploy": {
     "preDeployCommand": "node scripts/db.ts migrate && node scripts/db.ts seed",
     "healthcheckPath": "/api/health",
-    "restartPolicyType": "ON_FAILURE"
+    "restartPolicyType": "ALWAYS"
   }
 }

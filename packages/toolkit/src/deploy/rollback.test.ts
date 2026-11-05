@@ -61,6 +61,50 @@ describe('planRollback', () => {
     });
   });
 
+  it('refuses an explicit target that never served, is newer, or is crashed', () => {
+    const failed = deployment({ status: 'FAILED' });
+    const live = deployment({ status: 'SUCCESS' });
+    const neverServed = deployment({ status: 'FAILED' });
+    const crashed = deployment({ status: 'CRASHED' });
+    const list = [failed, live, neverServed, crashed];
+    for (const to of [failed.id, neverServed.id, crashed.id]) {
+      expect(planRollback(list, to)).toMatchObject({ ok: false, error: { type: 'bad_target' } });
+    }
+  });
+
+  it('refuses while a newer deploy is still in flight', () => {
+    const building = deployment({ status: 'BUILDING' });
+    const live = deployment({ status: 'SUCCESS' });
+    const previous = deployment();
+    expect(planRollback([building, live, previous])).toMatchObject({
+      ok: false,
+      error: {
+        type: 'deploy_in_progress',
+        message: expect.stringContaining(building.id) as string,
+      },
+    });
+    expect(planRollback([building, live, previous], previous.id)).toMatchObject({
+      error: { type: 'deploy_in_progress' },
+    });
+  });
+
+  it('after a rollback, goes back past the bad build and every copy of the live commit', () => {
+    const older = deployment();
+    const good = deployment({ commitSha: 'good' });
+    const bad = deployment({ commitSha: 'bad' });
+    const rebuilt = deployment({ status: 'CRASHED', commitSha: 'good' });
+    expect(planRollback([rebuilt, bad, good, older])).toMatchObject({
+      ok: true,
+      value: { from: rebuilt, to: older },
+    });
+  });
+
+  it('does not match commits when the live deployment has none', () => {
+    const live = deployment({ status: 'SUCCESS', commitSha: null });
+    const previous = deployment({ commitSha: null });
+    expect(planRollback([live, previous])).toMatchObject({ ok: true, value: { to: previous } });
+  });
+
   it('treats a status it does not know as neither live nor a target', () => {
     const live = deployment({ status: 'SUCCESS' });
     expect(planRollback([deployment({ status: 'TELEPORTING' }), live, deployment()])).toMatchObject(

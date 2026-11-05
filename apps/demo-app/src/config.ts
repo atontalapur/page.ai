@@ -25,8 +25,13 @@ export function isShopSettingKey(key: string): key is ShopSettingKey {
   return Object.hasOwn(shopSchema.shape, key);
 }
 
-/** Checks one value the way loadShopSettings reads it: null when it's valid, else why not. */
+/**
+ * Checks one override value the way loadShopSettings reads it: null when it's valid, else
+ * why not. Stricter than env in one way: a blank value is refused.
+ */
 export function checkShopSetting(key: ShopSettingKey, value: string): string | null {
+  // z.coerce.number() reads '' as 0, so an empty override would silently mean zero.
+  if (value.trim() === '') return 'must not be empty (delete the override to clear it)';
   const parsed = shopSchema.shape[key].safeParse(value);
   return parsed.success ? null : (parsed.error.issues[0]?.message ?? 'invalid value');
 }

@@ -64,5 +64,7 @@ describe('shop setting keys', () => {
     expect(checkShopSetting('MAX_ITEM_QUANTITY', '3')).toBeNull();
     expect(checkShopSetting('MAX_ITEM_QUANTITY', '0')).toMatch(/>=1|1/);
     expect(checkShopSetting('CHECKOUT_ENABLED', 'maybe')).not.toBeNull();
+    // Coercion would read a blank as 0; an override refuses it.
+    expect(checkShopSetting('SHIPPING_FLAT_CENTS', '')).toMatch(/empty/);
   });
 });

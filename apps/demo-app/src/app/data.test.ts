@@ -50,4 +50,18 @@ describe('shop', () => {
     delete (globalThis as { demoAppShop?: unknown }).demoAppShop;
     expect((await shop()).settings.maxItemQuantity).toBe(4);
   });
+
+  it('shares one runtime config read between concurrent first requests', async () => {
+    const query = vi.spyOn(h.db, 'query');
+    const [a, b] = await Promise.all([shop(), shop()]);
+    expect(a.settings).toBe(b.settings);
+    expect(query.mock.calls.filter(([sql]) => sql.includes('runtime_config'))).toHaveLength(1);
+  });
+
+  it('retries a failed runtime config read on the next request', async () => {
+    const query = vi.spyOn(h.db, 'query').mockRejectedValueOnce(new Error('db down'));
+    await expect(shop()).rejects.toThrow('db down');
+    expect((await shop()).settings.maxItemQuantity).toBe(10);
+    expect(query).toHaveBeenCalledTimes(2);
+  });
 });

@@ -110,6 +110,11 @@ describe('PUT /api/ops/config/:key', () => {
       body: 'nope',
     });
     expect((await putConfig(notJson, 'MAX_ITEM_QUANTITY', deps)).status).toBe(400);
+    for (const value of ['', '  ']) {
+      const blank = await put(deps, 'SHIPPING_FLAT_CENTS', { value });
+      expect(blank.status).toBe(400);
+      expect(await blank.json()).toMatchObject({ error: 'invalid_value' });
+    }
     const invalid = await put(deps, 'MAX_ITEM_QUANTITY', { value: '0' });
     expect(invalid.status).toBe(400);
     expect(await invalid.json()).toMatchObject({ error: 'invalid_value' });
@@ -184,16 +189,24 @@ describe('POST /api/ops/restart', () => {
       dryRun: false,
       restarting: true,
       current: null,
-      changed: [],
+      changed: null,
     });
     expect(restarter.schedule).toHaveBeenCalledOnce();
   });
 
-  it('reports no changes when the next settings would not load', async () => {
-    const { deps } = await setup({ env: { OPS_SECRET: SECRET, MAX_ITEM_QUANTITY: 'x' } });
-    const body: unknown = await (
-      await postRestart(call('POST', '/api/ops/restart?dryRun=true'), deps)
-    ).json();
-    expect(body).toMatchObject({ afterRestart: { ok: false }, changed: [] });
+  it('refuses to restart into settings that do not parse, dry run or not', async () => {
+    const { deps, restarter } = await setup({
+      env: { OPS_SECRET: SECRET, MAX_ITEM_QUANTITY: 'x' },
+    });
+    for (const query of ['?dryRun=true', '']) {
+      const res = await postRestart(call('POST', `/api/ops/restart${query}`), deps);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({
+        error: 'settings_invalid',
+        afterRestart: { ok: false },
+        changed: null,
+      });
+    }
+    expect(restarter.schedule).not.toHaveBeenCalled();
   });
 });
