@@ -44,10 +44,6 @@ if (!image || !id || !values.model || !apiKey) {
 const scenario = await loadScenario(join('scenarios', id));
 // The description names the cause, so the agent gets the report instead.
 const { report } = scenario.meta;
-if (report === undefined) {
-  console.error(`scenario ${id} has no report in meta.json; add one before recording`);
-  process.exit(2);
-}
 const [breakScript, checkScript] = await Promise.all(
   ['break.sh', 'check.sh'].map((f) => readFile(join(scenario.dir, f), 'utf8')),
 );
