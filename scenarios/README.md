@@ -59,6 +59,15 @@ The ops API validates every override, so a planted value must be valid but wrong
 must make a route throw, so the error reaches PostHog. The report is captured the same
 way as for code scenarios.
 
+A bad deploy (024) is the other Tier 3 shape: a build that isn't on main is live, and the
+fix is a rollback. Compose has no Railway, so `compose-deploy.sh` stands in for it.
+`build_image` builds the demo app from `HEAD` with the scenario's `bad-deploy.patch` on top,
+`deploy` recreates the `demo-app` service from that image (`DEMO_APP_IMAGE` in
+`docker-compose.yml`) and records the one it replaced, and `rollback` goes back to it.
+These need `docker compose` on the host, run from the repo root with the same
+`COMPOSE_PROJECT_NAME`, ports and `OPS_SECRET` the app was started with. The report's
+frames point at the bad build's lines, not at main's.
+
 ## check.sh never goes in the sandbox
 
 The agent works in the same container `check.sh` later runs in, so if it could read the
