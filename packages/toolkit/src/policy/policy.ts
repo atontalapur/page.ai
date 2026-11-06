@@ -71,8 +71,8 @@ const pnpm: ArgRule = (args) => {
     (sub === 'run' && next !== undefined && PNPM_SCRIPTS.has(next)) ||
     (sub === 'exec' && next !== undefined && PNPM_BINS.has(next));
   if (!ok) return 'pnpm may only run test, lint, typecheck, vitest, tsc or eslint';
-  // These override the demo app's `passWithNoTests: false` or replace its reporter that fails
-  // an all-skipped run, so a test that never ran would exit 0 and read as a pass (#65, #66).
+  // These override the failure on a run with no test files or replace the shared reporter that
+  // fails an all-skipped run, so a test that never ran would read as a pass (#65, #66).
   const undoes = args.find((arg) => UNDOES_TEST_GUARDS.test(arg));
   if (undoes !== undefined) return `pnpm ${undoes} is not allowed: no tests would exit 0`;
   const vitest = sub === 'vitest' || (sub === 'exec' && next === 'vitest');
