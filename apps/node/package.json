@@ -16,6 +16,7 @@
     "@types/pg": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
+    "socket.io": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
@@ -25,6 +26,7 @@
     "pg": "catalog:",
     "pg-boss": "catalog:",
     "pino": "catalog:",
+    "socket.io-client": "catalog:",
     "zod": "catalog:"
   }
 }
