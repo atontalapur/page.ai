@@ -37,6 +37,8 @@ each deploy, and gates on `/api/health`. One-time service setup:
    find it on its own outside the root).
 3. Add a Postgres service and set `DATABASE_URL=${{Postgres.DATABASE_URL}}` on this one.
 4. Generate a public domain. Optional shop settings are listed in `.env.example`.
+   Set `OPS_SECRET` (`openssl rand -hex 32`) and give the same value to the orchestrator
+   to turn on the ops API below.
 5. Set `POSTHOG_KEY` (and `POSTHOG_HOST` if the project isn't on US cloud) so errors
    reach PostHog Error Tracking. Railway's `RAILWAY_GIT_COMMIT_SHA` tags each error with
    its release. The Dockerfile takes all three as build args, since the browser's copy is
@@ -53,6 +55,35 @@ the server render isn't reported again from the browser. Both sides go through a
 `ErrorReporter` (`src/observability/`) that falls back to an in-memory fake when
 `POSTHOG_KEY` is unset. `handle()` and `orShowError` turn a `ShopError` into a 4xx, so it
 isn't reported; one that escapes them is a 500 and is reported like any other crash.
+
+## Ops API (Tier 3)
+
+For the orchestrator's Tier 3 executors (#13). Every call needs
+`Authorization: Bearer $OPS_SECRET`; with `OPS_SECRET` unset (or under 32 characters) it
+answers 503. Each takes `?dryRun=true`, which returns the same preview and changes
+nothing. Any other query parameter is a 400, so a misspelt dry run can't run for real.
+None of it goes through `shop()`, so a bad shop setting can't lock it out.
+
+| Call                          | Does                                                                                                  |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `GET /api/ops/config`         | Each setting's env value and override, and what a restart loads                                       |
+| `PUT /api/ops/config/:key`    | Sets an override, body `{ "value": "3" }`; a bad value is a 400                                       |
+| `DELETE /api/ops/config/:key` | Drops the override, so the env value applies again                                                    |
+| `POST /api/ops/restart`       | 202, then exits; Railway's ALWAYS restart policy brings it back; 409 if the next settings won't parse |
+
+Overrides live in the `runtime_config` table, keyed by the env names in `src/config.ts`,
+and win over env. The app reads them once per process (on the first shop request), so a
+change applies on restart: set, preview the restart (`changed` lists the settings it
+would change, or is null when that can't be told, e.g. before the first shop request),
+then restart. A blank value is refused (it would read as 0); use DELETE to clear a key. Config previews include `afterRestart`, the settings a
+restart would load, or the error if they still wouldn't parse.
+
+The restart policy is ALWAYS rather than ON_FAILURE, since ON_FAILURE stops restarting
+after a set number of retries per deployment. In compose, migrate and seed run once in
+`demo-app-migrate`, so a restart doesn't reseed stock (Railway seeds only at deploy).
+
+Rollback isn't here: the app never holds a Railway token, and a broken app has to be
+rolled back from outside. It's `rollback()` with a `RailwayDeployer` in `@page/toolkit`.
 
 ## Notes
 
