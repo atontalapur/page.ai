@@ -326,9 +326,15 @@ importers:
 
   apps/node:
     dependencies:
+      '@page/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@page/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@page/model-client':
+        specifier: workspace:*
+        version: link:../../packages/model-client
       '@page/toolkit':
         specifier: workspace:*
         version: link:../../packages/toolkit

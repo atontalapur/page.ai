@@ -21,7 +21,9 @@
     "vitest": "catalog:"
   },
   "dependencies": {
+    "@page/agent": "workspace:*",
     "@page/contracts": "workspace:*",
+    "@page/model-client": "workspace:*",
     "@page/toolkit": "workspace:*",
     "pg": "catalog:",
     "pg-boss": "catalog:",
