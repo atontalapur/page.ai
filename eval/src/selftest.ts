@@ -47,9 +47,10 @@ export interface ReportFrame {
   column: number;
 }
 
-// A repo-relative path with its line and column. The lookbehind skips the same names inside
-// node_modules or an absolute path. Parentheses stay in the path for Next.js route groups.
-const FRAME = /(?<![\w./@-])((?:apps|packages)\/[^\s:]+):(\d+):(\d+)/g;
+// A repo-relative path with its line and column, on a stack line, so a path in a URL or request
+// body isn't taken for a frame. The second lookbehind skips the same names inside node_modules
+// or an absolute path. Parentheses stay in the path for Next.js route groups.
+const FRAME = /(?<=^[ \t]*at .*)(?<![\w./@-])((?:apps|packages)\/[^\s:]+):(\d+):(\d+)/gm;
 // Not source: these change without anyone editing the repo.
 const GENERATED = new Set(['node_modules', '.next']);
 
@@ -63,6 +64,7 @@ export function reportFrames(report: string): ReportFrame[] {
   return [...frames.values()];
 }
 
+// `! [ -ge ]` and not `[ -lt ]`: a column too big for sh makes `[` error, and that must fail.
 const FRAME_CHECK = `status=0
 frame() {
   if [ ! -f "$1" ]; then
@@ -74,7 +76,7 @@ frame() {
   if [ -z "$length" ]; then
     echo "$1:$2:$3: past the end of the file"
     status=1
-  elif [ "$length" -lt "$3" ]; then
+  elif ! [ "$length" -ge "$3" ]; then
     echo "$1:$2:$3: past the end of the line"
     status=1
   fi

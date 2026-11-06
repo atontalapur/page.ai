@@ -181,6 +181,15 @@ describe('reportFrames', () => {
     expect(reportFrames("scandir 'apps/demo-app/migrations'")).toEqual([]);
   });
 
+  it('skips repo paths outside a stack line', () => {
+    const report = [
+      'GET /?file=apps/demo-app/a.ts:1:2 returned 500',
+      'Request body: {"path":"apps/demo-app/a.ts:1:2"}',
+      'Failed at apps/demo-app/a.ts:1:2',
+    ].join('\n');
+    expect(reportFrames(report)).toEqual([]);
+  });
+
   it('finds a frame in a route group', () => {
     const report = 'at CartPage (apps/demo-app/src/app/(shop)/cart/page.tsx:18:44)';
     expect(reportFrames(report)).toEqual([
@@ -261,6 +270,13 @@ describe('framesExistScript', () => {
       code: 1,
       output: 'a.ts:1:4: past the end of the line\n',
     });
+  });
+
+  it.each([2 ** 63, 1e22, Infinity])('reports a column too big for sh: %s', async (column) => {
+    await write('a.ts', 'one\n');
+    const { code, output } = run([{ path: 'a.ts', line: 1, column }]);
+    expect(code).toBe(1);
+    expect(output).toContain(`a.ts:1:${column}: past the end of the line\n`);
   });
 
   it('reports every bad frame, and keeps a path with a quote or $ literal', async () => {
