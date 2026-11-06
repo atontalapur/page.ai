@@ -1,6 +1,20 @@
+import process from 'node:process';
 import { configDefaults, defineConfig } from 'vitest/config';
 
 const integration = ['src/**/*.int.test.{ts,tsx}'];
+
+// Vitest fails a run only if something failed, so a `-t` that matches no test exits 0 with
+// every test skipped. The agent would read that as a pass (#66). This checks the whole run,
+// so a file with every test skipped still passes if another file ran a test.
+const failWhenNoTestRan = {
+  onTestRunEnd(modules, _errors, reason) {
+    if (reason !== 'passed' || modules.length === 0) return;
+    const ran = modules.some((module) => !module.children.allTests('passed').next().done);
+    if (ran) return;
+    process.stderr.write('No tests ran: every test was skipped\n');
+    process.exitCode = 1;
+  },
+};
 
 // Tier and approval code decides what the agent may run, so it gets the toolkit bar
 // wherever it lives, checked file by file. Glob thresholds don't inherit the global ones.
@@ -29,6 +43,9 @@ export function vitestConfig({ coverage = 70 } = {}) {
     test: {
       // Set, not left to the default: `--changed` turns it on when it's unset.
       passWithNoTests: false,
+      // Spread the defaults so CI keeps its github-actions reporter. A CLI --reporter replaces
+      // this list, so the toolkit policy refuses that flag for the agent.
+      reporters: [...configDefaults.reporters, failWhenNoTestRan],
       coverage: {
         provider: 'v8',
         include: ['src/**/*.{ts,tsx}'],

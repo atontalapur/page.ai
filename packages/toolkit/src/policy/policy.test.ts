@@ -1,3 +1,5 @@
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { vitestConfig } from '@page/config/vitest';
 import type { Tier } from '@page/contracts';
 import { describe, expect, it } from 'vitest';
@@ -145,4 +147,23 @@ describe('vitestConfig', () => {
   it('sets passWithNoTests to false', () => {
     expect(vitestConfig().test?.passWithNoTests).toBe(false);
   });
+
+  it('fails a run where a name filter skips every test', () => {
+    const { status, stderr } = spawnSync(
+      'pnpm',
+      [
+        'exec',
+        'vitest',
+        'run',
+        '--project',
+        'unit',
+        'src/policy/policy.test.ts',
+        '-t',
+        'no test has this name',
+      ],
+      { cwd: fileURLToPath(new URL('../..', import.meta.url)), encoding: 'utf8' },
+    );
+    expect(stderr).toContain('No tests ran: every test was skipped');
+    expect(status).toBe(1);
+  }, 60_000);
 });
