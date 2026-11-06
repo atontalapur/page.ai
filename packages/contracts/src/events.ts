@@ -37,7 +37,8 @@ const nodeRunFinished = z.discriminatedUnion('status', [
   z.strictObject({
     ...runFinishedBase,
     status: z.literal('succeeded'),
-    confidence: confidenceSchema,
+    // Null when the agent submitted but the run was not scored. The daemon doesn't score
+    // runs yet, and a made-up score would mislead the escalation decision.
     note: escalationNoteSchema.nullable(),
   }),
   z.strictObject({

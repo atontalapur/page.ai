@@ -109,7 +109,14 @@ export const decidedApprovalFixture: DecidedApproval = {
 
 export const jobFixtures: { [Q in QueueName]: JobPayload<Q> } = {
   triage: { v: 1, issueId },
-  fix: { v: 1, issueId, runId, tier: 1, fingerprint },
+  fix: {
+    v: 1,
+    issueId,
+    runId,
+    tier: 1,
+    fingerprint,
+    report: 'POST /api/cart/total 500\nTypeError: Cannot read properties of undefined',
+  },
   notify: { v: 1, issueId, channel: 'call', message: 'New high severity backend-api issue.' },
 };
 
@@ -197,6 +204,7 @@ export const nodeEnvFixture = {
   ORCHESTRATOR_URL: 'https://orchestrator.example.com',
   NODE_SHARED_SECRET: 'node-secret',
   OPENROUTER_API_KEY: 'sk-or-test',
+  OPENROUTER_MODEL: 'openai/gpt-5-mini',
   GITHUB_TOKEN: 'github_pat_test',
   GITHUB_REPO: 'atontalapur/page-demo',
 };

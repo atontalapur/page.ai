@@ -94,7 +94,16 @@ export const nodeConfigSchema = envSchema(
   baseConfigSchema
     .extend({
       ORCHESTRATOR_URL: z.url(),
+      // Must match the orchestrator's, which creates the `fix` queue there.
+      PGBOSS_SCHEMA: z
+        .string()
+        .regex(/^[a-z_][a-z0-9_]*$/)
+        .default('pgboss'),
+      // Built from infra/sandbox/Dockerfile.
+      SANDBOX_IMAGE: z.string().min(1).default('page-sandbox'),
       OPENROUTER_API_KEY: secret.optional(),
+      // An OpenRouter model id, e.g. `openai/gpt-5-mini`.
+      OPENROUTER_MODEL: z.string().min(1).optional(),
       // The fine-grained token and demo repo agents push to (#10).
       GITHUB_TOKEN: secret.optional(),
       GITHUB_REPO: z
@@ -102,7 +111,14 @@ export const nodeConfigSchema = envSchema(
         .regex(/^[\w.-]+\/[\w.-]+$/, 'owner/name')
         .optional(),
     })
-    .superRefine(...requireUnlessFake(['OPENROUTER_API_KEY', 'GITHUB_TOKEN', 'GITHUB_REPO'])),
+    .superRefine(
+      ...requireUnlessFake([
+        'OPENROUTER_API_KEY',
+        'OPENROUTER_MODEL',
+        'GITHUB_TOKEN',
+        'GITHUB_REPO',
+      ]),
+    ),
 );
 
 export type NodeConfig = z.infer<typeof nodeConfigSchema>;
