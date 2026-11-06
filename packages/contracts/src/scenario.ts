@@ -4,7 +4,7 @@ import { BUG_CLASSES, tierSchema } from './common.ts';
 /** `meta.json` in each `scenarios/<id>/` directory (#6). */
 export const scenarioMetaSchema = z.strictObject({
   class: z.enum(BUG_CLASSES),
-  // The lowest tier expected to fix the bug.
+  // The lowest tier expected to fix the bug. It also sets the scenario's kind (below).
   expectedTier: tierSchema,
   description: z
     .string()
@@ -19,3 +19,16 @@ export const scenarioMetaSchema = z.strictObject({
 });
 
 export type ScenarioMeta = z.infer<typeof scenarioMetaSchema>;
+
+/**
+ * How a scenario plants its bug and how the fix is checked. A `code` bug (Tier 1 and 2)
+ * lives in the source: break.sh edits it in the sandbox and a patch fixes it. An `ops`
+ * bug (Tier 3) lives in the running app's state, such as a config override or a bad
+ * deploy: break-ops.sh plants it on a live demo app, and the fix is an ops action
+ * (fix-ops.sh), not a patch.
+ */
+export type ScenarioKind = 'code' | 'ops';
+
+export function scenarioKind(meta: Pick<ScenarioMeta, 'expectedTier'>): ScenarioKind {
+  return meta.expectedTier === 3 ? 'ops' : 'code';
+}

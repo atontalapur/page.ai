@@ -132,6 +132,9 @@ docker`, force pushes, writes outside `/workspace` or under `.github/`, `.git/`,
 
 - Every scenario has `break.sh`, `trigger.sh`, `check.sh`, `reference_fix.patch` and
   `meta.json` (with a required `report`). Scripts stay executable.
+- A Tier 3 (`expectedTier: 3`) scenario is an ops scenario instead: `break-ops.sh`,
+  `fix-ops.sh`, `trigger.sh`, `check.sh` and `meta.json`, all run on the host against the
+  live app at `$DEMO_APP_URL`. Its bug is app state and its fix an ops action, not a patch.
 - `break.sh` and `check.sh` run in busybox `sh` (no bash). `check.sh` exits 1 for the
   bug, not just non-zero. `trigger.sh` runs on the host, which may be dash; use
   `printf '%s\n'`, not `echo`.
@@ -142,7 +145,7 @@ docker`, force pushes, writes outside `/workspace` or under `.github/`, `.git/`,
 - The self-test checks report stack frames against the broken code. Changing demo-app
   lines that a report cites means updating that report.
 - Every scenario must pass the self-test: check passes clean, fails after `break.sh`,
-  passes after the patch.
+  passes after the patch (for ops: after `break-ops.sh`, then after `fix-ops.sh`).
 
 ## Git and PRs
 

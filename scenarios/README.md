@@ -29,9 +29,44 @@ doesn't run it. Host `sh` may be dash, so print variables with `printf '%s\n'`, 
 
 Unlike `check.sh`, a trigger runs from its file, so triggers can share code. Shared
 helpers are plain files in `scenarios/`, sourced with `. "$(dirname "$0")/../<file>"`.
-`checkout-trigger.sh` puts one product in a fresh cart and checks it out (025, 028, 029).
+`checkout-trigger.sh` puts one product in a fresh cart and checks it out (025, 028, 029,
+030), and checks that a checkout charged the default flat shipping (029, 030).
 
 Keep all three executable.
+
+## Ops scenarios (Tier 3)
+
+A Tier 3 bug isn't in the code: it's in the running app's state, such as a bad
+`runtime_config` override, and the fix is an ops action (delete the override and
+restart), not a patch. `expectedTier: 3` in `meta.json` makes a scenario an ops scenario,
+and the loader then wants these files instead of `break.sh` and `reference_fix.patch`:
+
+| File           | What it does                                                                      |
+| -------------- | --------------------------------------------------------------------------------- |
+| `break-ops.sh` | Plants the bug on the running app at `$DEMO_APP_URL` and waits until it's live.   |
+| `fix-ops.sh`   | The known fix: an ops action (`DELETE`/`PUT` an override, restart), then waits.   |
+| `trigger.sh`   | As above.                                                                         |
+| `check.sh`     | Exits 0 when the app works and 1 while the bug is there, by calling the live app. |
+| `meta.json`    | As above, with `expectedTier: 3`.                                                 |
+
+All four scripts run on the host, from their files, with `DEMO_APP_URL` and `OPS_SECRET`
+set, so they follow the trigger rules: dash-safe `sh`, `curl`, shared helpers allowed.
+`ops.sh` has `ops <method> <path> [body]` for the ops API (`apps/demo-app/README.md`),
+`wait_healthy`, and `ops_restart`, which restarts the app so it rereads its overrides and
+waits for it to come back.
+
+The ops API validates every override, so a planted value must be valid but wrong, and it
+must make a route throw, so the error reaches PostHog. The report is captured the same
+way as for code scenarios.
+
+A bad deploy (024) is the other Tier 3 shape: a build that isn't on main is live, and the
+fix is a rollback. Compose has no Railway, so `compose-deploy.sh` stands in for it.
+`build_image` builds the demo app from `HEAD` with the scenario's `bad-deploy.patch` on top,
+`deploy` recreates the `demo-app` service from that image (`DEMO_APP_IMAGE` in
+`docker-compose.yml`) and records the one it replaced, and `rollback` goes back to it.
+These need `docker compose` on the host, run from the repo root with the same
+`COMPOSE_PROJECT_NAME`, ports and `OPS_SECRET` the app was started with. The report's
+frames point at the bad build's lines, not at main's.
 
 ## check.sh never goes in the sandbox
 
@@ -63,6 +98,10 @@ Every scenario must pass this before it counts:
 2. After `break.sh`, it fails.
 3. After `reference_fix.patch`, it passes again.
 
+For an ops scenario the steps are the same against the live app: `check.sh` passes, fails
+after `break-ops.sh`, and passes after `fix-ops.sh`. If a run fails after `break-ops.sh`,
+the self-test still runs `fix-ops.sh`, so the shared app is clean for the next scenario.
+
 Run it from the repo root against a built sandbox image:
 
 ```sh
@@ -71,4 +110,15 @@ pnpm scenarios:selftest page-sandbox                         # every scenario
 pnpm scenarios:selftest page-sandbox 001-bad-currency-code   # just these
 ```
 
-CI self-tests the scenarios a PR touches (`.github/workflows/scenarios.yml`).
+Ops scenarios also need the compose demo app with the ops API on. Without
+`DEMO_APP_URL` and `OPS_SECRET` they are skipped when no ids are named, and fail when
+they are.
+
+```sh
+export OPS_SECRET="$(openssl rand -hex 32)" DEMO_APP_URL=http://localhost:3000
+docker compose up -d --build --wait demo-app
+pnpm scenarios:selftest page-sandbox 029-shipping-override-out-of-range
+```
+
+CI self-tests the scenarios a PR touches (`.github/workflows/scenarios.yml`), starting the
+compose app when one of them is an ops scenario.

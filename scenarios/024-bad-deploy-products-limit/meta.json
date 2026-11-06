@@ -1,0 +1,6 @@
+{
+  "class": "backend-api",
+  "expectedTier": 3,
+  "description": "A build not on main is live: GET /api/products reads ?limit= as Number(null ?? undefined) and sends NaN to Postgres. Fix is a rollback",
+  "report": "GET /api/products returned 500\n\nerror: invalid input syntax for type bigint: \"NaN\"\n    at async listProducts (apps/demo-app/src/shop/products.ts:15:20)\n    at async GET (apps/demo-app/src/app/api/products/route.ts:7:24) {\n  length: 145,\n  severity: 'ERROR',\n  code: '22P02',\n  detail: undefined,\n  hint: undefined,\n  position: undefined,\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: \"unnamed portal parameter $1 = '...'\",\n  schema: undefined,\n  table: undefined,\n  column: undefined,\n  dataType: undefined,\n  constraint: undefined,\n  file: 'numutils.c',\n  line: '876',\n  routine: 'pg_strtoint64_safe'\n}"
+}
