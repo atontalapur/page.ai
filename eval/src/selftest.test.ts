@@ -13,6 +13,7 @@ beforeEach(async () => {
   await writeFile(join(dir, 'reference_fix.patch'), '--- a/x\n+++ b/x\n');
   scenario = {
     id: '001-sample',
+    kind: 'code',
     dir,
     meta: {
       class: 'backend-api',
