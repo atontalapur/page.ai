@@ -1,5 +1,7 @@
-# Self-tests seeded bug scenarios (#6) in the sandbox image: check.sh passes on the clean
-# demo app, fails after break.sh and passes after reference_fix.patch.
+# Self-tests seeded bug scenarios (#6). A code scenario (Tier 1 and 2) runs in the sandbox
+# image: check.sh passes on the clean demo app, fails after break.sh and passes after
+# reference_fix.patch. An ops scenario (Tier 3) runs against the compose demo app: check.sh
+# passes, fails after break-ops.sh and passes after fix-ops.sh.
 # A PR that changes only scenarios/ self-tests the scenarios it touches. Any other input
 # (the runner, the demo app, the sandbox image) and every push to main self-tests all of
 # them.
@@ -26,6 +28,7 @@ on:
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
+      - docker-compose.yml
       - .github/workflows/scenarios.yml
   push:
     branches: [main]
@@ -44,7 +47,7 @@ env:
 jobs:
   selftest:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -69,8 +72,12 @@ jobs:
               ids="$(grep -oP '^scenarios/\K[^/]+(?=/)' <<<"$changed" | sort -u | grep -xF -f <(echo "$all") || true)"
             fi
           fi
+          # Ops scenarios (Tier 3) need the live compose app; a break-ops.sh marks one.
+          ops="$(for id in $ids; do [ -e "scenarios/$id/break-ops.sh" ] && echo "$id"; done || true)"
           echo "Scenarios: ${ids:-none}"
+          echo "Ops scenarios: ${ops:-none}"
           echo "ids=$(echo $ids)" >> "$GITHUB_OUTPUT"
+          echo "ops=$(echo $ops)" >> "$GITHUB_OUTPUT"
       - if: steps.pick.outputs.ids != ''
         uses: ./.github/actions/setup
         with:
@@ -86,8 +93,22 @@ jobs:
           load: true
           tags: ${{ env.IMAGE }}
           cache-from: type=gha,scope=sandbox
+      # The ops self-test drives the ops API, so the app gets a throwaway secret for this
+      # run. Setting DEMO_APP_URL and OPS_SECRET sends ops scenarios down that path.
+      - if: steps.pick.outputs.ops != ''
+        name: Start the compose demo app
+        run: |
+          secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$secret"
+          echo "OPS_SECRET=$secret" >> "$GITHUB_ENV"
+          echo "DEMO_APP_URL=http://localhost:3000" >> "$GITHUB_ENV"
+          OPS_SECRET="$secret" docker compose up -d --build --wait demo-app
       - if: steps.pick.outputs.ids != ''
         env:
           IDS: ${{ steps.pick.outputs.ids }}
-        # IDS is unquoted on purpose: one argument per scenario id.
+        # IDS is unquoted on purpose: one argument per scenario id. Named ids make an ops
+        # scenario fail, not skip, if the app above didn't start.
         run: pnpm scenarios:selftest "$IMAGE" $IDS
+      - if: failure() && steps.pick.outputs.ops != ''
+        name: Demo app logs
+        run: docker compose logs --no-color --tail 200 demo-app demo-app-migrate
