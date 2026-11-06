@@ -1,7 +1,4 @@
 {
-  "extends": "@page/config/tsconfig/base.json",
-  "compilerOptions": {
-    "allowImportingTsExtensions": true
-  },
+  "extends": "@page/config/tsconfig/node-ts.json",
   "include": ["src", "scripts"]
 }

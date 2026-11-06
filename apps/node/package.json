@@ -5,6 +5,7 @@
   "description": "Daemon that claims fix jobs and runs agent sandboxes",
   "type": "module",
   "scripts": {
+    "start": "node --env-file-if-exists=../../.env src/main.ts",
     "lint": "eslint .",
     "typecheck": "tsc",
     "test": "vitest run --project unit --coverage",
@@ -13,9 +14,22 @@
   "devDependencies": {
     "@page/config": "workspace:*",
     "@types/node": "catalog:",
+    "@types/pg": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
+    "socket.io": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@page/agent": "workspace:*",
+    "@page/contracts": "workspace:*",
+    "@page/model-client": "workspace:*",
+    "@page/toolkit": "workspace:*",
+    "pg": "catalog:",
+    "pg-boss": "catalog:",
+    "pino": "catalog:",
+    "socket.io-client": "catalog:",
+    "zod": "catalog:"
   }
 }

@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
+  confidenceFixture,
   escalationNoteFixture,
   nodeToServerEventFixtures,
   pendingApprovalFixture,
@@ -93,9 +94,15 @@ describe('node.run.finished', () => {
     expect(() => finished.parse({ ...escalated, note: null })).toThrow();
   });
 
-  it('rejects a success without a confidence score', () => {
+  it('accepts a success the daemon did not score', () => {
+    const unscored = { ...nodeToServerEventFixtures['node.run.finished'], confidence: null };
+    expect(roundTrip(finished, unscored)).toEqual(unscored);
+  });
+
+  it('rejects a success with a malformed confidence score', () => {
     const succeeded = nodeToServerEventFixtures['node.run.finished'];
-    expect(() => finished.parse({ ...succeeded, confidence: null })).toThrow();
+    const confidence = { ...confidenceFixture, score: 2 };
+    expect(() => finished.parse({ ...succeeded, confidence })).toThrow();
   });
 
   it('accepts a killed run with nothing to report', () => {
