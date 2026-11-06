@@ -5,6 +5,7 @@
   "description": "Daemon that claims fix jobs and runs agent sandboxes",
   "type": "module",
   "scripts": {
+    "start": "node --env-file-if-exists=../../.env src/main.ts",
     "lint": "eslint .",
     "typecheck": "tsc",
     "test": "vitest run --project unit --coverage",
