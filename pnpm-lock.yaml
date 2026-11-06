@@ -316,6 +316,13 @@ importers:
         version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/coverage-v8@5.0.5)(vite@8.3.5(@types/node@24.19.2)(jiti@2.7.0))
 
   apps/node:
+    dependencies:
+      '@page/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@page/toolkit':
+        specifier: workspace:*
+        version: link:../../packages/toolkit
     devDependencies:
       '@page/config':
         specifier: workspace:*

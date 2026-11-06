@@ -17,5 +17,9 @@
     "eslint": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@page/contracts": "workspace:*",
+    "@page/toolkit": "workspace:*"
   }
 }
