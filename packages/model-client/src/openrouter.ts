@@ -46,6 +46,11 @@ const KIND_BY_STATUS: Record<number, ModelErrorKind> = {
   429: 'rate_limited',
 };
 
+const signalFor = (timeoutMs: number, signal: AbortSignal | undefined) =>
+  signal === undefined
+    ? AbortSignal.timeout(timeoutMs)
+    : AbortSignal.any([AbortSignal.timeout(timeoutMs), signal]);
+
 const failure = (kind: ModelErrorKind, status: number | null, message: string) =>
   ({ ok: false, error: { kind, status, message } }) as const;
 
@@ -90,10 +95,11 @@ export class OpenRouterClient implements ModelClient {
         method: 'POST',
         headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
         body: JSON.stringify({ ...extraBody, model, messages, usage: { include: true } }),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: signalFor(timeoutMs, options.signal),
       });
       text = await response.text();
     } catch (e) {
+      if (options.signal?.aborted) return failure('aborted', null, 'the call was cancelled');
       return failure('network', null, e instanceof Error ? e.message : String(e));
     }
 

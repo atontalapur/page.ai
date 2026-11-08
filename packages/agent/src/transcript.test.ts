@@ -57,6 +57,12 @@ describe('recordingDeps', () => {
     expect(clock[0]).toBe(1_010);
   });
 
+  it('keeps the caller signal on the wrapped deps', () => {
+    const { signal } = new AbortController();
+    const recording = recordingDeps({ model: new ScriptedModel([]), ...fakeExecute(), signal });
+    expect(recording.deps.signal).toBe(signal);
+  });
+
   it('logs a failed model call', async () => {
     const error = { kind: 'auth', status: 401, message: 'bad key' } as const;
     const recording = recordingDeps({ model: new ScriptedModel([error]), ...fakeExecute() });

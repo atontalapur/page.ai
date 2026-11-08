@@ -102,6 +102,8 @@ function describeAgent(run: AgentRun): { summary: string; blocker: string } {
         summary: 'A step could not be written to the audit log, so the run stopped.',
         blocker: run.auditError ?? 'audit log write failed',
       };
+    case 'aborted':
+      return { summary: `The run was stopped (${spent}).`, blocker: 'Stopped before it finished.' };
     case 'submitted':
       // Handled by the caller; here only so the switch covers every status.
       return { summary: 'The agent submitted.', blocker: 'none' };

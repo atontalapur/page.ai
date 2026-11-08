@@ -38,6 +38,7 @@ export function withRetries(client: ModelClient, options: RetryOptions = {}): Mo
           deadline === Infinity ? callOptions : { ...callOptions, timeoutMs: deadline - now() },
         );
         if (result.ok || !isTransient(result.error)) return result;
+        if (callOptions.signal?.aborted) return result;
 
         const delay = baseDelayMs * 2 ** (attempt - 1);
         if (attempt >= attempts || now() + delay >= deadline) return result;

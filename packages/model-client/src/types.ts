@@ -15,7 +15,7 @@ export interface Completion {
 }
 
 export type ModelErrorKind =
-  'auth' | 'credits' | 'rate_limited' | 'http' | 'network' | 'bad_response';
+  'auth' | 'credits' | 'rate_limited' | 'http' | 'network' | 'bad_response' | 'aborted';
 
 export interface ModelError {
   kind: ModelErrorKind;
@@ -31,6 +31,8 @@ export type CompletionResult =
 export interface CompleteOptions {
   /** Give up after this long, even if the client's own timeout is longer. */
   timeoutMs?: number;
+  /** Cancels the call, such as when a run is killed. It then fails as `aborted`. */
+  signal?: AbortSignal;
 }
 
 /** The one way the agent talks to a model. */

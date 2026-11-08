@@ -111,6 +111,25 @@ describe('withRetries', () => {
     expect(time.sleeps).toEqual([400]);
   });
 
+  it('does not retry once the caller aborts', async () => {
+    const { client, calls } = scripted([failure('network'), success]);
+    const controller = new AbortController();
+    controller.abort();
+    const result = await withRetries(client, { sleep: () => Promise.resolve() }).complete(
+      messages,
+      { signal: controller.signal },
+    );
+    expect(result).toEqual(failure('network'));
+    expect(calls).toEqual([{ signal: controller.signal }]);
+  });
+
+  it('does not retry an aborted call', async () => {
+    const { client, calls } = scripted([failure('aborted'), success]);
+    const result = await withRetries(client, { sleep: () => Promise.resolve() }).complete(messages);
+    expect(result).toEqual(failure('aborted'));
+    expect(calls).toHaveLength(1);
+  });
+
   it('passes no timeout through when the caller gave none', async () => {
     const { client, calls } = scripted([failure('network'), success]);
     await withRetries(client, fakeTime()).complete(messages);
