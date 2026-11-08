@@ -183,6 +183,8 @@ describe('runFixJob', () => {
       ++stops === 1 ? Promise.reject(new Error('rm failed')) : Promise.resolve();
     await runFixJob(claim(expiry.signal), deps);
     await expect.poll(() => lines.join('')).toContain('could not stop the sandbox');
+    // Cleanup tried again after the failed removal.
+    expect(stops).toBe(2);
   });
 
   it('finishes a run killed mid-command as killed and removes its sandbox', async () => {
@@ -255,5 +257,21 @@ describe('runFixJob', () => {
     expect(await runFixJob(claim(expiry.signal), deps, kill.signal)).toMatchObject({
       status: 'killed',
     });
+  });
+
+  it('removes the sandbox once on a kill, not once more in cleanup', async () => {
+    const kill = new AbortController();
+    const { deps, sandboxes } = setup([bashReply('ls'), submitReply()], () => {
+      kill.abort();
+      return FakeRunner.exited(0);
+    });
+    let stops = 0;
+    const stop = sandboxes.stop.bind(sandboxes);
+    sandboxes.stop = (sandbox) => {
+      stops += 1;
+      return stop(sandbox);
+    };
+    await runFixJob(claim(), deps, kill.signal);
+    expect(stops).toBe(1);
   });
 });

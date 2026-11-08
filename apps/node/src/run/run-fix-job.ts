@@ -73,14 +73,20 @@ export async function runFixJob(
   }
   logger.info({ container: sandbox.name }, 'sandbox started');
 
-  // Removing the container ends a running command; the signal ends the model call.
+  // Removing the container ends a running command; the signal ends the model call. The
+  // removal is kept so cleanup below waits on it rather than racing a second `docker rm`.
+  let removing: Promise<boolean> | undefined;
   const onAbort = () => {
     logger.warn(
       kill.aborted ? 'run killed; stopping the sandbox' : 'job expired; stopping the sandbox',
     );
-    void deps.sandboxes.stop(sandbox).catch((error: unknown) => {
-      logger.error({ err: error }, 'could not stop the sandbox');
-    });
+    removing = deps.sandboxes.stop(sandbox).then(
+      () => true,
+      (error: unknown) => {
+        logger.error({ err: error }, 'could not stop the sandbox');
+        return false;
+      },
+    );
   };
   // A kill that arrived while the sandbox was starting has already fired.
   if (stopped.aborted) onAbort();
@@ -134,7 +140,8 @@ export async function runFixJob(
     return finish(end);
   } finally {
     stopped.removeEventListener('abort', onAbort);
-    await deps.sandboxes.stop(sandbox);
+    // Try again if the removal on abort failed, so cleanup still runs on every path.
+    if (!(await (removing ?? Promise.resolve(false)))) await deps.sandboxes.stop(sandbox);
     logger.info({ container: sandbox.name }, 'sandbox removed');
   }
 }
