@@ -241,7 +241,9 @@ describe('uncheckedFrames', () => {
   });
 });
 
-describe('framesExistScript', () => {
+// Each test starts sh and node, which takes tens of ms alone but seconds when turbo runs
+// every package's tests at once. Two tests timed out at the 5s default.
+describe('framesExistScript', { timeout: 20_000 }, () => {
   let dir: string;
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'frames-'));
