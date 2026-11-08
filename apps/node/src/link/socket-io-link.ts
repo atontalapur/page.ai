@@ -1,7 +1,15 @@
 import type { NodeToServerEvents, ServerToNodeEvents } from '@page/contracts';
 import type { Logger } from 'pino';
 import { io, type Socket } from 'socket.io-client';
-import { checked, type NodeEvent, type NodePayload, type OrchestratorLink } from './link.ts';
+import {
+  checked,
+  received,
+  type NodeEvent,
+  type NodePayload,
+  type OrchestratorLink,
+  type ServerEvent,
+  type ServerHandler,
+} from './link.ts';
 
 /** The Socket.IO namespace the orchestrator serves node daemons on. */
 export const NODE_NAMESPACE = '/node';
@@ -20,8 +28,10 @@ export interface SocketIoLinkOptions {
  */
 export class SocketIoLink implements OrchestratorLink {
   private readonly socket: Socket<ServerToNodeEvents, NodeToServerEvents>;
+  private readonly logger: Logger;
 
   constructor({ url, secret, logger }: SocketIoLinkOptions) {
+    this.logger = logger;
     this.socket = io(new URL(NODE_NAMESPACE, url).href, {
       auth: { token: secret },
       transports: ['websocket'],
@@ -39,6 +49,18 @@ export class SocketIoLink implements OrchestratorLink {
     // The typed emit wants the event as a literal; the payload is already checked.
     const emit = this.socket.emit.bind(this.socket) as (e: string, p: unknown) => void;
     emit(event, checked(event, payload));
+  }
+
+  on<E extends ServerEvent>(event: E, handler: ServerHandler<E>): void {
+    // The typed on() wants a literal too, and the payload is unchecked until parsed here.
+    const listen = this.socket.on.bind(this.socket) as (
+      e: string,
+      listener: (payload: unknown) => void,
+    ) => void;
+    listen(event, (payload) => {
+      const parsed = received(event, payload, this.logger);
+      if (parsed !== undefined) handler(parsed);
+    });
   }
 
   close(): Promise<void> {
