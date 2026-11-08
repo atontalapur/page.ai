@@ -1,5 +1,5 @@
-// The port the Tier 2 host tools go through. RestGitHub talks to GitHub's REST API with a
-// fine-grained token scoped to the demo repo; FakeGitHub stands in for it in tests. The
+// The port the Tier 2 host tools go through. RestGitHub talks to GitHub's REST API with the
+// bot account's token, which can write only the demo repo; FakeGitHub stands in for it in tests. The
 // token lives in the daemon, never in the sandbox, which has no network anyway.
 
 /**

@@ -15,7 +15,7 @@ export const GITHUB_TIMEOUT_MS = 15_000;
 const API_VERSION = '2022-11-28';
 
 export interface RestGitHubOptions {
-  /** A fine-grained token for `repo` alone: contents and pull requests, read and write. */
+  /** A token that can push to `repo` and open PRs on it. See docs/demo-repo.md. */
   token: string;
   /** `owner/name`. */
   repo: string;
