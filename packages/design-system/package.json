@@ -15,8 +15,8 @@
     "dev": "vite",
     "lint": "eslint .",
     "typecheck": "tsc",
-    "test": "vitest run --project unit --coverage",
-    "test:integration": "vitest run --project integration"
+    "test": "vitest run --project unit --coverage --passWithNoTests",
+    "test:integration": "vitest run --project integration --passWithNoTests"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

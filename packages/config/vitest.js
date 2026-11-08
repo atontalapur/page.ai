@@ -1,6 +1,20 @@
+import process from 'node:process';
 import { configDefaults, defineConfig } from 'vitest/config';
 
 const integration = ['src/**/*.int.test.{ts,tsx}'];
+
+// Vitest fails a run only if something failed, so a `-t` that matches no test exits 0 with
+// every test skipped. The agent would read that as a pass (#66). This checks the whole run,
+// so a file with every test skipped still passes if another file ran a test.
+const failWhenNoTestRan = {
+  onTestRunEnd(modules, _errors, reason) {
+    if (reason !== 'passed' || modules.length === 0) return;
+    const ran = modules.some((module) => !module.children.allTests('passed').next().done);
+    if (ran) return;
+    process.stderr.write('No tests ran: every test was skipped\n');
+    process.exitCode = 1;
+  },
+};
 
 // Tier and approval code decides what the agent may run, so it gets the toolkit bar
 // wherever it lives, checked file by file. Glob thresholds don't inherit the global ones.
@@ -16,12 +30,30 @@ const gated = '{{tier,approval}*,*{Tier,Approval}*,*[-_.]{tier,approval}*}';
  * Inline projects inherit the root `test` options (Vitest 5 default), so a package can
  * `mergeConfig(vitestConfig(), { test: { environment: 'jsdom' } })` and reach both.
  *
+ * A run that matches no test files fails, and so does one where a `-t` skips every test, so
+ * a mistyped filter can't read as a pass (#65, #66, #73). A package with no tests for a
+ * project yet adds `--passWithNoTests` to that script, and drops it with its first test.
+ * `pnpm test:guards` checks all of this per package in CI.
+ *
+ * Limits:
+ * - A mistyped path still passes if another path in the same run matched, and a test renamed
+ *   out of the include (`cart.spec.ts`) passes if other files still match.
+ * - A path filter run across packages fails in any package that doesn't have the file.
+ * - `--changed` with nothing affected exits 1, a clean tree included.
+ * - `vitest related` turns the setting back on from the CLI, so it exits 0 with no match.
+ * - `--shard` fails when there are more shards than test files.
+ * - Vitest also fails a file with no tests in it, or a suite with none (`it.each([])`).
+ *
  * @param {{ coverage?: number }} [options] global coverage threshold in percent
  */
 export function vitestConfig({ coverage = 70 } = {}) {
   return defineConfig({
     test: {
-      passWithNoTests: true,
+      // Set, not left to the default: `--changed` turns it on when it's unset.
+      passWithNoTests: false,
+      // Spread the defaults so CI keeps its github-actions reporter. A CLI --reporter replaces
+      // this list, so the toolkit policy refuses that flag for the agent.
+      reporters: [...configDefaults.reporters, failWhenNoTestRan],
       coverage: {
         provider: 'v8',
         include: ['src/**/*.{ts,tsx}'],

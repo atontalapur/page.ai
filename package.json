@@ -13,6 +13,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
+    "test:guards": "node packages/config/check-test-guards.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
