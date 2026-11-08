@@ -95,7 +95,13 @@ shapes are in use; copy one into a new `check.sh`, since the runner pipes it in 
 Every scenario must pass this before it counts:
 
 1. On a clean demo app, `check.sh` passes.
-2. After `break.sh`, it fails.
+2. After `break.sh`, every `apps/...:line:column` and `packages/...:line:column` frame on an
+   `at ...` line of `report` lands on the start of a token in its file, and `check.sh` fails.
+   The file has to be in the sandbox image (the demo app and `packages/config`), since the
+   agent can't open anything else. A stack line that cites a repo file in another form, such
+   as `/workspace/apps/...`, `./apps/...` or a frame with no column, fails the step. Paths
+   with a `node_modules` or `.next` segment are skipped. A line that moved but still has a
+   token start at the cited column passes.
 3. After `reference_fix.patch`, it passes again.
 
 For an ops scenario the steps are the same against the live app: `check.sh` passes, fails
