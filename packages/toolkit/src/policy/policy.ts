@@ -76,8 +76,10 @@ const pnpm: ArgRule = (args) => {
   const undoes = args.find((arg) => UNDOES_TEST_GUARDS.test(arg));
   if (undoes !== undefined) return `pnpm ${undoes} is not allowed: no tests would exit 0`;
   const vitest = sub === 'vitest' || (sub === 'exec' && next === 'vitest');
-  if (vitest && args.includes('related')) {
-    return 'pnpm vitest related is not allowed: no tests would exit 0';
+  // `related` turns passWithNoTests back on, and `list` runs no tests and exits 0 either way.
+  const exitsZero = vitest ? args.find((arg) => arg === 'related' || arg === 'list') : undefined;
+  if (exitsZero !== undefined) {
+    return `pnpm vitest ${exitsZero} is not allowed: no tests would exit 0`;
   }
   // Tools like tsc --outDir or eslint -o write wherever they're told. Nothing the test
   // runner needs lives outside the repo, so refuse any path that leaves it.
