@@ -13,6 +13,12 @@ export interface ExecResult {
  */
 export type SandboxShell = (script: string) => Promise<ExecResult>;
 
+/**
+ * Runs one of an ops scenario's scripts on the host, from its file (so it can source the
+ * shared helpers next to it), against the live demo app at $DEMO_APP_URL.
+ */
+export type HostShell = (script: string) => Promise<ExecResult>;
+
 export interface StepResult {
   step: string;
   ok: boolean;
@@ -144,6 +150,7 @@ export function framesExistScript(frames: ReportFrame[], unchecked: string[] = [
  * The report's stack frames must also fit the code break.sh leaves behind (#74).
  */
 export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<SelfTestResult> {
+  if (scenario.kind !== 'code') throw new Error(`${scenario.id} is an ${scenario.kind} scenario`);
   const read = (file: string) => readFile(join(scenario.dir, file), 'utf8');
   const [breakScript, check, patch] = await Promise.all([
     read('break.sh'),
@@ -157,7 +164,7 @@ export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<Se
   const { report } = scenario.meta;
   const frames = framesExistScript(reportFrames(report), uncheckedFrames(report));
 
-  const plan: { step: string; script: string; expect: 'pass' | 'fail' }[] = [
+  const plan: PlanStep[] = [
     { step: 'check.sh is not in the sandbox', script: NO_CHECK_IN_SANDBOX, expect: 'pass' },
     { step: 'check passes on the clean app', script: check, expect: 'pass' },
     { step: 'break.sh runs', script: breakScript, expect: 'pass' },
@@ -169,6 +176,58 @@ export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<Se
   ];
 
   const steps: StepResult[] = [];
+  const passed = await runPlan(plan, sh, steps);
+  return { id: scenario.id, passed, steps };
+}
+
+/**
+ * The self-test for an ops scenario (Tier 3), run against a live demo app: check.sh
+ * passes on the clean app, fails after break-ops.sh plants the bug, and passes after
+ * fix-ops.sh undoes it with an ops action (an override deleted, a rollback) and waits
+ * for the app to come back. Every script runs on the host from its file.
+ *
+ * The app is shared, so a run that fails after break-ops.sh still runs fix-ops.sh, to
+ * leave the app clean for the next scenario. That cleanup is reported as its own step.
+ */
+export async function selfTestOps(scenario: Scenario, run: HostShell): Promise<SelfTestResult> {
+  if (scenario.kind !== 'ops') throw new Error(`${scenario.id} is a ${scenario.kind} scenario`);
+  const path = (file: string) => join(scenario.dir, file);
+  const check = path('check.sh');
+  const fix = path('fix-ops.sh');
+
+  const plan: PlanStep[] = [
+    { step: 'check passes on the clean app', script: check, expect: 'pass' },
+    { step: 'break-ops.sh runs', script: path('break-ops.sh'), expect: 'pass' },
+    { step: 'check fails after break-ops.sh', script: check, expect: 'fail' },
+    { step: 'fix-ops.sh runs', script: fix, expect: 'pass' },
+    { step: 'check passes after fix-ops.sh', script: check, expect: 'pass' },
+  ];
+
+  const steps: StepResult[] = [];
+  if (await runPlan(plan, run, steps)) return { id: scenario.id, passed: true, steps };
+
+  // break-ops.sh may have changed the app even if it failed, so clean up whenever it ran,
+  // unless fix-ops.sh itself already ran to the end.
+  const broke = steps.some((s) => s.step === 'break-ops.sh runs');
+  const fixed = steps.some((s) => s.step === 'fix-ops.sh runs' && s.ok);
+  if (broke && !fixed) {
+    await runPlan([{ step: 'cleanup: fix-ops.sh runs', script: fix, expect: 'pass' }], run, steps);
+  }
+  return { id: scenario.id, passed: false, steps };
+}
+
+interface PlanStep {
+  step: string;
+  script: string;
+  expect: 'pass' | 'fail';
+}
+
+/** Runs the plan in order into `steps`. Stops at the first step that goes wrong. */
+async function runPlan(
+  plan: PlanStep[],
+  sh: (script: string) => Promise<ExecResult>,
+  steps: StepResult[],
+): Promise<boolean> {
   for (const { step, script, expect } of plan) {
     const { code, output } = await sh(script);
     const ok = code === (expect === 'pass' ? 0 : BUG_PRESENT);
@@ -178,9 +237,9 @@ export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<Se
     }
     const wanted = `exit ${expect === 'pass' ? 0 : BUG_PRESENT}`;
     steps.push({ step, ok, detail: `expected ${wanted}, got ${code}\n${tail(output)}` });
-    return { id: scenario.id, passed: false, steps };
+    return false;
   }
-  return { id: scenario.id, passed: true, steps };
+  return true;
 }
 
 function tail(output: string): string {

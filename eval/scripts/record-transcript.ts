@@ -46,6 +46,12 @@ const scenario = await loadScenario(join('scenarios', id)).catch((err: unknown) 
   console.error(err.message);
   process.exit(2);
 });
+if (scenario.kind === 'ops') {
+  // An ops bug lives in a running app, not in the sandbox's source, so it can't be
+  // planted here.
+  console.error(`${id} is an ops scenario (Tier 3); recording needs a live demo app`);
+  process.exit(2);
+}
 // The description names the cause, so the agent gets the report instead.
 const { report } = scenario.meta;
 const [breakScript, checkScript] = await Promise.all(

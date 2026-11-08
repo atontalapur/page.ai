@@ -35,7 +35,9 @@ services:
         condition: service_healthy
 
   demo-app:
-    image: page-demo-app
+    # DEMO_APP_IMAGE serves another build, for the compose stand-in for deploys and
+    # rollbacks (scenarios/compose-deploy.sh). Unset, it serves what demo-app-migrate built.
+    image: ${DEMO_APP_IMAGE:-page-demo-app}
     environment:
       DATABASE_URL: postgres://page:page@postgres:5432/demo
       # Turns on the ops API (#13). Set it to 32+ characters to try config and restart.
