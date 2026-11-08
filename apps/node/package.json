@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc",
     "test": "vitest run --project unit --coverage",
-    "test:integration": "vitest run --project integration --passWithNoTests"
+    "test:integration": "vitest run --project integration"
   },
   "devDependencies": {
     "@page/config": "workspace:*",
