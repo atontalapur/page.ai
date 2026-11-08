@@ -8,7 +8,7 @@ export const SANDBOX_LIMITS = {
   wallClockSeconds: 15 * 60,
 } as const;
 
-// Containers carry this label so cleanup (#9) can find strays left by a crashed daemon.
+// Containers carry this label so the daemon can reap strays left by a crashed one.
 export const SANDBOX_LABEL = 'page.sandbox';
 
 export interface SandboxRunOptions {

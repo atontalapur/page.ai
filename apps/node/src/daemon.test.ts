@@ -73,4 +73,12 @@ describe('createDaemon', () => {
     await a.jobs.deliver(jobFixtures.fix);
     expect(a.link.payloads('node.run.finished')).toMatchObject([{ status: 'succeeded' }]);
   });
+
+  it('reaps leftover sandboxes before it claims a job', async () => {
+    const a = adapters();
+    a.sandboxes.strays = ['pageagents-old'];
+    const daemon = createDaemon(a, pino({ enabled: false }));
+    await daemon.start();
+    expect(a.sandboxes.stopped).toEqual(['pageagents-old']);
+  });
 });

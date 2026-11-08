@@ -6,13 +6,15 @@ type Responder = (request: RunRequest) => RunResult | Promise<RunResult>;
 /**
  * Sandboxes for tests and USE_FAKE_ADAPTERS. Each sandbox gets a FakeRunner that answers
  * with `respond`. Records which runs started and stopped; set `failStart` to make the next
- * start reject the way a missing image would.
+ * start reject the way a missing image would. `strays` plays containers a previous daemon
+ * left behind, for `reap` to find.
  */
 export class FakeSandboxes implements Sandboxes {
   readonly started: string[] = [];
   readonly stopped: string[] = [];
   readonly runners = new Map<string, FakeRunner>();
   failStart = false;
+  strays: string[] = [];
   private readonly respond: Responder | undefined;
 
   constructor(respond?: Responder) {
@@ -39,5 +41,12 @@ export class FakeSandboxes implements Sandboxes {
   stop({ name }: Sandbox): Promise<void> {
     if (!this.stopped.includes(name)) this.stopped.push(name);
     return Promise.resolve();
+  }
+
+  reap(): Promise<string[]> {
+    const reaped = [...this.strays, ...this.running];
+    this.strays = [];
+    for (const name of reaped) if (!this.stopped.includes(name)) this.stopped.push(name);
+    return Promise.resolve(reaped);
   }
 }

@@ -42,6 +42,9 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
   const runs = new Map<string, AbortController>();
   return {
     async start() {
+      // Before claiming, so a stray can't be mistaken for a run in hand.
+      const reaped = await sandboxes.reap();
+      if (reaped.length > 0) logger.warn({ containers: reaped }, 'removed leftover sandboxes');
       link.on('run.kill', ({ runId }) => {
         const run = runs.get(runId);
         if (run === undefined) {

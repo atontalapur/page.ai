@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { DockerExecRunner } from '@page/toolkit';
-import { sandboxRunArgs } from './run-args.ts';
-import { sandboxName, type Sandbox, type Sandboxes } from './sandbox.ts';
+import { SANDBOX_LABEL, sandboxRunArgs } from './run-args.ts';
+import { SANDBOX_PREFIX, sandboxName, type Sandbox, type Sandboxes } from './sandbox.ts';
 
 const run = promisify(execFile);
 
@@ -47,6 +47,32 @@ export class DockerSandboxes implements Sandboxes {
       if (stderr.includes('No such container')) return;
       throw new Error(`could not stop sandbox ${name}: ${stderr}`, { cause: error });
     }
+  }
+
+  async reap(): Promise<string[]> {
+    let stdout: string;
+    try {
+      // The label marks containers sandboxRunArgs started; the name check below keeps
+      // anything else carrying it by accident.
+      ({ stdout } = await run(
+        this.docker,
+        ['ps', '--all', '--filter', `label=${SANDBOX_LABEL}=1`, '--format', '{{.Names}}'],
+        { timeout: DOCKER_TIMEOUT_MS },
+      ));
+    } catch (error) {
+      throw new Error(`could not list sandboxes: ${stderrOf(error)}`, { cause: error });
+    }
+    const names = stdout
+      .split('\n')
+      .map((n) => n.trim())
+      .filter((n) => n.startsWith(SANDBOX_PREFIX));
+    for (const name of names) {
+      await this.stop({
+        name,
+        runner: new DockerExecRunner({ container: name, docker: this.docker }),
+      });
+    }
+    return names;
   }
 }
 

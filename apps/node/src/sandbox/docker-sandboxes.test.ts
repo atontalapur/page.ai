@@ -22,6 +22,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.FAKE_DOCKER_LOG;
+  delete process.env.FAKE_DOCKER_PS;
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -76,6 +77,31 @@ describe('DockerSandboxes', { timeout: 20_000 }, () => {
       sandboxes.stop({ name: 'pageagents-down', runner: new FakeRunner() }),
     ).rejects.toThrow(
       'could not stop sandbox pageagents-down: Cannot connect to the Docker daemon',
+    );
+  });
+
+  it('reaps every leftover sandbox container and nothing else', async () => {
+    process.env.FAKE_DOCKER_PS = `pageagents-a\nsomething-else\npageagents-b\n`;
+    const sandboxes = new DockerSandboxes({ image: 'page-sandbox', docker });
+    expect(await sandboxes.reap()).toEqual(['pageagents-a', 'pageagents-b']);
+    expect(calls()).toEqual([
+      ['ps', '--all', '--filter', 'label=page.sandbox=1', '--format', '{{.Names}}'],
+      ['rm', '--force', 'pageagents-a'],
+      ['rm', '--force', 'pageagents-b'],
+    ]);
+  });
+
+  it('reaps nothing when there are no leftovers', async () => {
+    const sandboxes = new DockerSandboxes({ image: 'page-sandbox', docker });
+    expect(await sandboxes.reap()).toEqual([]);
+    expect(calls()).toHaveLength(1);
+  });
+
+  it('rejects when docker cannot list containers', async () => {
+    process.env.FAKE_DOCKER_PS = 'down';
+    const sandboxes = new DockerSandboxes({ image: 'page-sandbox', docker });
+    await expect(sandboxes.reap()).rejects.toThrow(
+      'could not list sandboxes: Cannot connect to the Docker daemon',
     );
   });
 
