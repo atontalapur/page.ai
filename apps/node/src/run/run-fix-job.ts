@@ -1,6 +1,13 @@
 import { DEFAULT_AGENT_CONFIG, runAgent, type AgentConfig, type ExecuteFn } from '@page/agent';
 import type { ModelClient } from '@page/model-client';
-import { DEFAULT_TIMEOUT_MS, execute, StepLog, type AuditSink } from '@page/toolkit';
+import {
+  DEFAULT_TIMEOUT_MS,
+  execute,
+  GitHubHostTools,
+  StepLog,
+  type AuditSink,
+  type GitHub,
+} from '@page/toolkit';
 import type { Logger } from 'pino';
 import type { ClaimedJob } from '../jobs/job-source.ts';
 import type { OrchestratorLink } from '../link/link.ts';
@@ -17,6 +24,11 @@ export interface RunDeps {
   sink: AuditSink;
   link: OrchestratorLink;
   model: ModelClient;
+  /**
+   * The demo repo. With it, the run gets the Tier 2 host tools, which execute() still
+   * refuses below Tier 2. Without it, every host tool call is refused.
+   */
+  github?: GitHub;
   logger: Logger;
   agentConfig?: Partial<AgentConfig>;
   /** Milliseconds; injectable so tests control the wall clock. */
@@ -44,9 +56,10 @@ export async function runFixJob(
   const logger = deps.logger.child({ issueId, runId, tier });
   const now = deps.now ?? Date.now;
   const tried: string[] = [];
+  let hostTools: GitHubHostTools | undefined;
 
   const finish = (end: RunEnd): RunFinished => {
-    const event = finishedEvent(runId, tier, end, tried);
+    const event = finishedEvent(runId, tier, end, tried, hostTools?.prUrl ?? null);
     deps.link.send('node.run.finished', event);
     logger.info({ status: event.status }, 'run finished');
     return event;
@@ -106,12 +119,21 @@ export async function runFixJob(
       runId,
       logger,
     });
+    if (deps.github !== undefined) {
+      hostTools = new GitHubHostTools({
+        github: deps.github,
+        workspace: sandbox.runner,
+        issueId,
+        runId,
+      });
+    }
     const run: ExecuteFn = (call, { timeoutMs = Infinity }) =>
       execute(call, {
         tier,
         runner: sandbox.runner,
         steps,
         timeoutMs: Math.min(DEFAULT_TIMEOUT_MS, timeoutMs),
+        ...(hostTools === undefined ? {} : { hostTools }),
       });
 
     // The container's wall clock started with it, so the agent's budget starts there too.
@@ -124,7 +146,7 @@ export async function runFixJob(
     let end: RunEnd;
     try {
       const agentRun = await runAgent(
-        { task: job.report },
+        { task: job.report, tier },
         { model: deps.model, execute: run, now, signal: stopped },
         config,
       );

@@ -1,5 +1,5 @@
 import { jobFixtures } from '@page/contracts/fixtures';
-import { FakeRunner, InMemoryAuditSink } from '@page/toolkit';
+import { FakeGitHub, FakeRunner, InMemoryAuditSink } from '@page/toolkit';
 import { pino } from 'pino';
 import { describe, expect, it, vi } from 'vitest';
 import { createDaemon, type Adapters } from './daemon.ts';
@@ -17,6 +17,7 @@ function adapters() {
     sink: new InMemoryAuditSink(),
     link: new FakeLink(),
     model: new ScriptedModel([bashReply('git status'), submitReply()]),
+    github: new FakeGitHub(),
     close,
   } satisfies Adapters;
   return { ...a, closed: close };

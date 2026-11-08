@@ -1,6 +1,12 @@
 import type { NodeConfig } from '@page/contracts';
 import { OpenRouterClient, withRetries, type ModelClient } from '@page/model-client';
-import { PostgresAuditSink, type AuditSink } from '@page/toolkit';
+import {
+  FakeGitHub,
+  PostgresAuditSink,
+  RestGitHub,
+  type AuditSink,
+  type GitHub,
+} from '@page/toolkit';
 import pg from 'pg';
 import { PgBoss } from 'pg-boss';
 import type { Logger } from 'pino';
@@ -22,6 +28,8 @@ export interface Adapters {
   sink: AuditSink;
   link: OrchestratorLink;
   model: ModelClient;
+  /** The demo repo Tier 2 runs push to and open PRs on. */
+  github: GitHub;
   /** Closes connections the adapters opened, after the daemon stops claiming jobs. */
   close(): Promise<void>;
 }
@@ -38,7 +46,7 @@ export interface Daemon {
  * may hold it, or it already finished.
  */
 export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
-  const { jobs, sandboxes, sink, link, model } = adapters;
+  const { jobs, sandboxes, sink, link, model, github } = adapters;
   // Each run's kill switch, with a logger that carries the run's issueId, runId and tier.
   const runs = new Map<string, { kill: AbortController; logger: Logger }>();
   // The link has no `off`, so the kill handler goes on once however often start() runs.
@@ -71,7 +79,11 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
         };
         runs.set(runId, entry);
         try {
-          await runFixJob(claimed, { sandboxes, sink, link, model, logger }, entry.kill.signal);
+          await runFixJob(
+            claimed,
+            { sandboxes, sink, link, model, github, logger },
+            entry.kill.signal,
+          );
         } finally {
           // A retry of the same runId may have replaced this entry; leave the newer one.
           if (runs.get(runId) === entry) runs.delete(runId);
@@ -90,8 +102,8 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
 }
 
 /**
- * The real adapters for `config`. USE_FAKE_ADAPTERS swaps Docker, OpenRouter and the
- * orchestrator socket for fakes. pg-boss and the steps table stay real either way, since
+ * The real adapters for `config`. USE_FAKE_ADAPTERS swaps Docker, OpenRouter, GitHub and
+ * the orchestrator socket for fakes. pg-boss and the steps table stay real either way, since
  * they are the local Postgres, not a third party.
  */
 export async function createAdapters(config: NodeConfig, logger: Logger): Promise<Adapters> {
@@ -121,6 +133,7 @@ export async function createAdapters(config: NodeConfig, logger: Logger): Promis
     sink: new PostgresAuditSink(pool),
     link,
     model: fake ? new ScriptedModel() : withRetries(openRouter(config)),
+    github: fake ? new FakeGitHub() : gitHub(config),
     async close() {
       const results = await Promise.allSettled([
         link.close(),
@@ -145,4 +158,13 @@ function openRouter(config: NodeConfig): ModelClient {
     throw new Error('OPENROUTER_API_KEY and OPENROUTER_MODEL are required');
   }
   return new OpenRouterClient({ apiKey, model });
+}
+
+function gitHub(config: NodeConfig): GitHub {
+  const { GITHUB_TOKEN: token, GITHUB_REPO: repo } = config;
+  // The config schema requires both unless USE_FAKE_ADAPTERS is set.
+  if (token === undefined || repo === undefined) {
+    throw new Error('GITHUB_TOKEN and GITHUB_REPO are required');
+  }
+  return new RestGitHub({ token, repo });
 }

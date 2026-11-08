@@ -1,6 +1,6 @@
 import { jobFixtures } from '@page/contracts/fixtures';
 import type { CompleteOptions, CompletionResult, ModelClient } from '@page/model-client';
-import { FakeRunner, InMemoryAuditSink, type RunRequest } from '@page/toolkit';
+import { FakeGitHub, FakeRunner, InMemoryAuditSink, type RunRequest } from '@page/toolkit';
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
 import { FakeLink } from '../link/fake-link.ts';
@@ -298,5 +298,64 @@ describe('runFixJob', () => {
     };
     await runFixJob(claim(), deps, kill.signal);
     expect(stops).toBe(1);
+  });
+
+  describe('Tier 2 host tools', () => {
+    const pushReply = '```page_push_branch\nfix: currency code\n```';
+    const prReply = '```page_open_pr\nfix: currency code\nUSDD was a typo.\n```';
+    const path = 'apps/demo-app/lib/money.ts';
+    // The sandbox as the host tools read it: one changed file.
+    const workspace = ({ command }: RunRequest) => {
+      if (command.startsWith('git status')) return FakeRunner.exited(0, ` M ${path}\0`);
+      if (command.startsWith('git ls-files')) return FakeRunner.exited(0, '');
+      if (command.startsWith('stat -c')) return FakeRunner.exited(0, '4\nVVNECg==\n');
+      return FakeRunner.exited(0, '');
+    };
+
+    it('pushes the fix, opens a PR and reports its url when the run finishes', async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      const { deps, sink } = setup([pushReply, prReply, submitReply()], workspace, { github });
+      const finished = await runFixJob({ ...claim(), job: { ...job, tier: 2 } }, deps);
+
+      const branch = `pageagents/${job.runId}`;
+      expect(github.files(branch)[path]!.text).toBe('USD\n');
+      expect(github.pullRequests).toMatchObject([
+        { title: 'fix: currency code', head: branch, base: 'main' },
+      ]);
+      expect(github.pullRequests[0]!.body).toContain(`run \`${job.runId}\``);
+      expect(sink.steps).toMatchObject([
+        { kind: 'host_tool', allowed: true, exitCode: 0 },
+        { kind: 'host_tool', allowed: true, exitCode: 0 },
+      ]);
+      expect(finished).toMatchObject({
+        status: 'succeeded',
+        prUrl: 'https://github.com/page-demo/shop/pull/1',
+      });
+    });
+
+    it('refuses the host tools at Tier 1 and logs the refusal', async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      const { deps, sink } = setup([pushReply, submitReply()], workspace, { github });
+      const finished = await runFixJob(claim(), deps);
+
+      expect(job.tier).toBe(1);
+      expect(github.head(`pageagents/${job.runId}`)).toBeUndefined();
+      expect(sink.steps).toMatchObject([
+        {
+          kind: 'host_tool',
+          allowed: false,
+          outputTrimmed: 'refused: git.pushBranch needs Tier 2; this run is Tier 1',
+        },
+      ]);
+      expect(finished).toMatchObject({ status: 'succeeded', prUrl: null });
+    });
+
+    it('refuses the host tools when the node has no GitHub', async () => {
+      const { deps, sink } = setup([pushReply, submitReply()], workspace);
+      await runFixJob({ ...claim(), job: { ...job, tier: 2 } }, deps);
+      expect(sink.steps).toMatchObject([
+        { allowed: false, outputTrimmed: 'refused: git.pushBranch is not set up on this node' },
+      ]);
+    });
   });
 });
