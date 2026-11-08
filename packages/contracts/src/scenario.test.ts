@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { scenarioMetaSchema } from './scenario.ts';
+import { scenarioKind, scenarioMetaSchema } from './scenario.ts';
 
 const valid = {
   class: 'backend-api',
@@ -34,5 +34,13 @@ describe('scenarioMetaSchema', () => {
 
   it('rejects unknown keys', () => {
     expect(() => scenarioMetaSchema.parse({ ...valid, fix: 'x' })).toThrow();
+  });
+});
+
+describe('scenarioKind', () => {
+  it('is code for Tier 1 and 2 and ops for Tier 3', () => {
+    expect(scenarioKind({ expectedTier: 1 })).toBe('code');
+    expect(scenarioKind({ expectedTier: 2 })).toBe('code');
+    expect(scenarioKind(scenarioMetaSchema.parse({ ...valid, expectedTier: 3 }))).toBe('ops');
   });
 });

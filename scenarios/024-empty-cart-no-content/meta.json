@@ -1,6 +1,0 @@
-{
-  "class": "backend-api",
-  "expectedTier": 1,
-  "description": "empty_cart maps to 204, which can't carry errorResponse's JSON body, so checking out an empty cart returns 500 instead of 409",
-  "report": "POST /api/orders returned 500\nRequest cookies: none\n\nTypeError: Response constructor: Invalid response status code 204\n    at errorResponse (apps/demo-app/src/app/api/respond.ts:13:19)\n    at handle (apps/demo-app/src/app/api/respond.ts:24:42)"
-}

@@ -5,5 +5,9 @@ evaluation (#15, #16). See [scenarios/README.md](../scenarios/README.md) for the
 format.
 
 - `src/scenario.ts` loads a scenario directory and validates its `meta.json`.
-- `src/selftest.ts` runs the clean / broken / fixed check against a sandbox.
-- `scripts/selftest.ts` is the CLI behind `pnpm scenarios:selftest`.
+- `src/selftest.ts` runs the clean / broken / fixed check: in a sandbox for a code
+  scenario (Tier 1 and 2), and on the host against a live demo app for an ops scenario
+  (Tier 3).
+- `scripts/selftest.ts` is the CLI behind `pnpm scenarios:selftest`. Ops scenarios need
+  `DEMO_APP_URL` and `OPS_SECRET`; without them they are skipped when no ids are named,
+  and fail when they are.
