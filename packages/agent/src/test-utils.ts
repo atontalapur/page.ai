@@ -61,10 +61,17 @@ export function fakeExecute(respond: Responder = (call) => okResult(call)) {
   return { execute, calls, options };
 }
 
-const inputOf = (call: ToolCall) =>
-  call.kind === 'exec'
-    ? call.command
-    : JSON.stringify({ path: call.path, oldText: call.oldText, newText: call.newText });
+function inputOf(call: ToolCall): string {
+  if (call.kind === 'exec') return call.command;
+  if (call.kind === 'edit') {
+    return JSON.stringify({ path: call.path, oldText: call.oldText, newText: call.newText });
+  }
+  return JSON.stringify(
+    call.tool === 'git.pushBranch'
+      ? { tool: call.tool, message: call.message }
+      : { tool: call.tool, title: call.title, body: call.body },
+  );
+}
 
 export const okResult = (call: ToolCall, output = '') =>
   ok<ExecOk>({ kind: call.kind, input: inputOf(call), exitCode: 0, output });

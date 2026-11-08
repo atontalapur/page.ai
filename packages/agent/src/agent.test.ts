@@ -50,6 +50,21 @@ describe('runAgent', () => {
     ]);
   });
 
+  it('passes a push to execute as a host tool call, and opens a Tier 2 run with the tools', async () => {
+    const push = '```page_push_branch\nfix: currency\n```';
+    const model = new ScriptedModel([push, submit()]);
+    const fake = fakeExecute((call) => okResult(call, 'pushed 1 file(s)'));
+    await runAgent({ ...task, tier: 2 }, { model, ...fake });
+
+    expect(fake.calls).toEqual([
+      { kind: 'host_tool', tool: 'git.pushBranch', message: 'fix: currency' },
+    ]);
+    const first = model.calls[0]!;
+    expect(first[0]!.content).toContain('page_open_pr');
+    expect(first[1]!.content).toContain('page_push_branch');
+    expect(model.calls[1]!.at(-1)?.content).toContain('pushed 1 file(s)');
+  });
+
   it('shows a failed command its exit code and output', async () => {
     const model = new ScriptedModel([bash('pnpm test'), submit()]);
     const fake = fakeExecute((call) => failedResult(call, 1, '1 failed'));

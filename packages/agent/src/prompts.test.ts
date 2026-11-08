@@ -10,7 +10,29 @@ describe('systemPrompt', () => {
   });
 });
 
+describe('systemPrompt at Tier 2', () => {
+  it('adds the push and PR blocks, and leaves Tier 1 without them', () => {
+    const tier2 = systemPrompt(2);
+    expect(tier2).toContain('five kinds of action block');
+    for (const tag of ['page_push_branch', 'page_open_pr']) {
+      expect(tier2).toContain(tag);
+      expect(systemPrompt(1)).not.toContain(tag);
+    }
+    expect(tier2).toContain('5. Submitting your work');
+    expect(systemPrompt(1)).toBe(systemPrompt());
+    expect(systemPrompt(3)).toBe(tier2);
+  });
+});
+
 describe('instancePrompt', () => {
+  it('asks a Tier 2 run to push and open a PR before it submits', () => {
+    const prompt = instancePrompt({ task: 'x', tier: 2 });
+    expect(prompt).toContain('5. Push your changes with a page_push_branch block');
+    expect(prompt).toContain('6. Submit with a page_submit block');
+    expect(instancePrompt({ task: 'x', tier: 1 })).toBe(instancePrompt({ task: 'x' }));
+    expect(instancePrompt({ task: 'x' })).not.toContain('page_push_branch');
+  });
+
   it('includes the task and the commands the agent may run', () => {
     const prompt = instancePrompt({ task: 'checkout returns 500' });
     expect(prompt).toContain('checkout returns 500');

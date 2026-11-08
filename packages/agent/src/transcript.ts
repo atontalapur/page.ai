@@ -77,9 +77,14 @@ export class ReplayDivergence extends Error {
 
 function sameCall(a: ToolCall, b: ToolCall): boolean {
   if (a.kind === 'exec') return b.kind === 'exec' && a.command === b.command;
-  return (
-    b.kind === 'edit' && a.path === b.path && a.oldText === b.oldText && a.newText === b.newText
-  );
+  if (a.kind === 'edit') {
+    return (
+      b.kind === 'edit' && a.path === b.path && a.oldText === b.oldText && a.newText === b.newText
+    );
+  }
+  if (b.kind !== 'host_tool') return false;
+  if (a.tool === 'git.pushBranch') return b.tool === a.tool && b.message === a.message;
+  return b.tool === a.tool && b.title === a.title && b.body === a.body;
 }
 
 const describeTurn = (turn: Turn | undefined) =>
