@@ -10,7 +10,8 @@ export type RunEnd =
   | { kind: 'no_report' }
   | { kind: 'sandbox_failed'; message: string }
   | { kind: 'crashed'; message: string }
-  | { kind: 'expired' };
+  | { kind: 'expired' }
+  | { kind: 'killed' };
 
 // The note keeps the last few commands, in the order they ran, each clipped.
 const TRIED_LIMIT = 20;
@@ -24,7 +25,8 @@ const clip = (text: string, limit: number) =>
  * The `node.run.finished` event for a run. `tried` is what the agent ran, in order.
  *
  * A submitted run is a success with no confidence: nothing scores runs yet. A run that ran
- * out of budget escalates a tier (Tier 3 has nowhere to go, so it fails). Everything else
+ * out of budget escalates a tier (Tier 3 has nowhere to go, so it fails). A killed run is
+ * `killed`, with what it had tried so far. Everything else
  * is a failure: retrying a broken model, audit log or sandbox at a higher tier won't help.
  */
 export function finishedEvent(
@@ -47,6 +49,7 @@ export function finishedEvent(
       .slice(-TRIED_LIMIT),
     blocker,
   };
+  if (end.kind === 'killed') return { ...base, status: 'killed', note };
   if (end.kind === 'agent' && isBudget(end.run) && tier < 3) {
     const toTier = (tier + 1) as Tier;
     return { ...base, status: 'escalated', reason: 'budget_exhausted', toTier, note };
@@ -72,6 +75,11 @@ function describe(end: RunEnd): { summary: string; blocker: string } {
       return {
         summary: 'The job queue gave up on the run before it finished.',
         blocker: 'The pg-boss job expired, so the daemon stopped the sandbox.',
+      };
+    case 'killed':
+      return {
+        summary: 'The run was killed before it finished.',
+        blocker: 'Someone stopped the run, so the daemon removed its sandbox.',
       };
     case 'agent':
       return describeAgent(end.run);

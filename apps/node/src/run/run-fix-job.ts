@@ -29,10 +29,17 @@ export interface RunDeps {
  * to the orchestrator, and reports how the run ended. The sandbox is removed on every
  * path out, and when the queue gives up on the job.
  *
+ * `kill` stops the run the way a job expiry does: the in-flight model call is cancelled
+ * and the sandbox removed at once. The run then finishes as `killed`.
+ *
  * Resolves for every run outcome, failures included. It rejects only if cleanup or the
  * link itself breaks, which pg-boss then records on the job.
  */
-export async function runFixJob({ job, signal }: ClaimedJob, deps: RunDeps): Promise<RunFinished> {
+export async function runFixJob(
+  { job, signal }: ClaimedJob,
+  deps: RunDeps,
+  kill: AbortSignal = new AbortController().signal,
+): Promise<RunFinished> {
   const { issueId, runId, tier } = job;
   const logger = deps.logger.child({ issueId, runId, tier });
   const now = deps.now ?? Date.now;
@@ -46,6 +53,15 @@ export async function runFixJob({ job, signal }: ClaimedJob, deps: RunDeps): Pro
   };
 
   if (job.report === undefined) return finish({ kind: 'no_report' });
+  if (kill.aborted) return finish({ kind: 'killed' });
+
+  // Either one stops the run; which one fired decides how it is reported.
+  const stopped = AbortSignal.any([signal, kill]);
+  const stoppedEnd = (): RunEnd | undefined => {
+    if (kill.aborted) return { kind: 'killed' };
+    if (signal.aborted) return { kind: 'expired' };
+    return undefined;
+  };
 
   const startedAt = now();
   let sandbox: Sandbox;
@@ -57,14 +73,18 @@ export async function runFixJob({ job, signal }: ClaimedJob, deps: RunDeps): Pro
   }
   logger.info({ container: sandbox.name }, 'sandbox started');
 
-  // Stopping the container makes the next command fail, which ends the loop.
+  // Removing the container ends a running command; the signal ends the model call.
   const onAbort = () => {
-    logger.warn('job expired; stopping the sandbox');
+    logger.warn(
+      kill.aborted ? 'run killed; stopping the sandbox' : 'job expired; stopping the sandbox',
+    );
     void deps.sandboxes.stop(sandbox).catch((error: unknown) => {
       logger.error({ err: error }, 'could not stop the sandbox');
     });
   };
-  signal.addEventListener('abort', onAbort, { once: true });
+  // A kill that arrived while the sandbox was starting has already fired.
+  if (stopped.aborted) onAbort();
+  else stopped.addEventListener('abort', onAbort, { once: true });
 
   try {
     const steps = new StepLog({
@@ -99,13 +119,13 @@ export async function runFixJob({ job, signal }: ClaimedJob, deps: RunDeps): Pro
     try {
       const agentRun = await runAgent(
         { task: job.report },
-        { model: deps.model, execute: run, now },
+        { model: deps.model, execute: run, now, signal: stopped },
         config,
       );
-      end = signal.aborted ? { kind: 'expired' } : { kind: 'agent', run: agentRun };
+      end = stoppedEnd() ?? { kind: 'agent', run: agentRun };
     } catch (error) {
       logger.error({ err: error }, 'run crashed');
-      end = signal.aborted ? { kind: 'expired' } : { kind: 'crashed', message: String(error) };
+      end = stoppedEnd() ?? { kind: 'crashed', message: String(error) };
     }
 
     if (end.kind === 'agent' && end.run.exitStatus === 'submitted') {
@@ -113,7 +133,7 @@ export async function runFixJob({ job, signal }: ClaimedJob, deps: RunDeps): Pro
     }
     return finish(end);
   } finally {
-    signal.removeEventListener('abort', onAbort);
+    stopped.removeEventListener('abort', onAbort);
     await deps.sandboxes.stop(sandbox);
     logger.info({ container: sandbox.name }, 'sandbox removed');
   }

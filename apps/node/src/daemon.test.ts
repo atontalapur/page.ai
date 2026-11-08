@@ -1,5 +1,5 @@
 import { jobFixtures } from '@page/contracts/fixtures';
-import { InMemoryAuditSink } from '@page/toolkit';
+import { FakeRunner, InMemoryAuditSink } from '@page/toolkit';
 import { pino } from 'pino';
 import { describe, expect, it, vi } from 'vitest';
 import { createDaemon, type Adapters } from './daemon.ts';
@@ -47,5 +47,30 @@ describe('createDaemon', () => {
     a.jobs.stop = () => Promise.reject(new Error('offWork failed'));
     await expect(daemon.stop()).rejects.toThrow('offWork failed');
     expect(a.closed).toHaveBeenCalledTimes(2);
+  });
+
+  it('kills the run a run.kill names and leaves no sandbox behind', async () => {
+    const a = adapters();
+    const { runId } = jobFixtures.fix;
+    const sandboxes = new FakeSandboxes(() => {
+      a.link.deliver('run.kill', { v: 1, runId });
+      return FakeRunner.exited(0);
+    });
+    const daemon = createDaemon({ ...a, sandboxes }, pino({ enabled: false }));
+    await daemon.start();
+    await a.jobs.deliver(jobFixtures.fix);
+
+    expect(a.link.payloads('node.run.finished')).toMatchObject([{ runId, status: 'killed' }]);
+    expect(sandboxes.started).toEqual([`pageagents-${runId}`]);
+    expect(sandboxes.running).toEqual([]);
+  });
+
+  it('ignores a kill for a run it is not holding', async () => {
+    const a = adapters();
+    const daemon = createDaemon(a, pino({ enabled: false }));
+    await daemon.start();
+    a.link.deliver('run.kill', { v: 1, runId: jobFixtures.fix.runId });
+    await a.jobs.deliver(jobFixtures.fix);
+    expect(a.link.payloads('node.run.finished')).toMatchObject([{ status: 'succeeded' }]);
   });
 });

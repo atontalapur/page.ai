@@ -32,13 +32,34 @@ export interface Daemon {
   stop(): Promise<void>;
 }
 
-/** Wires claimed jobs to runFixJob. */
+/**
+ * Wires claimed jobs to runFixJob, and `run.kill` from the orchestrator to the run it
+ * names. A kill for a run this daemon isn't holding is logged and ignored: another node
+ * may hold it, or it already finished.
+ */
 export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
   const { jobs, sandboxes, sink, link, model } = adapters;
+  const runs = new Map<string, AbortController>();
   return {
     async start() {
+      link.on('run.kill', ({ runId }) => {
+        const run = runs.get(runId);
+        if (run === undefined) {
+          logger.info({ runId }, 'kill for a run this daemon is not running; ignored');
+          return;
+        }
+        logger.info({ runId }, 'killing run');
+        run.abort();
+      });
       await jobs.start(async (claimed) => {
-        await runFixJob(claimed, { sandboxes, sink, link, model, logger });
+        const { runId } = claimed.job;
+        const kill = new AbortController();
+        runs.set(runId, kill);
+        try {
+          await runFixJob(claimed, { sandboxes, sink, link, model, logger }, kill.signal);
+        } finally {
+          runs.delete(runId);
+        }
       });
       logger.info('claiming fix jobs');
     },

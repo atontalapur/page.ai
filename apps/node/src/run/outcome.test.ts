@@ -64,6 +64,20 @@ describe('finishedEvent', () => {
     expect(schema.parse(event)).toEqual(event);
   });
 
+  it('reports a killed run as killed, with what it tried', () => {
+    const event = finishedEvent(runId, 2, { kind: 'killed' }, ['ls']);
+    expect(event).toMatchObject({
+      status: 'killed',
+      note: { tried: ['ls'], blocker: /stopped the run/ },
+    });
+    expect(schema.parse(event)).toEqual(event);
+  });
+
+  it('describes an agent that stopped on its abort signal', () => {
+    const event = finishedEvent(runId, 1, agent('aborted'), []);
+    expect(event).toMatchObject({ status: 'failed', note: { blocker: /Stopped/ } });
+  });
+
   it('keeps the note inside the contract limits', () => {
     const tried = Array.from({ length: 30 }, (_, i) => `${i} ${'x'.repeat(300)}`);
     const { note } = finishedEvent(runId, 1, agent('step_limit'), tried);
