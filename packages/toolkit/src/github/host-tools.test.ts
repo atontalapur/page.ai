@@ -108,6 +108,7 @@ describe('GitHubHostTools git.pushBranch', () => {
     expect(result.ok).toBe(true);
     expect(result.output).toMatch(new RegExp(`^pushed 4 file\\(s\\) to ${BRANCH} as [0-9a-f]{7}:`));
     expect(result.output).toContain('D apps/demo-app/lib/old.ts');
+    expect(result.output).toContain('A apps/demo-app/lib/new.ts');
     expect(github.files(BRANCH)).toEqual({
       'apps/demo-app/lib/money.ts': { mode: '100644', text: 'export const cents = 100;\n' },
       'apps/demo-app/lib/new.ts': { mode: '100644', text: 'new\n'.repeat(40) },
@@ -365,11 +366,11 @@ describe('parseStatus', () => {
         status(' M a b.ts', ' D gone.ts', '?? new/c.ts', 'R  to.ts', 'from.ts', 'MD x.ts'),
       ),
     ).toEqual([
-      { path: 'a b.ts', deleted: false },
-      { path: 'gone.ts', deleted: true },
-      { path: 'new/c.ts', deleted: false },
-      { path: 'to.ts', deleted: false },
-      { path: 'x.ts', deleted: true },
+      { path: 'a b.ts', status: 'M' },
+      { path: 'gone.ts', status: 'D' },
+      { path: 'new/c.ts', status: 'A' },
+      { path: 'to.ts', status: 'M' },
+      { path: 'x.ts', status: 'D' },
     ]);
     expect(parseStatus('')).toEqual([]);
   });

@@ -35,7 +35,8 @@ export interface GitHubHostToolsOptions {
 
 interface Change {
   path: string;
-  deleted: boolean;
+  /** Added (untracked), modified or deleted. */
+  status: 'A' | 'M' | 'D';
 }
 
 const fail = (output: string): HostToolOutcome => ({ ok: false, output });
@@ -99,7 +100,7 @@ export class GitHubHostTools implements HostTools {
     for (const change of changes) {
       const mode = modes.get(change.path) ?? '100644';
       if (mode === '120000') return fail(`${change.path} is a symlink, which a push can't carry`);
-      if (change.deleted) {
+      if (change.status === 'D') {
         entries.push({ path: change.path, mode, sha: null });
         continue;
       }
@@ -124,7 +125,7 @@ export class GitHubHostTools implements HostTools {
     if (existing === null) await github.createBranch(this.branch, commitSha);
     else await github.updateBranch(this.branch, commitSha);
 
-    const listing = changes.map((c) => `${c.deleted ? 'D' : 'M'} ${c.path}`).join('\n');
+    const listing = changes.map((c) => `${c.status} ${c.path}`).join('\n');
     return {
       ok: true,
       output: `pushed ${changes.length} file(s) to ${this.branch} as ${commitSha.slice(0, 7)}:\n${listing}`,
@@ -201,7 +202,8 @@ export function parseStatus(stdout: string): Change[] {
     const code = field.slice(0, 2);
     const path = field.slice(3);
     if (code[0] === 'R' || code[0] === 'C') i += 1;
-    changes.push({ path, deleted: code.includes('D') });
+    const status = code.includes('D') ? 'D' : code === '??' ? 'A' : 'M';
+    changes.push({ path, status });
   }
   return changes;
 }
