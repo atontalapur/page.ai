@@ -96,6 +96,21 @@ describe('nodeConfigSchema', () => {
     expect(() => nodeConfigSchema.parse(env)).toThrow(/GITHUB_TOKEN/);
   });
 
+  it('defaults the pg-boss schema and sandbox image', () => {
+    expect(nodeConfigSchema.parse(nodeEnvFixture)).toMatchObject({
+      PGBOSS_SCHEMA: 'pgboss',
+      SANDBOX_IMAGE: 'page-sandbox',
+    });
+  });
+
+  it('requires a model when real adapters are on, but not with fakes', () => {
+    const env = { ...nodeEnvFixture, OPENROUTER_MODEL: '' };
+    expect(() => nodeConfigSchema.parse(env)).toThrow(/OPENROUTER_MODEL/);
+    expect(nodeConfigSchema.parse({ ...env, USE_FAKE_ADAPTERS: 'true' })).not.toHaveProperty(
+      'OPENROUTER_MODEL',
+    );
+  });
+
   it('rejects a GITHUB_REPO that is not owner/name', () => {
     expect(() => nodeConfigSchema.parse({ ...nodeEnvFixture, GITHUB_REPO: 'page-demo' })).toThrow();
   });

@@ -31,7 +31,7 @@
     "@page/contracts": "workspace:*",
     "kysely": "^0.29.7",
     "pg": "catalog:",
-    "pg-boss": "^12.38.0",
+    "pg-boss": "catalog:",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "zod": "catalog:"

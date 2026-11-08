@@ -19,6 +19,9 @@ export const fixJobSchema = z.strictObject({
   runId: idSchema,
   tier: tierSchema,
   fingerprint: fingerprintSchema,
+  // The triaged error report the agent works from: request, status, error and stack, never
+  // the cause. Optional until triage (#30) builds one; the daemon fails a run without it.
+  report: z.string().trim().min(1).optional(),
 });
 
 export const NOTIFY_CHANNELS = ['call', 'sms'] as const;

@@ -24,6 +24,15 @@ describe('jobSchemas', () => {
     expect(() => jobSchemas.fix.parse({ ...jobFixtures.fix, tier: 4 })).toThrow();
   });
 
+  it('accepts a fix job without a report, until triage builds one', () => {
+    const job = { ...jobFixtures.fix, report: undefined };
+    expect(jobSchemas.fix.parse(job)).toEqual(job);
+  });
+
+  it('rejects a blank fix job report', () => {
+    expect(() => jobSchemas.fix.parse({ ...jobFixtures.fix, report: '  ' })).toThrow();
+  });
+
   it('rejects an unknown notify channel', () => {
     expect(() => jobSchemas.notify.parse({ ...jobFixtures.notify, channel: 'email' })).toThrow();
   });

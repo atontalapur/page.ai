@@ -30,7 +30,8 @@ docker build -f infra/sandbox/Dockerfile -t page-sandbox .
 
 - `apps/orchestrator`: NestJS on Fastify, Kysely, pg-boss. Issue state machine, fix-job
   queue, HTTP API. Builds with `tsc` to `dist/` because Nest needs decorator metadata.
-- `apps/node`: daemon that runs the agent and starts sandboxes (`src/sandbox/run-args.ts`).
+- `apps/node`: daemon that claims fix jobs, starts one sandbox per run and runs the agent
+  there. `apps/node/README.md` covers running it locally.
 - `apps/ui`: Vite 8 + React 19 + Tailwind 4.
 - `apps/demo-app`: Next.js 16 + Postgres shop that agents treat as production and that
   the seeded bugs break. Plain SQL migrations, PGlite unit tests, Railway deploy.

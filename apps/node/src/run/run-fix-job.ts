@@ -1,0 +1,139 @@
+import { DEFAULT_AGENT_CONFIG, runAgent, type AgentConfig, type ExecuteFn } from '@page/agent';
+import type { ModelClient } from '@page/model-client';
+import { DEFAULT_TIMEOUT_MS, execute, StepLog, type AuditSink } from '@page/toolkit';
+import type { Logger } from 'pino';
+import type { ClaimedJob } from '../jobs/job-source.ts';
+import type { OrchestratorLink } from '../link/link.ts';
+import type { Sandbox, Sandboxes } from '../sandbox/sandbox.ts';
+import { finishedEvent, type RunEnd, type RunFinished } from './outcome.ts';
+import { StreamingAuditSink } from './streaming-sink.ts';
+
+// The agent's diff, read after it submits. It goes to the UI, so it needn't be complete.
+const DIFF_TIMEOUT_MS = 30_000;
+
+export interface RunDeps {
+  sandboxes: Sandboxes;
+  /** The steps table. Every execute() call writes to it before anything is streamed. */
+  sink: AuditSink;
+  link: OrchestratorLink;
+  model: ModelClient;
+  logger: Logger;
+  agentConfig?: Partial<AgentConfig>;
+  /** Milliseconds; injectable so tests control the wall clock. */
+  now?: () => number;
+}
+
+/**
+ * Runs one fix job: starts the run's sandbox, runs the agent loop in the daemon with
+ * every command going into the container through toolkit's execute(), streams each step
+ * to the orchestrator, and reports how the run ended. The sandbox is removed on every
+ * path out, and when the queue gives up on the job.
+ *
+ * Resolves for every run outcome, failures included. It rejects only if cleanup or the
+ * link itself breaks, which pg-boss then records on the job.
+ */
+export async function runFixJob({ job, signal }: ClaimedJob, deps: RunDeps): Promise<RunFinished> {
+  const { issueId, runId, tier } = job;
+  const logger = deps.logger.child({ issueId, runId, tier });
+  const now = deps.now ?? Date.now;
+  const tried: string[] = [];
+
+  const finish = (end: RunEnd): RunFinished => {
+    const event = finishedEvent(runId, tier, end, tried);
+    deps.link.send('node.run.finished', event);
+    logger.info({ status: event.status }, 'run finished');
+    return event;
+  };
+
+  if (job.report === undefined) return finish({ kind: 'no_report' });
+
+  const startedAt = now();
+  let sandbox: Sandbox;
+  try {
+    sandbox = await deps.sandboxes.start(runId);
+  } catch (error) {
+    logger.error({ err: error }, 'sandbox did not start');
+    return finish({ kind: 'sandbox_failed', message: String(error) });
+  }
+  logger.info({ container: sandbox.name }, 'sandbox started');
+
+  // Stopping the container makes the next command fail, which ends the loop.
+  const onAbort = () => {
+    logger.warn('job expired; stopping the sandbox');
+    void deps.sandboxes.stop(sandbox).catch((error: unknown) => {
+      logger.error({ err: error }, 'could not stop the sandbox');
+    });
+  };
+  signal.addEventListener('abort', onAbort, { once: true });
+
+  try {
+    const steps = new StepLog({
+      sink: new StreamingAuditSink({
+        inner: deps.sink,
+        logger,
+        onStep: (step) => {
+          tried.push(step.input);
+          deps.link.send('node.step', { v: 1, step });
+        },
+      }),
+      issueId,
+      runId,
+      logger,
+    });
+    const run: ExecuteFn = (call, { timeoutMs = Infinity }) =>
+      execute(call, {
+        tier,
+        runner: sandbox.runner,
+        steps,
+        timeoutMs: Math.min(DEFAULT_TIMEOUT_MS, timeoutMs),
+      });
+
+    // The container's wall clock started with it, so the agent's budget starts there too.
+    // At least 1 ms: the agent reads 0 as no limit.
+    const config = { ...DEFAULT_AGENT_CONFIG, ...deps.agentConfig };
+    if (config.wallTimeLimitMs > 0) {
+      config.wallTimeLimitMs = Math.max(1, config.wallTimeLimitMs - (now() - startedAt));
+    }
+
+    let end: RunEnd;
+    try {
+      const agentRun = await runAgent(
+        { task: job.report },
+        { model: deps.model, execute: run, now },
+        config,
+      );
+      end = signal.aborted ? { kind: 'expired' } : { kind: 'agent', run: agentRun };
+    } catch (error) {
+      logger.error({ err: error }, 'run crashed');
+      end = signal.aborted ? { kind: 'expired' } : { kind: 'crashed', message: String(error) };
+    }
+
+    if (end.kind === 'agent' && end.run.exitStatus === 'submitted') {
+      await sendDiff(sandbox, runId, deps.link, logger);
+    }
+    return finish(end);
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+    await deps.sandboxes.stop(sandbox);
+    logger.info({ container: sandbox.name }, 'sandbox removed');
+  }
+}
+
+/** Best effort: a diff that can't be read is logged, and the run still finishes. */
+async function sendDiff(
+  sandbox: Sandbox,
+  runId: string,
+  link: OrchestratorLink,
+  logger: Logger,
+): Promise<void> {
+  try {
+    const result = await sandbox.runner.run({ command: 'git diff', timeoutMs: DIFF_TIMEOUT_MS });
+    if (result.status === 'exited' && result.exitCode === 0) {
+      link.send('node.diff', { v: 1, runId, diff: result.stdout });
+      return;
+    }
+    logger.warn({ result: result.status }, 'git diff failed; no diff sent');
+  } catch (error) {
+    logger.warn({ err: error }, 'git diff failed; no diff sent');
+  }
+}
