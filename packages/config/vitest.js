@@ -30,11 +30,19 @@ const gated = '{{tier,approval}*,*{Tier,Approval}*,*[-_.]{tier,approval}*}';
  * Inline projects inherit the root `test` options (Vitest 5 default), so a package can
  * `mergeConfig(vitestConfig(), { test: { environment: 'jsdom' } })` and reach both.
  *
- * A run that matches no test files fails, so a renamed test or a mistyped filter can't read
- * as a pass (#65, #73). A package with no tests for a project yet adds `--passWithNoTests` to
- * that script, and drops it with its first test. A mistyped path still passes if another path
- * in the same run matched, and a path filter run across packages fails in any package that
- * doesn't have the file.
+ * A run that matches no test files fails, and so does one where a `-t` skips every test, so
+ * a mistyped filter can't read as a pass (#65, #66, #73). A package with no tests for a
+ * project yet adds `--passWithNoTests` to that script, and drops it with its first test.
+ * `pnpm test:guards` checks all of this per package in CI.
+ *
+ * Limits:
+ * - A mistyped path still passes if another path in the same run matched, and a test renamed
+ *   out of the include (`cart.spec.ts`) passes if other files still match.
+ * - A path filter run across packages fails in any package that doesn't have the file.
+ * - `--changed` with nothing affected exits 1, a clean tree included.
+ * - `vitest related` turns the setting back on from the CLI, so it exits 0 with no match.
+ * - `--shard` fails when there are more shards than test files.
+ * - Vitest also fails a file with no tests in it, or a suite with none (`it.each([])`).
  *
  * @param {{ coverage?: number }} [options] global coverage threshold in percent
  */
