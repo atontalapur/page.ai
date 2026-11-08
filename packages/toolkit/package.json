@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@page/contracts": "workspace:*",
-    "pino": "catalog:"
+    "pino": "catalog:",
+    "zod": "catalog:"
   }
 }

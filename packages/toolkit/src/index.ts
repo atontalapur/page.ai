@@ -26,3 +26,14 @@ export { PostgresAuditSink } from './audit/postgres-sink.ts';
 export type { SqlClient } from './audit/postgres-sink.ts';
 export { StepLog } from './audit/step-log.ts';
 export type { StepLogOptions } from './audit/step-log.ts';
+export type { Deployer, Deployment, DeploymentStatus } from './deploy/deployer.ts';
+export { FakeDeployer } from './deploy/fake-deployer.ts';
+export { RAILWAY_API, RailwayDeployer } from './deploy/railway-deployer.ts';
+export type { RailwayDeployerOptions } from './deploy/railway-deployer.ts';
+export { planRollback, rollback, ROLLBACK_WINDOW } from './deploy/rollback.ts';
+export type {
+  RollbackDone,
+  RollbackError,
+  RollbackOptions,
+  RollbackPlan,
+} from './deploy/rollback.ts';
