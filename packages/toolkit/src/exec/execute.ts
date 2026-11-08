@@ -1,7 +1,6 @@
-import type { Tier } from '@page/contracts';
 import type { StepOutcome } from '../audit/sink.ts';
 import { writePathRefusal } from '../policy/paths.ts';
-import { checkCommand } from '../policy/policy.ts';
+import { checkCommand, checkHostTool } from '../policy/policy.ts';
 import { err, ok, type Result } from '../result.ts';
 import { runEdit } from './edit.ts';
 import { combineOutput, DEFAULT_OUTPUT_BUDGET, trimOutput } from './trim.ts';
@@ -10,6 +9,8 @@ import type {
   ExecContext,
   ExecErr,
   ExecOk,
+  HostToolCall,
+  HostTools,
   RunOutcome,
   StepBase,
   ToolCall,
@@ -40,7 +41,7 @@ export async function execute(call: ToolCall, ctx: ExecContext): Promise<ExecRes
   const step = { runId: steps.runId, kind: base.kind, input: base.input };
   let log = steps.logger.child({ tier: ctx.tier, kind: base.kind });
 
-  const refusal = refusalFor(call, ctx.tier);
+  const refusal = refusalFor(call, ctx);
   if (refusal !== null) {
     const message = `refused: ${refusal}`;
     const refused = { ...base, type: 'refused' as const, message };
@@ -73,7 +74,7 @@ export async function execute(call: ToolCall, ctx: ExecContext): Promise<ExecRes
 
   let result: RunOutcome;
   try {
-    result = call.kind === 'edit' ? await runEdit(call, ctx, base) : await runExec(call, ctx, base);
+    result = await run(call, ctx, base);
   } catch (error) {
     // The runner itself broke. Close the step so it doesn't read as still running.
     const outcome = {
@@ -102,7 +103,29 @@ export async function execute(call: ToolCall, ctx: ExecContext): Promise<ExecRes
   return result;
 }
 
+function run(call: ToolCall, ctx: ExecContext, base: StepBase): Promise<RunOutcome> {
+  switch (call.kind) {
+    case 'edit':
+      return runEdit(call, ctx, base);
+    case 'host_tool':
+      // refusalFor has made sure the host tools are there.
+      return runHostTool(call, ctx, ctx.hostTools!, base);
+    case 'exec':
+      return runExec(call, ctx, base);
+  }
+}
+
+/** A host tool call's tool and arguments, without the `kind` every one of them shares. */
+function hostToolArgs(call: HostToolCall): Record<string, string> {
+  return call.tool === 'git.pushBranch'
+    ? { tool: call.tool, message: call.message }
+    : { tool: call.tool, title: call.title, body: call.body };
+}
+
 function stepBase(call: ToolCall): StepBase {
+  if (call.kind === 'host_tool') {
+    return { kind: 'host_tool', input: JSON.stringify(hostToolArgs(call)) };
+  }
   if (call.kind === 'edit') {
     const { path, oldText, newText } = call;
     return { kind: 'edit', input: JSON.stringify({ path, oldText, newText }) };
@@ -115,6 +138,13 @@ function stepBase(call: ToolCall): StepBase {
  * command, and an edit's path and text lengths but not the text, which may hold secrets.
  */
 function loggedInput(call: ToolCall): string | Record<string, unknown> {
+  if (call.kind === 'host_tool') {
+    // The tool and how much text it carries; the text itself is in the steps row.
+    const sizes = Object.entries(hostToolArgs(call))
+      .filter(([key]) => key !== 'tool')
+      .map(([key, value]): [string, number] => [`${key}Length`, value.length]);
+    return { tool: call.tool, ...Object.fromEntries(sizes) };
+  }
   if (call.kind === 'edit') {
     return {
       path: call.path,
@@ -125,10 +155,15 @@ function loggedInput(call: ToolCall): string | Record<string, unknown> {
   return trimOutput(call.command, LOG_INPUT_BUDGET);
 }
 
-function refusalFor(call: ToolCall, tier: Tier): string | null {
+function refusalFor(call: ToolCall, { tier, hostTools }: ExecContext): string | null {
   if (call.kind === 'edit') return writePathRefusal(call.path);
-  const verdict = checkCommand(call.command, tier);
-  return verdict.allowed ? null : verdict.reason;
+  const verdict =
+    call.kind === 'host_tool' ? checkHostTool(call.tool, tier) : checkCommand(call.command, tier);
+  if (!verdict.allowed) return verdict.reason;
+  if (call.kind === 'host_tool' && hostTools === undefined) {
+    return `${call.tool} is not set up on this node`;
+  }
+  return null;
 }
 
 /** What goes in the step's output and exit code columns. */
@@ -157,4 +192,16 @@ async function runExec(call: ExecCall, ctx: ExecContext, base: StepBase): Promis
     return err({ ...base, type: 'failed', exitCode: result.exitCode, output });
   }
   return ok({ ...base, exitCode: 0, output });
+}
+
+async function runHostTool(
+  call: HostToolCall,
+  ctx: ExecContext,
+  hostTools: HostTools,
+  base: StepBase,
+): Promise<RunOutcome> {
+  const result = await hostTools.run(call, ctx.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const output = trimOutput(result.output, ctx.outputBudget ?? DEFAULT_OUTPUT_BUDGET);
+  if (result.ok) return ok({ ...base, exitCode: 0, output });
+  return err({ ...base, type: 'failed', exitCode: 1, output });
 }

@@ -1,6 +1,6 @@
 import type { Tier } from '@page/contracts';
 import { describe, expect, it } from 'vitest';
-import { checkCommand } from './policy.ts';
+import { checkCommand, checkHostTool, HOST_TOOL_TIERS } from './policy.ts';
 
 const TIERS: Tier[] = [1, 2, 3];
 
@@ -138,4 +138,28 @@ describe('checkCommand', () => {
       reason: 'make is not allowed at tier 2',
     });
   });
+});
+
+describe('checkHostTool', () => {
+  it.each(Object.keys(HOST_TOOL_TIERS))(
+    'refuses %s at Tier 1 and allows it from Tier 2',
+    (tool) => {
+      expect(checkHostTool(tool, 1)).toEqual({
+        allowed: false,
+        reason: `${tool} needs Tier 2; this run is Tier 1`,
+      });
+      expect(checkHostTool(tool, 2)).toEqual({ allowed: true });
+      expect(checkHostTool(tool, 3)).toEqual({ allowed: true });
+    },
+  );
+
+  it.each(['ops.restart', 'toString', '__proto__'])(
+    'refuses %s, which is not a host tool',
+    (tool) => {
+      expect(checkHostTool(tool, 3)).toEqual({
+        allowed: false,
+        reason: `${tool} is not a host tool`,
+      });
+    },
+  );
 });
