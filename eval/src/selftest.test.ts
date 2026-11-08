@@ -11,6 +11,7 @@ import {
   reportFrames,
   type SandboxShell,
   selfTest,
+  uncheckedFrames,
 } from './selftest.ts';
 
 let scenario: Scenario;
@@ -213,6 +214,33 @@ describe('reportFrames', () => {
   });
 });
 
+describe('uncheckedFrames', () => {
+  it('lists repo frames in a form the check skips', () => {
+    const lines = [
+      'at /workspace/apps/demo-app/a.ts:1:2',
+      'at f (./apps/demo-app/a.ts:1:2)',
+      'at f ([project]/apps/demo-app/a.ts:1:2)',
+      'at f (file:///workspace/apps/a.ts:9:9)',
+      'at webpack-internal:///(rsc)/./apps/a.ts:9:9',
+      'at f (src/lib/x.ts:1:2)',
+      'at f (apps/demo-app/src/shop/cart.ts:9999)',
+    ];
+    expect(uncheckedFrames(lines.map((line) => `    ${line}`).join('\n'))).toEqual(lines);
+  });
+
+  it('leaves out checked, library, node, generated and non-stack lines', () => {
+    const report = [
+      'GET /?file=apps/demo-app/a.ts:1:2 returned 500',
+      '    at f (apps/demo-app/a.ts:1:2)',
+      '    at node_modules/.pnpm/pg@8.23.1/node_modules/pg/lib/client.js:694:17',
+      '    at /app/node_modules/packages/x/src/a.js:1:2',
+      '    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)',
+      '    at f (apps/demo-app/.next/server/chunk.js:3:4)',
+    ].join('\n');
+    expect(uncheckedFrames(report)).toEqual([]);
+  });
+});
+
 describe('framesExistScript', () => {
   let dir: string;
   beforeEach(async () => {
@@ -227,10 +255,13 @@ describe('framesExistScript', () => {
     await writeFile(join(dir, path), text);
   }
 
-  function run(frames: ReportFrame[]): { code: number | null; output: string } {
+  function run(
+    frames: ReportFrame[],
+    unchecked: string[] = [],
+  ): { code: number | null; output: string } {
     const { status, stdout, stderr } = spawnSync('sh', ['-s'], {
       cwd: dir,
-      input: framesExistScript(frames),
+      input: framesExistScript(frames, unchecked),
       encoding: 'utf8',
     });
     return { code: status, output: stdout + stderr };
@@ -238,7 +269,7 @@ describe('framesExistScript', () => {
 
   it('passes when every frame is inside its file', async () => {
     await write('a/[slug]/page.tsx', 'one\ntwo two\n');
-    expect(run([{ path: 'a/[slug]/page.tsx', line: 2, column: 7 }])).toEqual({
+    expect(run([{ path: 'a/[slug]/page.tsx', line: 2, column: 5 }])).toEqual({
       code: 0,
       output: '',
     });
@@ -246,7 +277,7 @@ describe('framesExistScript', () => {
 
   it('passes on the last line of a file with no trailing newline', async () => {
     await write('a.ts', 'one\ntwo');
-    expect(run([{ path: 'a.ts', line: 2, column: 3 }]).code).toBe(0);
+    expect(run([{ path: 'a.ts', line: 2, column: 1 }]).code).toBe(0);
   });
 
   it('reports a missing file', () => {
@@ -272,11 +303,50 @@ describe('framesExistScript', () => {
     });
   });
 
-  it.each([2 ** 63, 1e22, Infinity])('reports a column too big for sh: %s', async (column) => {
+  it.each([
+    [0, 1],
+    [1, 0],
+    [2 ** 63, 1],
+    [1, Infinity],
+  ])('rejects line %s, column %s', async (line, column) => {
     await write('a.ts', 'one\n');
-    const { code, output } = run([{ path: 'a.ts', line: 1, column }]);
-    expect(code).toBe(1);
-    expect(output).toContain(`a.ts:1:${column}: past the end of the line\n`);
+    expect(run([{ path: 'a.ts', line, column }])).toEqual({
+      code: 1,
+      output: `a.ts:${line}:${column}: lines and columns are whole numbers from 1\n`,
+    });
+  });
+
+  it('passes a frame at the start of a token', async () => {
+    await write('a.ts', '  const { db } = await shop();\n  x.load(y);\n');
+    const frames = [
+      { path: 'a.ts', line: 1, column: 18 },
+      { path: 'a.ts', line: 1, column: 28 },
+      { path: 'a.ts', line: 2, column: 5 },
+    ];
+    expect(run(frames)).toEqual({ code: 0, output: '' });
+  });
+
+  it('reports a frame inside a word or on a space', async () => {
+    await write('a.ts', '  await shop();\n');
+    expect(run([{ path: 'a.ts', line: 1, column: 4 }])).toEqual({
+      code: 1,
+      output: 'a.ts:1:4: not the start of a token in "await shop();"\n',
+    });
+    expect(run([{ path: 'a.ts', line: 1, column: 1 }]).code).toBe(1);
+  });
+
+  it('counts columns in UTF-16 code units, as V8 does', async () => {
+    await write('a.ts', '"×😀" + f();\n');
+    expect(run([{ path: 'a.ts', line: 1, column: 9 }]).code).toBe(0);
+    // Counting bytes would put `f` at 13, past the end of this 12-unit line.
+    expect(run([{ path: 'a.ts', line: 1, column: 13 }]).code).toBe(1);
+  });
+
+  it('reports a stack line it could not check', () => {
+    expect(run([], ['at /workspace/apps/a.ts:1:2'])).toEqual({
+      code: 1,
+      output: 'at /workspace/apps/a.ts:1:2: not a repo-relative path:line:column frame\n',
+    });
   });
 
   it('reports every bad frame, and keeps a path with a quote or $ literal', async () => {

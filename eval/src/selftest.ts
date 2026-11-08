@@ -1,6 +1,5 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { shellQuote } from '@page/toolkit';
 import type { Scenario } from './scenario.ts';
 
 export interface ExecResult {
@@ -47,51 +46,96 @@ export interface ReportFrame {
   column: number;
 }
 
-// A repo-relative path with its line and column, on a stack line, so a path in a URL or request
-// body isn't taken for a frame. The second lookbehind skips the same names inside node_modules
-// or an absolute path. Parentheses stay in the path for Next.js route groups.
-const FRAME = /(?<=^[ \t]*at .*)(?<![\w./@-])((?:apps|packages)\/[^\s:]+):(\d+):(\d+)/gm;
+const STACK_LINE = /^[ \t]*at .*$/gm;
+// A repo-relative path with its line and column. The lookbehind skips the same names inside
+// node_modules or an absolute path. Parentheses stay in the path for Next.js route groups.
+const FRAME = /(?<![\w./@-])((?:apps|packages)\/[^\s:]+):(\d+):(\d+)/g;
 // Not source: these change without anyone editing the repo.
-const GENERATED = new Set(['node_modules', '.next']);
+const GENERATED = /(?:^|[\s(/])(?:node_modules|\.next)\//;
+// Anything that looks like a repo file with a line number.
+const REPO_LOCATION = /(?:apps|packages|src)\/[^\s:]*:\d+/;
+
+function stackLines(report: string): string[] {
+  return (report.match(STACK_LINE) ?? []).map((line) => line.trim());
+}
 
 /** The stack frames in a report that point into this repo, without repeats. */
 export function reportFrames(report: string): ReportFrame[] {
   const frames = new Map<string, ReportFrame>();
-  for (const [frame, path, line, column] of report.matchAll(FRAME)) {
-    if (path!.split('/').some((part) => GENERATED.has(part))) continue;
-    frames.set(frame, { path: path!, line: Number(line), column: Number(column) });
+  for (const text of stackLines(report)) {
+    for (const [frame, path, line, column] of text.matchAll(FRAME)) {
+      if (GENERATED.test(path!)) continue;
+      frames.set(frame, { path: path!, line: Number(line), column: Number(column) });
+    }
   }
   return [...frames.values()];
 }
 
-// `! [ -ge ]` and not `[ -lt ]`: a column too big for sh makes `[` error, and that must fail.
-const FRAME_CHECK = `status=0
-frame() {
-  if [ ! -f "$1" ]; then
-    echo "$1:$2:$3: no such file"
-    status=1
-    return
-  fi
-  length="$(awk -v n="$2" 'NR == n { print length($0); exit }' < "$1")"
-  if [ -z "$length" ]; then
-    echo "$1:$2:$3: past the end of the file"
-    status=1
-  elif ! [ "$length" -ge "$3" ]; then
-    echo "$1:$2:$3: past the end of the line"
-    status=1
-  fi
+/**
+ * Stack lines that cite a repo file in a form `reportFrames` can't check, such as
+ * `/workspace/apps/...`, `./apps/...` or a frame with no column. Reports give repo-relative
+ * `path:line:column`, so these fail instead of going unchecked.
+ */
+export function uncheckedFrames(report: string): string[] {
+  return stackLines(report).filter(
+    (line) => REPO_LOCATION.test(line) && !GENERATED.test(line) && line.match(FRAME) === null,
+  );
+}
+
+// Runs as `node -` in the sandbox. Node counts columns in UTF-16 code units, as V8 does. A
+// frame must land on the start of a token, so most lines that moved but stayed inside the
+// file fail too (#79): an edit rarely leaves a token start at the same column.
+const FRAME_CHECK = String.raw`const { readFileSync } = require('node:fs');
+const problems = [];
+for (const { at, path, line, column } of input.frames) {
+  if (!Number.isSafeInteger(line) || !Number.isSafeInteger(column) || line < 1 || column < 1) {
+    problems.push(at + ': lines and columns are whole numbers from 1');
+    continue;
+  }
+  let text;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error) {
+    problems.push(at + (error.code === 'ENOENT' ? ': no such file' : ": can't read: " + error.code));
+    continue;
+  }
+  const lines = text === '' ? [] : text.replace(/\n$/, '').split('\n');
+  const source = lines[line - 1]?.replace(/\r$/, '');
+  if (source === undefined) {
+    problems.push(at + ': past the end of the file');
+  } else if (column > source.length) {
+    problems.push(at + ': past the end of the line');
+  } else {
+    const [before, here] = [source[column - 2] ?? '', source[column - 1]];
+    if (/\s/.test(here) || (/[\w$]/.test(here) && /[\w$]/.test(before))) {
+      problems.push(at + ': not the start of a token in ' + JSON.stringify(source.trim()));
+    }
+  }
+}
+for (const line of input.unchecked) {
+  problems.push(line + ': not a repo-relative path:line:column frame');
+}
+if (problems.length > 0) {
+  console.log(problems.join('\n'));
+  process.exitCode = 1;
 }
 `;
 
 /**
- * A script that exits 1 if a frame's file is gone or its line or column is past the end. It
- * can't tell if a line moved but stayed inside the file.
+ * A script that exits 1 if a frame's file is gone, its line or column is past the end, or its
+ * column isn't the start of a token, and for any stack line in `unchecked`.
  */
-export function framesExistScript(frames: ReportFrame[]): string {
-  const calls = frames.map(
-    ({ path, line, column }) => `frame ${shellQuote(path)} ${line} ${column}\n`,
-  );
-  return `${FRAME_CHECK}${calls.join('')}exit "$status"\n`;
+export function framesExistScript(frames: ReportFrame[], unchecked: string[] = []): string {
+  const input = {
+    frames: frames.map((frame) => ({
+      ...frame,
+      at: `${frame.path}:${frame.line}:${frame.column}`,
+    })),
+    unchecked,
+  };
+  // Quoted heredoc, so nothing is expanded. The delimiter can't be a line of its own here:
+  // the input is one line of JSON after `const input =`.
+  return `node - <<'PAGE_FRAMES_EOF'\nconst input = ${JSON.stringify(input)};\n${FRAME_CHECK}PAGE_FRAMES_EOF\n`;
 }
 
 /**
@@ -110,7 +154,8 @@ export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<Se
   // appear in a patch line, which always starts with a space, +, - or a header.
   const body = patch.endsWith('\n') ? patch : `${patch}\n`;
   const apply = `git apply --whitespace=nowarn - <<'PAGE_PATCH_EOF'\n${body}PAGE_PATCH_EOF\n`;
-  const frames = framesExistScript(reportFrames(scenario.meta.report));
+  const { report } = scenario.meta;
+  const frames = framesExistScript(reportFrames(report), uncheckedFrames(report));
 
   const plan: { step: string; script: string; expect: 'pass' | 'fail' }[] = [
     { step: 'check.sh is not in the sandbox', script: NO_CHECK_IN_SANDBOX, expect: 'pass' },

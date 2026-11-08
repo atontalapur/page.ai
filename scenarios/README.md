@@ -61,9 +61,12 @@ Every scenario must pass this before it counts:
 
 1. On a clean demo app, `check.sh` passes.
 2. After `break.sh`, every `apps/...:line:column` and `packages/...:line:column` frame on an
-   `at ...` line of `report` still fits its file, and `check.sh` fails. Frames in other forms,
-   such as an absolute path or one with no column, aren't checked. Neither are paths with a
-   `node_modules` or `.next` segment, or a line that moved but stayed inside the file.
+   `at ...` line of `report` lands on the start of a token in its file, and `check.sh` fails.
+   The file has to be in the sandbox image (the demo app and `packages/config`), since the
+   agent can't open anything else. A stack line that cites a repo file in another form, such
+   as `/workspace/apps/...`, `./apps/...` or a frame with no column, fails the step. Paths
+   with a `node_modules` or `.next` segment are skipped. A line that moved but still has a
+   token start at the cited column passes.
 3. After `reference_fix.patch`, it passes again.
 
 Run it from the repo root against a built sandbox image:
