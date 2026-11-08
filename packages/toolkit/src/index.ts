@@ -36,3 +36,17 @@ export type {
   RollbackOptions,
   RollbackPlan,
 } from './deploy/rollback.ts';
+export { AGENT_BRANCH_PREFIX, assertAgentBranch, GitHubError } from './github/github.ts';
+export type {
+  BranchHead,
+  FileMode,
+  GitHub,
+  NewCommit,
+  NewPullRequest,
+  PullRequest,
+  TreeEntry,
+} from './github/github.ts';
+export { FakeGitHub } from './github/fake-github.ts';
+export type { FakeGitHubMethod } from './github/fake-github.ts';
+export { GITHUB_API, RestGitHub } from './github/rest-github.ts';
+export type { RestGitHubOptions } from './github/rest-github.ts';
