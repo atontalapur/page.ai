@@ -123,6 +123,8 @@ describe('checkCommand', () => {
       ['pnpm -F @page/demo-app vitest run --reporter=default', 'pnpm --reporter=default'],
       ['pnpm exec vitest related src/cart.ts --run', 'pnpm vitest related'],
       ['pnpm -F @page/demo-app vitest related src/cart.ts', 'pnpm vitest related'],
+      ['pnpm exec vitest list src/typo.test.ts', 'pnpm vitest list'],
+      ['pnpm -F @page/demo-app vitest list --filesOnly', 'pnpm vitest list'],
     ])('refuses %j', (command, reason) => {
       const verdict = checkCommand(command, tier);
       expect(verdict.allowed).toBe(false);
