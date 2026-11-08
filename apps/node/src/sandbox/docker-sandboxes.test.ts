@@ -32,7 +32,9 @@ const calls = () =>
     .filter(Boolean)
     .map((call) => call.split('\n'));
 
-describe('DockerSandboxes', () => {
+// Each test spawns the stand-in, which takes 15-70ms alone but seconds once turbo runs every
+// package's tests at once. Under the 5s default that timed out locally.
+describe('DockerSandboxes', { timeout: 20_000 }, () => {
   it('starts one container per run under the sandbox limits, named for the run', async () => {
     const sandboxes = new DockerSandboxes({ image: 'page-sandbox', docker });
     const sandbox = await sandboxes.start(runId);
