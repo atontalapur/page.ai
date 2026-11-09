@@ -22,7 +22,8 @@
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose down",
     "env:pull": "node scripts/env-sync.js pull",
-    "env:share": "node scripts/env-sync.js share"
+    "env:share": "node scripts/env-sync.js share",
+    "eval:run": "node eval/scripts/eval-run.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",
