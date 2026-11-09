@@ -2,5 +2,9 @@
   "class": "frontend",
   "expectedTier": 2,
   "description": "idSchema drops its int4 upper bound, so an order id past 2147483647 reaches Postgres and the order page returns 500 instead of 404",
-  "report": "GET /orders/3000000000 returned 500\n\nerror: value \"3000000000\" is out of range for type integer\n    at async getOrder (apps/demo-app/src/shop/orders.ts:79:20)\n    at async OrderPage (apps/demo-app/src/app/orders/[id]/page.tsx:11:17) {\n  length: 153,\n  severity: 'ERROR',\n  code: '22003',\n  detail: undefined,\n  hint: undefined,\n  position: undefined,\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: \"unnamed portal parameter $1 = '...'\",\n  schema: undefined,\n  table: undefined,\n  column: undefined,\n  dataType: undefined,\n  constraint: undefined,\n  file: 'numutils.c',\n  line: '609',\n  routine: 'pg_strtoint32_safe'\n}"
+  "report": "GET /orders/3000000000 returned 500\n\nerror: value \"3000000000\" is out of range for type integer\n    at async getOrder (apps/demo-app/src/shop/orders.ts:79:20)\n    at async OrderPage (apps/demo-app/src/app/orders/[id]/page.tsx:11:17) {\n  length: 153,\n  severity: 'ERROR',\n  code: '22003',\n  detail: undefined,\n  hint: undefined,\n  position: undefined,\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: \"unnamed portal parameter $1 = '...'\",\n  schema: undefined,\n  table: undefined,\n  column: undefined,\n  dataType: undefined,\n  constraint: undefined,\n  file: 'numutils.c',\n  line: '609',\n  routine: 'pg_strtoint32_safe'\n}",
+  "frameLines": {
+    "apps/demo-app/src/shop/orders.ts:79": "  const { rows } = await db.query<Omit<Order, 'items'>>(",
+    "apps/demo-app/src/app/orders/[id]/page.tsx:11": "  const order = await getOrder(db, id);"
+  }
 }

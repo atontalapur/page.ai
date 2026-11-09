@@ -2,5 +2,8 @@
   "class": "frontend",
   "expectedTier": 1,
   "description": "Order page passes dateStyle and month to toLocaleDateString, which throws on every order page",
-  "report": "GET /orders/42 returned 500\n\nTypeError: Invalid option : option\n    at Date.toLocaleDateString (<anonymous>)\n    at OrderPage (apps/demo-app/src/app/orders/[id]/page.tsx:18:34)"
+  "report": "GET /orders/42 returned 500\n\nTypeError: Invalid option : option\n    at Date.toLocaleDateString (<anonymous>)\n    at OrderPage (apps/demo-app/src/app/orders/[id]/page.tsx:18:34)",
+  "frameLines": {
+    "apps/demo-app/src/app/orders/[id]/page.tsx:18": "      <p>Placed {order.createdAt.toLocaleDateString('en-US', { dateStyle: 'medium', month: 'long' })}</p>"
+  }
 }

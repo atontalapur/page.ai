@@ -19,6 +19,7 @@
     "prepare": "husky",
     "depcruise": "depcruise apps packages eval",
     "scenarios:selftest": "node eval/scripts/selftest.ts",
+    "scenarios:frames": "node eval/scripts/record-frames.ts",
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose down",
     "env:pull": "node scripts/env-sync.js pull",

@@ -29,6 +29,20 @@ export function shellIn(name: string): SandboxShell {
     });
 }
 
+/** Runs `fn` with a shell into a fresh sandbox, and stops the sandbox however `fn` ends. */
+export async function withSandbox<T>(
+  image: string,
+  fn: (sh: SandboxShell) => Promise<T>,
+): Promise<T> {
+  let name: string | undefined;
+  try {
+    name = startSandbox(image);
+    return await fn(shellIn(name));
+  } finally {
+    if (name) stopSandbox(name);
+  }
+}
+
 export function stopSandbox(name: string): void {
   // The container runs with --rm, so if it already exited it's gone and stop fails.
   spawnSync('docker', ['stop', '-t', '1', name], { stdio: 'ignore' });

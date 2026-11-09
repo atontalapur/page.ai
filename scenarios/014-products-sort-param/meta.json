@@ -2,5 +2,9 @@
   "class": "backend-api",
   "expectedTier": 2,
   "description": "GET /api/products passes ?sort= straight into ORDER BY, so a sort key that isn't a column returns 500",
-  "report": "GET /api/products?sort=price returned 500\n\nerror: column \"price\" does not exist\n    at async listProducts (apps/demo-app/src/shop/products.ts:16:20)\n    at async GET (apps/demo-app/src/app/api/products/route.ts:7:24) {\n  length: 105,\n  severity: 'ERROR',\n  code: '42703',\n  detail: undefined,\n  hint: undefined,\n  position: '95',\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: undefined,\n  schema: undefined,\n  table: undefined,\n  column: undefined,\n  dataType: undefined,\n  constraint: undefined,\n  file: 'parse_relation.c',\n  line: '3854',\n  routine: 'errorMissingColumn'\n}"
+  "report": "GET /api/products?sort=price returned 500\n\nerror: column \"price\" does not exist\n    at async listProducts (apps/demo-app/src/shop/products.ts:16:20)\n    at async GET (apps/demo-app/src/app/api/products/route.ts:7:24) {\n  length: 105,\n  severity: 'ERROR',\n  code: '42703',\n  detail: undefined,\n  hint: undefined,\n  position: '95',\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: undefined,\n  schema: undefined,\n  table: undefined,\n  column: undefined,\n  dataType: undefined,\n  constraint: undefined,\n  file: 'parse_relation.c',\n  line: '3854',\n  routine: 'errorMissingColumn'\n}",
+  "frameLines": {
+    "apps/demo-app/src/shop/products.ts:16": "  const { rows } = await db.query<Product>(`select ${columns} from products order by ${orderBy}`);",
+    "apps/demo-app/src/app/api/products/route.ts:7": "  return Response.json(await listProducts(db, sort));"
+  }
 }
