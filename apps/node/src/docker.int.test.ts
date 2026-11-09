@@ -42,7 +42,6 @@ beforeAll(() => {
 }, 120_000);
 
 const names: string[] = [];
-const started = names;
 afterAll(() => {
   for (const name of names) execFileSync('docker', ['rm', '--force', name], { stdio: 'ignore' });
 });
@@ -50,16 +49,13 @@ afterAll(() => {
 const sandboxes = new DockerSandboxes({ image: IMAGE });
 
 /** Real Docker sandboxes, with /workspace made after each one starts. */
-function workspaceSandboxes() {
-  const real = new DockerSandboxes({ image: IMAGE });
-  return Object.assign(real, {
-    start: async (runId: string) => {
-      const sandbox = await DockerSandboxes.prototype.start.call(real, runId);
-      names.push(sandbox.name);
-      docker('exec', sandbox.name, 'sh', '-c', 'mkdir -p /workspace && touch /workspace/app.log');
-      return sandbox;
-    },
-  });
+class WorkspaceSandboxes extends DockerSandboxes {
+  override async start(runId: string) {
+    const sandbox = await super.start(runId);
+    names.push(sandbox.name);
+    docker('exec', sandbox.name, 'sh', '-c', 'mkdir -p /workspace && touch /workspace/app.log');
+    return sandbox;
+  }
 }
 
 /** Answers with `replies` in order; once they run out, hangs until its call is cancelled. */
@@ -96,7 +92,7 @@ async function killRun(replies: string[], ready: (calls: number) => boolean) {
   const run = runFixJob(
     { job, signal: new AbortController().signal, attempt: 0 },
     {
-      sandboxes: workspaceSandboxes(),
+      sandboxes: new WorkspaceSandboxes({ image: IMAGE }),
       sink: new InMemoryAuditSink(),
       link,
       model: m.client,
@@ -117,7 +113,7 @@ async function killRun(replies: string[], ready: (calls: number) => boolean) {
 describe('DockerSandboxes against Docker', () => {
   it('starts a locked-down container and removes it on stop', async () => {
     const sandbox = await sandboxes.start(randomUUID());
-    started.push(sandbox.name);
+    names.push(sandbox.name);
     const { State, HostConfig } = inspect(sandbox.name);
     expect(State.Running).toBe(true);
     expect(HostConfig).toMatchObject({
@@ -163,8 +159,8 @@ describe('reaping against Docker', () => {
   it('removes a sandbox a previous daemon left behind', async () => {
     const left = await new DockerSandboxes({ image: IMAGE }).start(randomUUID());
     names.push(left.name);
-    const reaped = await new DockerSandboxes({ image: IMAGE }).reap();
-    expect(reaped).toContain(left.name);
+    const { removed } = await new DockerSandboxes({ image: IMAGE }).reap();
+    expect(removed).toContain(left.name);
     expect(exists(left.name)).toBe(false);
   }, 30_000);
 });
