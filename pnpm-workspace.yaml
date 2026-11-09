@@ -40,3 +40,8 @@ catalog:
 # Dependency install scripts pnpm may run. core-js (via posthog-js) only prints a banner.
 allowBuilds:
   core-js: false
+
+# GHSA-g3hv-75wg-m249 (minimatch ReDoS) is fixed only in 11.0.1+, but eslint, typescript-eslint
+# and ts-morph (via shadcn) still ask for ^10. Drop this once they depend on ^11.
+overrides:
+  'minimatch@>=7.0.0 <11.0.1': ^11.0.5
