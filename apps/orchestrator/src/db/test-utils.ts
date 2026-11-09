@@ -5,7 +5,8 @@ import pg from 'pg';
 import { fromPglite, PgBoss } from 'pg-boss';
 import { createFixJobQueue, type FixJobQueue } from '../queue/fix-jobs.ts';
 import type { Database, Db } from './database.ts';
-import { loadMigrations, migrate } from './migrate.ts';
+import { loadMigrations } from '@page/db-migrations';
+import { migrate } from './migrate.ts';
 
 export interface TestDeps {
   db: Db;

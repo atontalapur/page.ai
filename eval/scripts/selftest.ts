@@ -8,10 +8,10 @@
 // scenarios/README.md). Without them, ops scenarios are skipped when no ids are named, and
 // fail when they are, so CI can't pass by skipping them.
 import { join } from 'node:path';
-import { listScenarioIds, loadScenario, type Scenario, ScenarioError } from '../src/scenario.ts';
-import { type SelfTestResult, selfTest, selfTestOps } from '../src/selftest.ts';
+import { listScenarioIds, loadScenario, problemsOf } from '../src/scenario.ts';
+import { selfTest, selfTestOps } from '../src/selftest.ts';
 import { hostShell, liveAppFromEnv } from './host.ts';
-import { shellIn, startSandbox, stopSandbox } from './sandbox.ts';
+import { withSandbox } from './sandbox.ts';
 
 const SCENARIOS_DIR = 'scenarios';
 const NO_APP = 'needs a live demo app: set DEMO_APP_URL and OPS_SECRET';
@@ -23,16 +23,6 @@ if (!image) {
 }
 const app = liveAppFromEnv();
 
-async function inSandbox(scenario: Scenario): Promise<SelfTestResult> {
-  let name: string | undefined;
-  try {
-    name = startSandbox(image!);
-    return await selfTest(scenario, shellIn(name));
-  } finally {
-    if (name) stopSandbox(name);
-  }
-}
-
 let failed = 0;
 let skipped = 0;
 for (const id of ids.length > 0 ? ids : await listScenarioIds(SCENARIOS_DIR)) {
@@ -41,10 +31,7 @@ for (const id of ids.length > 0 ? ids : await listScenarioIds(SCENARIOS_DIR)) {
     scenario = await loadScenario(join(SCENARIOS_DIR, id));
   } catch (err) {
     failed++;
-    console.log(`FAIL ${id}`);
-    console.log(
-      err instanceof ScenarioError ? `  ${err.problems.join('\n  ')}` : `  ${String(err)}`,
-    );
+    console.log(`FAIL ${id}\n  ${problemsOf(err).join('\n  ')}`);
     continue;
   }
 
@@ -59,7 +46,7 @@ for (const id of ids.length > 0 ? ids : await listScenarioIds(SCENARIOS_DIR)) {
     const result =
       scenario.kind === 'ops'
         ? await selfTestOps(scenario, hostShell(app!))
-        : await inSandbox(scenario);
+        : await withSandbox(image, (sh) => selfTest(scenario, sh));
     console.log(`${result.passed ? 'PASS' : 'FAIL'} ${id}`);
     for (const step of result.steps) {
       console.log(`  ${step.ok ? 'ok  ' : 'FAIL'} ${step.step}`);
@@ -68,8 +55,7 @@ for (const id of ids.length > 0 ? ids : await listScenarioIds(SCENARIOS_DIR)) {
     if (!result.passed) failed++;
   } catch (err) {
     failed++;
-    console.log(`FAIL ${id}`);
-    console.log(`  ${String(err)}`);
+    console.log(`FAIL ${id}\n  ${problemsOf(err).join('\n  ')}`);
   }
 }
 

@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { loadMigrations } from '@page/db-migrations';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execute } from '../exec/execute.ts';
@@ -15,7 +15,8 @@ let pool: pg.Pool;
 beforeAll(async () => {
   pool = new pg.Pool({ connectionString: url, options: `-c search_path=${schema}`, max: 1 });
   await pool.query(`create schema ${schema}`);
-  await pool.query(await readFile(new URL('__fixtures__/steps.sql', import.meta.url), 'utf8'));
+  // The steps table comes from the orchestrator database's migrations, applied in order.
+  for (const migration of await loadMigrations()) await pool.query(migration.sql);
 });
 
 afterAll(async () => {

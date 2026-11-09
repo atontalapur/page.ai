@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { loadMigrations, migrate } from './migrate.ts';
+import { loadMigrations } from '@page/db-migrations';
+import { migrate } from './migrate.ts';
 import { createTestDeps } from './test-utils.ts';
 
 const deps = await createTestDeps();

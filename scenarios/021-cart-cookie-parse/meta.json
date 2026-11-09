@@ -2,5 +2,9 @@
   "class": "frontend",
   "expectedTier": 1,
   "description": "readCartId parses the cart cookie with parse() instead of safeParse(), so a malformed cookie makes the cart page return 500",
-  "report": "GET /cart returned 500\nRequest cookie: cart_id=42\n\nZodError: [\n  {\n    \"origin\": \"string\",\n    \"code\": \"invalid_format\",\n    \"format\": \"uuid\",\n    \"pattern\": \"/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/\",\n    \"path\": [],\n    \"message\": \"Invalid UUID\"\n  }\n]\n    at readCartId (apps/demo-app/src/app/cart-session.ts:10:30)\n    at CartPage (apps/demo-app/src/app/cart/page.tsx:18:44)"
+  "report": "GET /cart returned 500\nRequest cookie: cart_id=42\n\nZodError: [\n  {\n    \"origin\": \"string\",\n    \"code\": \"invalid_format\",\n    \"format\": \"uuid\",\n    \"pattern\": \"/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/\",\n    \"path\": [],\n    \"message\": \"Invalid UUID\"\n  }\n]\n    at readCartId (apps/demo-app/src/app/cart-session.ts:10:30)\n    at CartPage (apps/demo-app/src/app/cart/page.tsx:18:44)",
+  "frameLines": {
+    "apps/demo-app/src/app/cart-session.ts:10": "  return z.uuid().optional().parse(cookies.get(COOKIE)?.value);",
+    "apps/demo-app/src/app/cart/page.tsx:18": "  const cart = await getCart(db, readCartId(cookies), settings);"
+  }
 }

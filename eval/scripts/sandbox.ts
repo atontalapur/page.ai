@@ -73,17 +73,27 @@ export async function checkInFreshSandbox(
   scripts: { breakScript: string; checkScript: string },
   diff: string,
 ): Promise<boolean> {
-  const name = startSandbox(image);
-  try {
-    const sh = shellIn(name);
+  return withSandbox(image, async (sh) => {
     await plantBug(sh, scripts.breakScript);
     if (diff !== '') {
       const applied = await sh(applyPatchScript(diff));
       if (applied.code !== 0) throw new Error(`the agent's diff didn't apply:\n${applied.output}`);
     }
     return (await sh(scripts.checkScript)).code === 0;
+  });
+}
+
+/** Runs `fn` with a shell into a fresh sandbox, and stops the sandbox however `fn` ends. */
+export async function withSandbox<T>(
+  image: string,
+  fn: (sh: SandboxShell) => Promise<T>,
+): Promise<T> {
+  let name: string | undefined;
+  try {
+    name = startSandbox(image);
+    return await fn(shellIn(name));
   } finally {
-    stopSandbox(name);
+    if (name) stopSandbox(name);
   }
 }
 

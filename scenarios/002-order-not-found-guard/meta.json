@@ -2,5 +2,8 @@
   "class": "frontend",
   "expectedTier": 1,
   "description": "Order page throws a plain Error for a missing order instead of calling notFound(), so an unknown order id is a 500 instead of a 404",
-  "report": "GET /orders/999999 returned 500\n\nError: No order with id 999999\n    at OrderPage (apps/demo-app/src/app/orders/[id]/page.tsx:12:21)"
+  "report": "GET /orders/999999 returned 500\n\nError: No order with id 999999\n    at OrderPage (apps/demo-app/src/app/orders/[id]/page.tsx:12:21)",
+  "frameLines": {
+    "apps/demo-app/src/app/orders/[id]/page.tsx:12": "  if (!order) throw new Error(`No order with id ${id}`);"
+  }
 }
