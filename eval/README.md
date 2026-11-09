@@ -24,7 +24,7 @@ format.
 
 ```sh
 docker build -f infra/sandbox/Dockerfile -t page-sandbox .
-pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5
+pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --concurrency 3
 ```
 
 - `--config` picks the tiers a run climbs: `tier1-only`, `tier3-start` or `ladder`
@@ -38,18 +38,37 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5
   `break.sh`, the diff, `check.sh`. The check never enters the agent's sandbox and isn't
   squeezed into the last seconds of its wall clock. It runs on every outcome, so a tier
   that escalated a patch that already passed counts as a false escalation, and a run
-  that paged with a passing patch as a false page.
+  that paged with a passing patch as a false page. Whether to climb depends only on how
+  the agent stopped, so the check runs alongside the later tiers, and a ladder run can
+  have three sandboxes up at once. A check that fails drops the run, and no tier starts
+  after that is known; a tier already playing finishes and is charged.
+- `--concurrency N` plays up to N scenario runs at once (default 1), each climbing its
+  tiers in order. Results stay in the planned order. Every attempt in flight holds a
+  full $0.50 of the budget, so `--max-cost` has to be at least N x $0.50 for N agents
+  to run together; on less, runs wait for money. Sandboxes share the host's CPUs, so
+  durations and `time_limit` exits at different concurrency aren't strictly comparable.
+  OpenRouter caps `:free` models at 20 requests a minute per key, and `withRetries`
+  gives up on a 429 after about 3 seconds, which stops the eval. One agent on
+  nemotron-3-ultra makes about 3 to 7 calls a minute, so keep N at 2 or less on a free
+  model.
 - From Tier 2 the agent's push and PR go to an in-memory GitHub, never the demo repo.
-- `--max-cost` is the total budget. Each attempt's agent limit is lowered to what is
-  left, and no attempt starts with less than $0.05 left. A run the budget cut short, at
-  any tier, is dropped and flagged with `stoppedForBudget`. The agent checks its limit
-  before each model call, so the total can go over by one call's cost. `spentUsd` is
+- `--max-cost` is the total budget. Each attempt reserves its limit ($0.50) before it
+  starts and gives back what it didn't spend, so the attempts in flight never hold more
+  than is left. Less than the full limit goes out only when no other attempt is in
+  flight, and no attempt starts with less than $0.05. A run the budget cut short, at any
+  tier, is dropped and flagged with `stoppedForBudget`, and no attempt starts after it.
+  At `--concurrency` above 1, runs in flight then finish only if they don't need another
+  tier, so the runs kept near the cutoff lean toward easy ones and needn't be the first
+  ones planned.
+  The agent checks its limit before each model call, so the total can go over by one
+  call's cost per attempt in flight: one call at `--concurrency 1`, as before. `spentUsd` is
   everything charged against the budget, dropped runs and errors included;
   `summary.costUsd` counts only the runs kept.
 - A run whose agent ends on a model error (a rate limit or used-up quota, auth, credits, a
   provider outage or a malformed reply, after `withRetries` gave up) is not a page. The
   attempt goes in `errors`, its run is left out, and the eval stops with
-  `stoppedForProvider`, since the next attempt would hit the same wall. Rerun the rest later.
+  `stoppedForProvider`, since the next attempt would hit the same wall: no attempt starts
+  after it, in that run or any other. Rerun the runs missing from the results later.
 - Ops scenarios (Tier 3) are skipped with a reason for now: they need a live demo app.
 - An attempt that throws (a sandbox or `break.sh` failure) goes in `errors` and its run
   is left out; the eval goes on. If it failed after the agent ran (the diff or the check

@@ -1,4 +1,5 @@
 import type { Tier } from '@page/contracts';
+import { runInOrder } from './pool.ts';
 import {
   EVAL_CONFIGS,
   type Attempt,
@@ -18,15 +19,31 @@ export function escalates(exitStatus: Attempt['exitStatus']): boolean {
   return exitStatus === 'step_limit' || exitStatus === 'cost_limit' || exitStatus === 'time_limit';
 }
 
-/**
- * Plays one tier of one scenario: a fresh sandbox, break.sh, the agent at `tier` with at
- * most `costLimitUsd` to spend, then check.sh. The Docker-backed one is in
- * `scripts/attempt.ts`; tests pass a fake.
- */
-export type AttemptFn = (scenario: Scenario, tier: Tier, costLimitUsd: number) => Promise<Attempt>;
+/** What an attempt's agent did, and how to run check.sh on its patch. */
+export interface AgentAttempt {
+  agent: Omit<Attempt, 'checkPassed'>;
+  /**
+   * Runs check.sh on the agent's diff in a sandbox of its own and resolves whether it
+   * passed. The runner starts it as soon as the agent is done and plays the next tier
+   * while it runs. A rejection drops the run, and no tier starts after it; the agent's
+   * cost is already charged.
+   */
+  check: () => Promise<boolean>;
+}
 
 /**
- * An attempt that failed after the agent ran, such as a check sandbox that didn't start.
+ * Plays one tier of one scenario: a fresh sandbox, break.sh, then the agent at `tier`
+ * with at most `costLimitUsd` to spend. Resolves once the agent stops. The Docker-backed
+ * one is in `scripts/attempt.ts`; tests pass a fake.
+ */
+export type AttemptFn = (
+  scenario: Scenario,
+  tier: Tier,
+  costLimitUsd: number,
+) => Promise<AgentAttempt>;
+
+/**
+ * An attempt that failed after the agent ran, such as a diff that couldn't be read.
  * It carries what the agent spent, so the budget is charged that and not the whole limit.
  */
 export class AttemptError extends Error {
@@ -61,18 +78,113 @@ export interface RunEvalOptions {
   scenarios: Scenario[];
   runsPerScenario: number;
   /**
-   * Total spend across every attempt. No attempt starts with less than MIN_ATTEMPT_USD
-   * left. The agent checks its limit before each model call, so the total can go over by
-   * one call's cost.
+   * Total spend across every attempt. Each attempt reserves its limit before it starts
+   * and gives back what it didn't spend, so the limits of the attempts in flight never
+   * add up to more than is left. No attempt starts with less than MIN_ATTEMPT_USD. The
+   * agent checks its limit before each model call, so each attempt in flight can go over
+   * by one call's cost.
    */
   maxCostUsd: number;
   /** The most one attempt may spend, before the remaining budget lowers it. */
   attemptCostLimitUsd: number;
+  /**
+   * Scenario runs played at once, each climbing its tiers in order (default 1). A run's
+   * checks overlap its later tiers whatever this is. Each attempt in flight holds a full
+   * attemptCostLimitUsd, so more than maxCostUsd / attemptCostLimitUsd runs never play
+   * at once.
+   */
+  concurrency?: number;
   model: string;
   gitSha: string;
   attempt: AttemptFn;
   now?: () => Date;
+  /** Each kept run, in the order the runs were planned. */
   onRun?: (run: ScenarioRun) => void;
+}
+
+/**
+ * Hands out attempt limits so that concurrent attempts can't spend more between them
+ * than the budget allows.
+ */
+class Budget {
+  spent = 0;
+  /**
+   * Set once the eval has stopped, for the budget or a provider failure. No attempt
+   * starts after that.
+   */
+  stopped = false;
+  private reserved = 0;
+  private inFlight = 0;
+  private waiting: (() => void)[] = [];
+  private readonly maxUsd: number;
+  private readonly attemptUsd: number;
+
+  constructor(maxUsd: number, attemptUsd: number) {
+    this.maxUsd = maxUsd;
+    this.attemptUsd = attemptUsd;
+  }
+
+  /**
+   * Reserves the next attempt's limit. That is the full per-attempt limit while the
+   * budget has it. Less than that goes out only when no other attempt is in flight to
+   * give money back, so an attempt isn't cut short by money another attempt won't spend.
+   * Resolves undefined when the budget can't pay for a real attempt, or has stopped.
+   */
+  async reserve(): Promise<number | undefined> {
+    for (;;) {
+      if (this.stopped) return undefined;
+      const free = this.maxUsd - this.spent - this.reserved;
+      let limit: number | undefined;
+      if (free >= this.attemptUsd) limit = this.attemptUsd;
+      else if (this.inFlight === 0) {
+        // Too little left for a real attempt: it would only be cut short.
+        if (free < MIN_ATTEMPT_USD) return undefined;
+        limit = free;
+      }
+      if (limit !== undefined) {
+        this.reserved += limit;
+        this.inFlight++;
+        return limit;
+      }
+      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    }
+  }
+
+  /** Charges what an attempt spent against its reservation and frees the rest. */
+  settle(limit: number, costUsd: number): void {
+    this.reserved -= limit;
+    this.spent += costUsd;
+    this.inFlight--;
+    this.wake();
+  }
+
+  stop(): void {
+    this.stopped = true;
+    this.wake();
+  }
+
+  private wake(): void {
+    const waiting = this.waiting;
+    this.waiting = [];
+    for (const resolve of waiting) resolve();
+  }
+}
+
+type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
+/** Starts `fn` and never rejects, even when `fn` throws before returning a promise. */
+function settled<T>(fn: () => Promise<T>): Promise<Settled<T>> {
+  return new Promise<T>((resolve) => resolve(fn())).then(
+    (value) => ({ ok: true, value }),
+    (error: unknown) => ({ ok: false, error }),
+  );
+}
+
+/** How one planned run ended. */
+interface RunOutcome {
+  /** Set when the run counts; left out when it crashed or the budget cut it short. */
+  result?: ScenarioRun;
+  errors: EvalResults['errors'];
 }
 
 /** What scenarios a run can't play, and why. Ops bugs live in a running app. */
@@ -87,6 +199,7 @@ export function skipReason(scenario: Scenario): string | undefined {
  * and stops at a submit or any other exit, as the daemon does; check.sh runs
  * after every attempt, so a patch that already fixed the bug still counts: as a false
  * escalation when a higher tier took over, or a false page when the run paged.
+ * Up to `concurrency` runs play at once; results come back in the planned order.
  */
 export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
   const now = options.now ?? (() => new Date());
@@ -95,7 +208,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
   const runs: ScenarioRun[] = [];
   const skipped: EvalResults['skipped'] = [];
   const errors: EvalResults['errors'] = [];
-  let spent = 0;
+  const budget = new Budget(options.maxCostUsd, options.attemptCostLimitUsd);
   let stoppedForBudget = false;
   let stoppedForProvider = false;
 
@@ -105,49 +218,100 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     return reason === undefined;
   });
 
-  outer: for (let run = 1; run <= options.runsPerScenario; run++) {
-    for (const scenario of playable) {
-      const attempts: Attempt[] = [];
-      let crashed = false;
-      for (const tier of tiers) {
-        const remaining = options.maxCostUsd - spent;
-        // Too little left for a real attempt: it would only be cut short.
-        if (remaining < MIN_ATTEMPT_USD) {
-          stoppedForBudget = true;
-          break;
-        }
-        const limit = Math.min(options.attemptCostLimitUsd, remaining);
-        let attempt: Attempt;
-        try {
-          attempt = await options.attempt(scenario, tier, limit);
-        } catch (error) {
-          // A sandbox or script failure says nothing about the agent. Record it, drop the
-          // run and go on, so the runs already paid for still reach the results file.
-          // Unless the attempt says what the agent spent, its whole limit counts as spent.
-          spent += error instanceof AttemptError ? error.costUsd : limit;
-          errors.push({ scenario: scenario.id, run, tier, message: String(error) });
-          crashed = true;
-          stoppedForProvider = error instanceof ProviderError;
-          break;
-        }
-        spent += attempt.costUsd;
-        attempts.push(attempt);
-        // Out of money because the budget lowered the limit, not the agent's own limit.
-        if (attempt.exitStatus === 'cost_limit' && limit < options.attemptCostLimitUsd) {
-          stoppedForBudget = true;
-          break;
-        }
-        if (!escalates(attempt.exitStatus)) break;
-      }
-      // A run cut short by the budget, at any tier, says nothing about the agent, so it is
-      // left out, and nothing after it runs.
-      if (stoppedForBudget || stoppedForProvider) break outer;
-      if (crashed) continue;
-      const result = scenarioRun(scenario, run, attempts);
-      runs.push(result);
-      options.onRun?.(result);
-    }
+  const planned: { scenario: Scenario; run: number }[] = [];
+  for (let run = 1; run <= options.runsPerScenario; run++) {
+    for (const scenario of playable) planned.push({ scenario, run });
   }
+
+  const play = async (scenario: Scenario, run: number): Promise<RunOutcome> => {
+    const played: { agent: Omit<Attempt, 'checkPassed'>; check: Promise<Settled<boolean>> }[] = [];
+    let crash: EvalResults['errors'][number] | undefined;
+    // Set when a check this run started has failed. The run is dropped either way, so it
+    // stops climbing as soon as that is known.
+    let checkFailed = false;
+    // A run cut short by the budget, at any tier, says nothing about the agent, so it is
+    // left out, and no attempt starts after it, in this run or any other. A run that
+    // another run's stop cuts off is left out too.
+    let cutShort = false;
+    for (const tier of tiers) {
+      if (checkFailed) break;
+      const limit = await budget.reserve();
+      if (limit === undefined) {
+        cutShort = true;
+        if (!budget.stopped) {
+          stoppedForBudget = true;
+          budget.stop();
+        }
+        break;
+      }
+      // A check may have failed while this run waited for money.
+      if (checkFailed) {
+        budget.settle(limit, 0);
+        break;
+      }
+      let attempt: AgentAttempt;
+      try {
+        attempt = await options.attempt(scenario, tier, limit);
+      } catch (error) {
+        // A sandbox or script failure says nothing about the agent. Record it, drop the
+        // run and go on, so the runs already paid for still reach the results file.
+        // Unless the attempt says what the agent spent, its whole limit counts as spent.
+        budget.settle(limit, error instanceof AttemptError ? error.costUsd : limit);
+        crash = { scenario: scenario.id, run, tier, message: String(error) };
+        if (error instanceof ProviderError) {
+          stoppedForProvider = true;
+          budget.stop();
+        }
+        break;
+      }
+      budget.settle(limit, attempt.agent.costUsd);
+      // Out of money because the budget lowered the limit, not the agent's own limit.
+      if (attempt.agent.exitStatus === 'cost_limit' && limit < options.attemptCostLimitUsd) {
+        cutShort = true;
+        stoppedForBudget = true;
+        budget.stop();
+        break;
+      }
+      // The check runs alongside the next tier: whether to climb depends only on how
+      // the agent stopped.
+      const check = settled(() => attempt.check()).then((result) => {
+        if (!result.ok) checkFailed = true;
+        return result;
+      });
+      played.push({ agent: attempt.agent, check });
+      if (!escalates(attempt.agent.exitStatus)) break;
+    }
+    // Every check started is waited for, so no sandbox outlives the eval.
+    const checks = await Promise.all(played.map((p) => p.check));
+    const errors: EvalResults['errors'] = [];
+    checks.forEach((check, i) => {
+      if (!check.ok) {
+        const { tier } = played[i]!.agent;
+        errors.push({ scenario: scenario.id, run, tier, message: String(check.error) });
+      }
+    });
+    if (crash !== undefined) errors.push(crash);
+    if (cutShort || errors.length > 0) return { errors };
+    const attempts = played.map((p, i) => {
+      const check = checks[i]!;
+      return { ...p.agent, checkPassed: check.ok && check.value };
+    });
+    return { result: scenarioRun(scenario, run, attempts), errors };
+  };
+
+  await runInOrder(
+    planned,
+    options.concurrency ?? 1,
+    // A run planned after the eval stopped isn't played.
+    ({ scenario, run }) =>
+      budget.stopped ? Promise.resolve<RunOutcome>({ errors: [] }) : play(scenario, run),
+    (outcome) => {
+      errors.push(...outcome.errors);
+      if (outcome.result === undefined) return;
+      runs.push(outcome.result);
+      options.onRun?.(outcome.result);
+    },
+  );
 
   return {
     v: 1,
@@ -158,7 +322,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     finishedAt: now().toISOString(),
     runsPerScenario: options.runsPerScenario,
     maxCostUsd: options.maxCostUsd,
-    spentUsd: spent,
+    spentUsd: budget.spent,
     stoppedForBudget,
     stoppedForProvider,
     runs,
