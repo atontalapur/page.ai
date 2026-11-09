@@ -1,4 +1,5 @@
 import { jobFixtures } from '@page/contracts/fixtures';
+import type { CompleteOptions, CompletionResult, ModelClient } from '@page/model-client';
 import { FakeRunner, InMemoryAuditSink, type RunRequest } from '@page/toolkit';
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
@@ -182,5 +183,120 @@ describe('runFixJob', () => {
       ++stops === 1 ? Promise.reject(new Error('rm failed')) : Promise.resolve();
     await runFixJob(claim(expiry.signal), deps);
     await expect.poll(() => lines.join('')).toContain('could not stop the sandbox');
+    // Cleanup tried again after the failed removal.
+    expect(stops).toBe(2);
+  });
+
+  it('finishes a run killed mid-command as killed and removes its sandbox', async () => {
+    const kill = new AbortController();
+    const { deps, sandboxes, link } = setup([bashReply('ls'), submitReply()], ({ command }) => {
+      if (command === 'ls') {
+        kill.abort();
+        throw new Error('container is gone');
+      }
+      return FakeRunner.exited(0);
+    });
+    const finished = await runFixJob(claim(), deps, kill.signal);
+    expect(finished).toMatchObject({ status: 'killed', note: { tried: ['ls'] } });
+    expect(sandboxes.stopped).toEqual([container]);
+    expect(sandboxes.running).toEqual([]);
+    expect(link.payloads('node.diff')).toEqual([]);
+  });
+
+  it('cancels the model call a kill lands in', async () => {
+    const kill = new AbortController();
+    const seen: (AbortSignal | undefined)[] = [];
+    // Answers only when its call is cancelled, as OpenRouterClient does.
+    const hanging: ModelClient = {
+      complete(_messages, options?: CompleteOptions) {
+        seen.push(options?.signal);
+        kill.abort();
+        return new Promise<CompletionResult>((resolve) => {
+          const cancelled = () =>
+            resolve({ ok: false, error: { kind: 'aborted', status: null, message: 'cancelled' } });
+          if (options?.signal?.aborted) cancelled();
+          else options?.signal?.addEventListener('abort', cancelled);
+        });
+      },
+    };
+    const { deps, sandboxes } = setup([], undefined, { model: hanging });
+    const finished = await runFixJob(claim(), deps, kill.signal);
+    expect(seen[0]?.aborted).toBe(true);
+    expect(finished).toMatchObject({ status: 'killed' });
+    expect(sandboxes.running).toEqual([]);
+  });
+
+  it('does not start a sandbox for a run killed before it began', async () => {
+    const kill = new AbortController();
+    kill.abort();
+    const { deps, sandboxes } = setup([bashReply('ls')]);
+    expect(await runFixJob(claim(), deps, kill.signal)).toMatchObject({ status: 'killed' });
+    expect(sandboxes.started).toEqual([]);
+  });
+
+  it('removes the sandbox when the kill lands while it is starting', async () => {
+    const kill = new AbortController();
+    const { deps, sandboxes } = setup([bashReply('ls'), submitReply()]);
+    deps.sandboxes.start = ((start) => (runId: string) => {
+      kill.abort();
+      return start(runId);
+    })(sandboxes.start.bind(sandboxes));
+    expect(await runFixJob(claim(), deps, kill.signal)).toMatchObject({ status: 'killed' });
+    expect(sandboxes.stopped).toEqual([container]);
+    expect(sandboxes.runners.get(container)?.requests).toEqual([]);
+  });
+
+  it('reports a kill that lands while a failing sandbox start runs as killed', async () => {
+    const kill = new AbortController();
+    const { deps, sandboxes } = setup([]);
+    sandboxes.failStart = true;
+    deps.sandboxes.start = ((start) => (runId: string) => {
+      kill.abort();
+      return start(runId);
+    })(sandboxes.start.bind(sandboxes));
+    expect(await runFixJob(claim(), deps, kill.signal)).toMatchObject({ status: 'killed' });
+  });
+
+  it('reports a kill that lands after the agent submitted as killed', async () => {
+    const kill = new AbortController();
+    const { deps, link } = setup([submitReply()], ({ command }) => {
+      // The kill arrives while the diff is being read, and takes the container with it.
+      if (command === 'git diff') {
+        kill.abort();
+        throw new Error('container is gone');
+      }
+      return FakeRunner.exited(0);
+    });
+    expect(await runFixJob(claim(), deps, kill.signal)).toMatchObject({ status: 'killed' });
+    expect(link.payloads('node.diff')).toEqual([]);
+  });
+
+  it('reports a kill over an expiry when both fire', async () => {
+    const kill = new AbortController();
+    const expiry = new AbortController();
+    const { deps } = setup([bashReply('ls'), submitReply()], () => {
+      expiry.abort();
+      kill.abort();
+      return FakeRunner.exited(0);
+    });
+    expect(await runFixJob(claim(expiry.signal), deps, kill.signal)).toMatchObject({
+      status: 'killed',
+    });
+  });
+
+  it('removes the sandbox once on a kill, not once more in cleanup', async () => {
+    const kill = new AbortController();
+    const { deps, sandboxes } = setup([bashReply('ls'), submitReply()], () => {
+      kill.abort();
+      return FakeRunner.exited(0);
+    });
+    let stops = 0;
+    const stop = sandboxes.stop.bind(sandboxes);
+    sandboxes.stop = (sandbox) => {
+      stops += 1;
+      return stop(sandbox);
+    };
+    await runFixJob(claim(), deps, kill.signal);
+    expect(stops).toBe(1);
   });
 });

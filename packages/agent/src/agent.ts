@@ -25,6 +25,11 @@ export interface AgentDeps {
   execute: ExecuteFn;
   /** Milliseconds; injectable so tests control the wall clock. */
   now?: () => number;
+  /**
+   * Stops the run, such as when it is killed. An in-flight model call is cancelled; a
+   * running command is the caller's to stop. The run then ends as `aborted`.
+   */
+  signal?: AbortSignal;
 }
 
 export interface AgentConfig {
@@ -54,7 +59,8 @@ export type ExitStatus =
   | 'time_limit'
   | 'format_errors'
   | 'model_error'
-  | 'audit_failed';
+  | 'audit_failed'
+  | 'aborted';
 
 export interface AgentRun {
   exitStatus: ExitStatus;
@@ -71,6 +77,8 @@ const reached = (limit: number, value: number) => limit > 0 && value >= limit;
 
 const withTimeout = (timeoutMs: number | undefined) =>
   timeoutMs === undefined ? {} : { timeoutMs };
+
+const withSignal = (signal: AbortSignal | undefined) => (signal === undefined ? {} : { signal });
 
 /**
  * The mini-swe-agent loop: ask the model, run the one action it gives, show it the
@@ -107,18 +115,28 @@ export async function runAgent(
     ...(error === undefined ? {} : { error }),
   });
 
+  const aborted = () => deps.signal?.aborted === true;
+
   for (;;) {
+    if (aborted()) return finish('aborted');
     if (reached(config.stepLimit, modelCalls)) return finish('step_limit');
     if (reached(config.costLimitUsd, costUsd)) return finish('cost_limit');
     if (outOfTime()) return finish('time_limit');
 
-    const reply = await deps.model.complete(messages, withTimeout(timeLeft()));
+    const reply = await deps.model.complete(messages, {
+      ...withTimeout(timeLeft()),
+      ...withSignal(deps.signal),
+    });
+    // A call that came back is billed, even when the run was stopped while it was out.
+    if (reply.ok) {
+      modelCalls += 1;
+      costUsd += reply.completion.costUsd;
+    }
+    if (aborted()) return finish('aborted');
     if (!reply.ok) {
       // A call the deadline cut short is the time limit, not a model failure.
       return outOfTime() ? finish('time_limit') : finish('model_error', reply.error);
     }
-    modelCalls += 1;
-    costUsd += reply.completion.costUsd;
     messages.push({ role: 'assistant', content: reply.completion.content });
 
     const parsed = parseAction(reply.completion.content);
@@ -138,6 +156,7 @@ export async function runAgent(
     if (parsed.action.kind === 'submit') return finish('submitted');
     if (outOfTime()) return finish('time_limit');
     const result = await deps.execute(parsed.action.call, withTimeout(timeLeft()));
+    if (aborted()) return finish('aborted');
     // Nothing may run unaudited, so a step the log couldn't take ends the run.
     if (!result.ok && result.error.type === 'audit_failed') {
       return { ...finish('audit_failed'), auditError: result.error.message };

@@ -217,4 +217,50 @@ describe('runAgent', () => {
     });
     expect(fake.calls).toHaveLength(1);
   });
+
+  it('ends as aborted without calling the model when the signal already fired', async () => {
+    const model = new ScriptedModel([submit()]);
+    const controller = new AbortController();
+    controller.abort();
+    const result = await runAgent(task, { model, ...fakeExecute(), signal: controller.signal });
+    expect(result).toMatchObject({ exitStatus: 'aborted', modelCalls: 0 });
+    expect(model.calls).toEqual([]);
+  });
+
+  it('passes the signal to the model call', async () => {
+    const model = new ScriptedModel([submit()]);
+    const { signal } = new AbortController();
+    await runAgent(task, { model, ...fakeExecute(), signal });
+    expect(model.options[0]?.signal).toBe(signal);
+  });
+
+  it('ends as aborted when the signal fires during a model call', async () => {
+    const controller = new AbortController();
+    const error = { kind: 'aborted', status: null, message: 'cancelled' } as const;
+    const model = new ScriptedModel([error]);
+    model.onCall = () => controller.abort();
+    const result = await runAgent(task, { model, ...fakeExecute(), signal: controller.signal });
+    expect(result).toMatchObject({ exitStatus: 'aborted' });
+  });
+
+  it('counts the cost of a call that succeeds after the signal fired', async () => {
+    const controller = new AbortController();
+    const model = new ScriptedModel([{ content: submit(), costUsd: 0.4 }]);
+    model.onCall = () => controller.abort();
+    const result = await runAgent(task, { model, ...fakeExecute(), signal: controller.signal });
+    expect(result).toMatchObject({ exitStatus: 'aborted', modelCalls: 1 });
+    expect(result.costUsd).toBeCloseTo(0.4);
+  });
+
+  it('ends as aborted, not with the failed command, when the signal fires during execute', async () => {
+    const controller = new AbortController();
+    const model = new ScriptedModel([bash('ls'), submit()]);
+    const fake = fakeExecute((call) => {
+      controller.abort();
+      return failedResult(call, 137, 'killed');
+    });
+    const result = await runAgent(task, { model, ...fake, signal: controller.signal });
+    expect(result).toMatchObject({ exitStatus: 'aborted', modelCalls: 1 });
+    expect(model.calls).toHaveLength(1);
+  });
 });

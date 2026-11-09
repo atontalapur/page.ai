@@ -62,6 +62,7 @@ export function recordingDeps(deps: AgentDeps): Recording & { deps: AgentDeps } 
         clock.push(t);
         return t;
       },
+      ...(deps.signal === undefined ? {} : { signal: deps.signal }),
     },
   };
 }
