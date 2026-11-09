@@ -2,5 +2,9 @@
   "class": "backend-api",
   "expectedTier": 1,
   "description": "POST /api/orders answers with Response.redirect to a relative path, which throws after the order commits, so every API checkout returns 500",
-  "report": "POST /api/orders returned 500\n\nTypeError: Failed to parse URL from /orders/1\n    at apps/demo-app/src/app/api/orders/route.ts:10:21\n    at async handle (apps/demo-app/src/app/api/respond.ts:22:12) {\n  [cause]: TypeError: Invalid URL\n      at apps/demo-app/src/app/api/orders/route.ts:10:21\n      at async handle (apps/demo-app/src/app/api/respond.ts:22:12) {\n    code: 'ERR_INVALID_URL',\n    input: '/orders/1'\n  }\n}"
+  "report": "POST /api/orders returned 500\n\nTypeError: Failed to parse URL from /orders/1\n    at apps/demo-app/src/app/api/orders/route.ts:10:21\n    at async handle (apps/demo-app/src/app/api/respond.ts:22:12) {\n  [cause]: TypeError: Invalid URL\n      at apps/demo-app/src/app/api/orders/route.ts:10:21\n      at async handle (apps/demo-app/src/app/api/respond.ts:22:12) {\n    code: 'ERR_INVALID_URL',\n    input: '/orders/1'\n  }\n}",
+  "frameLines": {
+    "apps/demo-app/src/app/api/orders/route.ts:10": "    return Response.redirect(`/orders/${orderId}`, 303);",
+    "apps/demo-app/src/app/api/respond.ts:22": "    return await work();"
+  }
 }

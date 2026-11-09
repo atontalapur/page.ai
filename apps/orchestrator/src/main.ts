@@ -1,10 +1,11 @@
 import { Logger } from '@nestjs/common';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { loadMigrations } from '@page/db-migrations';
 import { PgBoss } from 'pg-boss';
 import { createApp } from './app.ts';
 import { loadConfig } from './config.ts';
 import { createDb } from './db/database.ts';
-import { loadMigrations, migrate } from './db/migrate.ts';
+import { migrate } from './db/migrate.ts';
 import { createFixJobQueue } from './queue/fix-jobs.ts';
 
 const logger = new Logger('orchestrator');

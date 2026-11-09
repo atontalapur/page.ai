@@ -44,6 +44,11 @@ export class ScenarioError extends Error {
   }
 }
 
+/** What to print for a failed scenario: a ScenarioError's problems, or the error itself. */
+export function problemsOf(err: unknown): string[] {
+  return err instanceof ScenarioError ? err.problems : [String(err)];
+}
+
 /** Scenario directory names under `root`, sorted. Plain files (the README) are skipped. */
 export async function listScenarioIds(root: string): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true });

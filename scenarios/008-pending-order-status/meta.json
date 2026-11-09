@@ -2,5 +2,9 @@
   "class": "database",
   "expectedTier": 2,
   "description": "Orders are inserted as 'pending', which orders_status_check doesn't allow, so every checkout throws",
-  "report": "POST /api/orders returned 500\n\nerror: new row for relation \"orders\" violates check constraint \"orders_status_check\"\n    at node_modules/.pnpm/pg@8.23.1/node_modules/pg/lib/client.js:694:17\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async apps/demo-app/src/shop/orders.ts:52:22\n    at async Object.transaction (apps/demo-app/src/db/db.ts:32:24) {\n  length: 261,\n  severity: 'ERROR',\n  code: '23514',\n  detail: 'Failing row contains (1, 2400, 500, 2900, pending, 2026-11-03 01:17:22.705401+00).',\n  hint: undefined,\n  position: undefined,\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: undefined,\n  schema: 'public',\n  table: 'orders',\n  column: undefined,\n  dataType: undefined,\n  constraint: 'orders_status_check',\n  file: 'execMain.c',\n  line: '2076',\n  routine: 'ExecConstraints'\n}"
+  "report": "POST /api/orders returned 500\n\nerror: new row for relation \"orders\" violates check constraint \"orders_status_check\"\n    at node_modules/.pnpm/pg@8.23.1/node_modules/pg/lib/client.js:694:17\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async apps/demo-app/src/shop/orders.ts:52:22\n    at async Object.transaction (apps/demo-app/src/db/db.ts:32:24) {\n  length: 261,\n  severity: 'ERROR',\n  code: '23514',\n  detail: 'Failing row contains (1, 2400, 500, 2900, pending, 2026-11-03 01:17:22.705401+00).',\n  hint: undefined,\n  position: undefined,\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: undefined,\n  schema: 'public',\n  table: 'orders',\n  column: undefined,\n  dataType: undefined,\n  constraint: 'orders_status_check',\n  file: 'execMain.c',\n  line: '2076',\n  routine: 'ExecConstraints'\n}",
+  "frameLines": {
+    "apps/demo-app/src/shop/orders.ts:52": "    const { rows } = await tx.query<{ id: number }>(",
+    "apps/demo-app/src/db/db.ts:32": "        const result = await fn(wrap(client));"
+  }
 }

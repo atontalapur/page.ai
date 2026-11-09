@@ -1,0 +1,27 @@
+{
+  "name": "@page/db-migrations",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The orchestrator database's SQL migrations and their loader, shared with tests that need its tables",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc",
+    "test": "vitest run --project unit --coverage",
+    "test:integration": "vitest run --project integration --passWithNoTests"
+  },
+  "devDependencies": {
+    "@page/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

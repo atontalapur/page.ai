@@ -2,5 +2,8 @@
   "class": "frontend",
   "expectedTier": 1,
   "description": "Invalid currency code in money.ts makes every page with a price return 500",
-  "report": "GET / returned 500\n\nRangeError: Invalid currency code : US\n    at new NumberFormat (<anonymous>)\n    at apps/demo-app/src/shop/money.ts:1:13"
+  "report": "GET / returned 500\n\nRangeError: Invalid currency code : US\n    at new NumberFormat (<anonymous>)\n    at apps/demo-app/src/shop/money.ts:1:13",
+  "frameLines": {
+    "apps/demo-app/src/shop/money.ts:1": "const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'US' });"
+  }
 }

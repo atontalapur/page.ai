@@ -1,4 +1,16 @@
-import type { BugClass, IssueEvent, IssueStatus, Severity, Tier } from '@page/contracts';
+import type {
+  Approval,
+  BugClass,
+  Confidence,
+  Escalation,
+  EscalationNote,
+  IssueEvent,
+  IssueStatus,
+  Run,
+  Severity,
+  Step,
+  Tier,
+} from '@page/contracts';
 import { Kysely, PostgresDialect, type ColumnType, type Generated } from 'kysely';
 import pg from 'pg';
 
@@ -29,6 +41,53 @@ export interface IssueEventsTable {
   created_at: Generated<Date>;
 }
 
+// The jsonb columns below are written as JSON strings, like issue_events.event.
+
+export interface RunsTable {
+  // The fix job's pg-boss id.
+  id: string;
+  issue_id: string;
+  tier: Tier;
+  status: Generated<Run['status']>;
+  started_at: Date | null;
+  finished_at: Date | null;
+  pr_url: string | null;
+  confidence: ColumnType<Confidence | null, string | null | undefined, string | null>;
+  created_at: Generated<Date>;
+}
+
+export interface StepsTable {
+  run_id: string;
+  seq: number;
+  kind: Step['kind'];
+  input: string;
+  output_trimmed: Generated<string>;
+  exit_code: number | null;
+  allowed: boolean;
+  created_at: Generated<Date>;
+}
+
+export interface EscalationsTable {
+  id: Generated<string>;
+  run_id: string;
+  from_tier: Tier;
+  to_tier: Tier;
+  reason: Escalation['reason'];
+  note: ColumnType<EscalationNote, string, string>;
+  created_at: Generated<Date>;
+}
+
+export interface ApprovalsTable {
+  id: Generated<string>;
+  run_id: string;
+  action: string;
+  args: ColumnType<Record<string, unknown>, string | undefined, string>;
+  decision: Generated<Approval['decision']>;
+  decided_by: string | null;
+  decided_at: Date | null;
+  requested_at: Generated<Date>;
+}
+
 export interface SchemaMigrationsTable {
   name: string;
   applied_at: Generated<Date>;
@@ -37,6 +96,10 @@ export interface SchemaMigrationsTable {
 export interface Database {
   issues: IssuesTable;
   issue_events: IssueEventsTable;
+  runs: RunsTable;
+  steps: StepsTable;
+  escalations: EscalationsTable;
+  approvals: ApprovalsTable;
   schema_migrations: SchemaMigrationsTable;
 }
 

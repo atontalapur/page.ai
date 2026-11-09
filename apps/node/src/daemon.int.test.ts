@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import { jobFixtures, nodeEnvFixture } from '@page/contracts/fixtures';
+import { loadMigrations } from '@page/db-migrations';
 import pg from 'pg';
 import { PgBoss } from 'pg-boss';
 import { pino } from 'pino';
@@ -28,13 +28,11 @@ afterAll(async () => {
 
 describe('the daemon on real Postgres, with fake Docker, model and socket', () => {
   it('claims a queued fix job and writes its steps to the steps table', async () => {
-    // The steps table from toolkit's fixture, until #25 adds it to the orchestrator migrations.
-    const steps = await readFile(
-      new URL('../../../packages/toolkit/src/audit/__fixtures__/steps.sql', import.meta.url),
-      'utf8',
-    );
+    // The steps table comes from the orchestrator database's migrations, applied in order.
     await admin.query(`create schema ${schema}`);
-    await admin.query(`set search_path to ${schema}; ${steps}`);
+    for (const migration of await loadMigrations()) {
+      await admin.query(`set search_path to ${schema}; ${migration.sql}`);
+    }
 
     const config = loadConfig({
       ...nodeEnvFixture,
