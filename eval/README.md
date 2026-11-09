@@ -78,6 +78,7 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   per run the tiers tried, tier landed, fixed, paged, time to fix or page, cost, steps
   and blocked steps, and the agent's diff; plus a summary.
 - `.github/workflows/eval-nightly.yml` runs the first 10 dev scenarios under `ladder`
-  every night at 2 a.m. Pacific, with a $1 budget, and commits the results to the
+  every night at 2 a.m. Pacific, two runs at a time on a $1 budget (2 x $0.50, which the
+  free model never spends), and commits the results to the
   `eval/nightly-results` branch. It needs the `OPENROUTER_API_KEY` secret and the
   `OPENROUTER_MODEL` repository variable.
