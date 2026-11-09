@@ -1,3 +1,4 @@
+import { baseConfigSchema } from '@page/contracts';
 import { z } from 'zod';
 
 type Env = Record<string, string | undefined>;
@@ -12,6 +13,11 @@ const schema = z.object({
     .string()
     .regex(/^[a-z_][a-z0-9_]*$/)
     .default('pgboss'),
+  // The node daemon's parser (true/1/yes/on, false/0/no/off). Blank counts as unset, as there.
+  USE_FAKE_ADAPTERS: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    baseConfigSchema.shape.USE_FAKE_ADAPTERS,
+  ),
 });
 
 export interface Config {
@@ -19,14 +25,31 @@ export interface Config {
   port: number;
   host: string;
   pgbossSchema: string;
+  useFakeAdapters: boolean;
+}
+
+/** A bad or missing env var. The message names every one, so main prints it alone. */
+export class ConfigError extends Error {
+  override name = 'ConfigError';
+}
+
+function describeIssue(issue: z.core.$ZodIssue, env: Env): string {
+  const key = issue.path.join('.');
+  return env[key] === undefined ? `${key} is required` : `${key}: ${issue.message}`;
 }
 
 export function loadConfig(env: Env = process.env): Config {
-  const config = schema.parse(env);
+  const parsed = schema.safeParse(env);
+  if (!parsed.success) {
+    const problems = parsed.error.issues.map((issue) => describeIssue(issue, env));
+    throw new ConfigError(`invalid config: ${problems.join('; ')}`);
+  }
+  const config = parsed.data;
   return {
     databaseUrl: config.DATABASE_URL,
     port: config.PORT,
     host: config.HOST,
     pgbossSchema: config.PGBOSS_SCHEMA,
+    useFakeAdapters: config.USE_FAKE_ADAPTERS,
   };
 }
