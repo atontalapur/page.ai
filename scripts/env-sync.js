@@ -9,7 +9,8 @@
 // public key, which is in .env.shared. Values never print.
 //
 // Only what's in .env.shared is overwritten on pull; every other line in .env stays. A
-// missing .env is created from .env.example first.
+// missing .env is created from .env.example first, and a setting in .env.example that .env
+// doesn't set yet is added with its example value. Settings already in .env are never changed.
 //
 // .env.shared is public and anyone can encrypt into it, so pull treats it as untrusted: only
 // the keys in SHARED_KEYS, every value encrypted, and each decrypted value written as a
@@ -32,8 +33,10 @@ const KEYS = '.env.keys';
 const LOCAL = '.env';
 const EXAMPLE = '.env.example';
 const KEY_NAME = 'DOTENV_PRIVATE_KEY_SHARED';
+const KEY_LINE = /^\s*(?:export\s+)?([\w.-]+)\s*=/;
 const PUBLIC_KEY = 'DOTENV_PUBLIC_KEY_SHARED';
 const HEADER = '# Shared secrets, from .env.shared (pnpm env:pull)';
+const SETTINGS_HEADER = '# Settings added from .env.example (pnpm env:pull)';
 // Keep everything on disk: no remote key custody, OS keychain, 1Password or Bitwarden.
 const LOCAL_ONLY = { noArmor: true, noNative: true, no1Password: true, noBitwarden: true };
 
@@ -96,7 +99,7 @@ function pull() {
   const pending = new Map(Object.entries(shared));
   const changed = new Set();
   for (let i = 0; i < lines.length; i++) {
-    const key = /^\s*(?:export\s+)?([\w.-]+)\s*=/.exec(lines[i])?.[1];
+    const key = KEY_LINE.exec(lines[i])?.[1];
     if (key === undefined || !Object.hasOwn(shared, key)) continue;
     const line = format(key, shared[key]);
     if (lines[i] !== line) changed.add(key);
@@ -113,13 +116,28 @@ function pull() {
     lines.push('');
   }
 
+  // Settings added to .env.example after this .env was made. Shared keys came from above.
+  const present = new Set(lines.map((line) => KEY_LINE.exec(line)?.[1]).filter(Boolean));
+  const added = [];
+  if (existsSync(EXAMPLE)) {
+    for (const [key, value] of Object.entries(parseFile(EXAMPLE))) {
+      if (present.has(key) || Object.hasOwn(shared, key)) continue;
+      added.push(format(key, value));
+      changed.add(key);
+    }
+  }
+  if (added.length > 0) {
+    while (lines.length > 0 && lines.at(-1) === '') lines.pop();
+    if (!lines.includes(SETTINGS_HEADER)) lines.push('', SETTINGS_HEADER);
+    lines.push(...added, '');
+  }
+
   writeFileSync(LOCAL, lines.join('\n'), { mode: 0o600 });
   chmodSync(LOCAL, 0o600);
-  const unchanged = Object.keys(shared).length - changed.size;
   console.log(
     changed.size > 0
-      ? `updated ${[...changed].join(', ')} in ${LOCAL}; ${unchanged} already current`
-      : `${LOCAL} already has all ${unchanged} shared values`,
+      ? `updated ${[...changed].join(', ')} in ${LOCAL}; everything else already current`
+      : `${LOCAL} already has every shared value and setting`,
   );
 }
 
