@@ -9,7 +9,6 @@
 # The code scenarios split by estimated cost into parallel shards, each building the image
 # from the warm cache; the ops scenarios get one shard of their own, the only one that starts
 # the compose app and the only one that skips the image build.
-# Not a required check: it only runs when its inputs change.
 name: Scenarios
 
 on:
@@ -173,9 +172,17 @@ jobs:
       - if: matrix.ops
         name: Wait for the compose demo app
         timeout-minutes: 10
+        # Bounded below the step timeout, so a hung start still prints its build log.
         run: |
-          until [ -e "$RUNNER_TEMP/compose.exit" ]; do sleep 1; done
+          for _ in $(seq 540); do
+            [ -e "$RUNNER_TEMP/compose.exit" ] && break
+            sleep 1
+          done
           cat "$RUNNER_TEMP/compose.log"
+          if [ ! -e "$RUNNER_TEMP/compose.exit" ]; then
+            echo "::error::the compose demo app didn't start within 9 minutes"
+            exit 1
+          fi
           exit "$(cat "$RUNNER_TEMP/compose.exit")"
       - if: '!matrix.ops'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
