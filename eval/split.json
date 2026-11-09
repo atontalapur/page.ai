@@ -1,0 +1,39 @@
+{
+  "v": 1,
+  "seed": "pageagents-split-1",
+  "method": "Stratified by class and expected tier (eval/src/split.ts deriveSplit). Each class gets its share of the 10 by largest remainder, dealt across its tiers lowest first, one per stratum per round. Within a stratum, scenarios are sorted by sha256(seed + \":\" + id). Ops scenarios (024, 029, 030) stay in; the runner lists them as skipped until it can play them. Committed before any tuning.",
+  "dev": [
+    "001-bad-currency-code",
+    "003-order-date-options",
+    "004-cart-items-bad-json",
+    "005-add-unknown-product",
+    "008-pending-order-status",
+    "009-checkout-enabled-default",
+    "011-product-in-cart-assertion",
+    "013-product-slug-double-decode",
+    "014-products-sort-param",
+    "015-category-join-ambiguous",
+    "016-product-id-or-slug",
+    "017-cart-added-at-default",
+    "018-env-separator-preprocess",
+    "019-strict-shop-env",
+    "021-cart-cookie-parse",
+    "022-id-int4-range",
+    "026-cart-id-header",
+    "028-checkout-in-array",
+    "029-shipping-override-out-of-range",
+    "030-shipping-override-int-max"
+  ],
+  "heldOut": [
+    "002-order-not-found-guard",
+    "006-checkout-stock-recheck",
+    "007-price-column-rename",
+    "010-shipping-check-backwards",
+    "012-home-search-regex",
+    "020-dockerfile-env-comment",
+    "023-action-return-await",
+    "024-bad-deploy-products-limit",
+    "025-order-relative-redirect",
+    "027-ensure-cart-conflict"
+  ]
+}
