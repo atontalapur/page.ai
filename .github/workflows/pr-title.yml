@@ -3,8 +3,9 @@
 # Kept out of ci.yml so editing a title doesn't rerun the whole suite.
 # Every event lints the current title, body-only edits included: a skipped required check
 # counts as passing, so skipping edits let a failing title pass (#99). Each run reads the
-# title from its own payload, so the newest run always lints the current one; cancelling
-# older runs is safe because nothing skips the newest.
+# title from the API when it runs, not from its event payload, so the newest run and any
+# re-run of an older one lint the current title. Cancelling older runs is safe because
+# nothing skips the newest.
 name: PR title
 
 on:
@@ -17,6 +18,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   pr-title:
@@ -30,6 +32,9 @@ jobs:
           filter: page-ai
       # Call the binary directly: `pnpm exec` would see the partial install and install
       # the whole workspace. Pass the title through env, never inline it into the script.
-      - run: printf '%s\n' "$TITLE" | node_modules/.bin/commitlint --verbose
+      - run: |
+          title="$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json title --jq .title)"
+          printf '%s\n' "$title" | node_modules/.bin/commitlint --verbose
         env:
-          TITLE: ${{ github.event.pull_request.title }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}

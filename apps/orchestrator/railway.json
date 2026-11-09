@@ -10,8 +10,8 @@
       "packages/db-migrations/**",
       "pnpm-lock.yaml",
       "pnpm-workspace.yaml",
-      "package.json",
-      ".dockerignore"
+      "/package.json",
+      "/.dockerignore"
     ]
   },
   "deploy": {

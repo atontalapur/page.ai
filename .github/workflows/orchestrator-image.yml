@@ -79,9 +79,11 @@ jobs:
             echo "::error::/health did not return 200 {\"status\":\"ok\"} within 60s"
             exit 1
           fi
-          # The service database starts empty, so every migration must apply on boot.
-          if ! docker logs orchestrator 2>&1 | grep -qF '"msg":"applied 001_issues.sql'; then
-            echo "::error::boot log has no 'applied 001_issues.sql' line"
+          # The service database starts empty, so every migration must apply on boot, in name
+          # order, as loadMigrations sorts them. A file missing from the image fails this.
+          want="applied $(cd packages/db-migrations/migrations && printf '%s\n' *.sql | LC_ALL=C sort | paste -sd, - | sed 's/,/, /g')"
+          if ! docker logs orchestrator 2>&1 | grep -qF "\"msg\":\"$want\""; then
+            echo "::error::boot log has no '$want' line"
             exit 1
           fi
       - name: Stop cleanly
