@@ -1,0 +1,106 @@
+{
+  "v": 1,
+  "config": "tier1-only",
+  "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "gitSha": "9d0bbe9937afebca4211975703f37131e7215d6c",
+  "startedAt": "2026-11-09T02:49:21.537Z",
+  "finishedAt": "2026-11-09T02:55:57.643Z",
+  "runsPerScenario": 1,
+  "maxCostUsd": 1,
+  "stoppedForBudget": false,
+  "runs": [
+    {
+      "scenario": "001-bad-currency-code",
+      "class": "frontend",
+      "expectedTier": 1,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "checkPassed": true,
+          "prOpened": false,
+          "modelCalls": 7,
+          "costUsd": 0,
+          "durationMs": 123563,
+          "steps": 5,
+          "blockedSteps": 0,
+          "diff": ""
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 123563,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "costUsd": 0
+    },
+    {
+      "scenario": "003-order-date-options",
+      "class": "frontend",
+      "expectedTier": 1,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "checkPassed": true,
+          "prOpened": false,
+          "modelCalls": 10,
+          "costUsd": 0,
+          "durationMs": 109269,
+          "steps": 9,
+          "blockedSteps": 0,
+          "diff": "diff --git a/apps/demo-app/src/app/orders/[id]/page.tsx b/apps/demo-app/src/app/orders/[id]/page.tsx\nindex 3950d15..422d4aa 100644\n--- a/apps/demo-app/src/app/orders/[id]/page.tsx\n+++ b/apps/demo-app/src/app/orders/[id]/page.tsx\n@@ -15,7 +15,7 @@ export default async function OrderPage(props: PageProps<'/orders/[id]'>) {\n     <main>\n       <h1>Order #{order.id}</h1>\n       <p>Status: {order.status}</p>\n-      <p>Placed {order.createdAt.toLocaleDateString('en-US', { dateStyle: 'long' })}</p>\n+      <p>Placed {order.createdAt.toLocaleDateString('en-US', { dateStyle: 'medium' })}</p>\n       <ul>\n         {order.items.map((item) => (\n           <li key={item.productId}>\n"
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 109269,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "costUsd": 0
+    },
+    {
+      "scenario": "004-cart-items-bad-json",
+      "class": "backend-api",
+      "expectedTier": 1,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "checkPassed": true,
+          "prOpened": false,
+          "modelCalls": 18,
+          "costUsd": 0,
+          "durationMs": 162807,
+          "steps": 17,
+          "blockedSteps": 1,
+          "diff": "diff --git a/apps/demo-app/src/app/api/cart/items/route.ts b/apps/demo-app/src/app/api/cart/items/route.ts\nindex 82ff8f3..1ef10d3 100644\n--- a/apps/demo-app/src/app/api/cart/items/route.ts\n+++ b/apps/demo-app/src/app/api/cart/items/route.ts\n@@ -11,7 +11,13 @@ const body = z.object({\n });\n \n export async function POST(req: Request) {\n-  const parsed = body.safeParse(await req.json().catch(() => undefined));\n+  let json: unknown;\n+  try {\n+    json = await req.json();\n+  } catch {\n+    return errorResponse('bad_request', 'Expected { productId, quantity? }');\n+  }\n+  const parsed = body.safeParse(json);\n   if (!parsed.success) return errorResponse('bad_request', 'Expected { productId, quantity? }');\n \n   const { db, settings, cookies } = await shop();\n"
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 162807,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "costUsd": 0
+    }
+  ],
+  "skipped": [],
+  "summary": {
+    "runs": 3,
+    "fixed": 3,
+    "fixRate": 1,
+    "costUsd": 0,
+    "costPerFixUsd": 0,
+    "falseEscalations": 0,
+    "steps": 31,
+    "blockedSteps": 1,
+    "blockedPer100Steps": 3.225806451612903
+  }
+}

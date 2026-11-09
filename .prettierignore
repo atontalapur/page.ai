@@ -1,3 +1,5 @@
 pnpm-lock.yaml
 # Written by eval/scripts/record-transcript.ts.
 packages/agent/src/__fixtures__/transcripts/
+# Written by eval/scripts/eval-run.ts.
+eval/results/
