@@ -1,6 +1,12 @@
 import { jobFixtures } from '@page/contracts/fixtures';
 import type { CompleteOptions, CompletionResult, ModelClient } from '@page/model-client';
-import { FakeGitHub, FakeRunner, InMemoryAuditSink, type RunRequest } from '@page/toolkit';
+import {
+  FakeGitHub,
+  FakeRunner,
+  InMemoryAuditSink,
+  SAFE_GIT,
+  type RunRequest,
+} from '@page/toolkit';
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
 import { FakeLink } from '../link/fake-link.ts';
@@ -9,6 +15,7 @@ import { FakeSandboxes } from '../sandbox/fake-sandboxes.ts';
 import { runFixJob, type RunDeps } from './run-fix-job.ts';
 
 const job = jobFixtures.fix;
+const DIFF = `${SAFE_GIT} diff --no-ext-diff --no-textconv`;
 const container = `pageagents-${job.runId}`;
 
 function setup(
@@ -38,17 +45,14 @@ describe('runFixJob', () => {
   it('runs the agent in one sandbox, records and streams each step, and cleans up', async () => {
     const { deps, sandboxes, sink, link } = setup(
       [bashReply('ls'), bashReply('curl example.com'), submitReply()],
-      ({ command }) => FakeRunner.exited(0, command === 'git diff' ? 'diff --git a b\n' : 'out'),
+      ({ command }) => FakeRunner.exited(0, command === DIFF ? 'diff --git a b\n' : 'out'),
     );
     const finished = await runFixJob(claim(), deps);
 
     expect(sandboxes.started).toEqual([container]);
     expect(sandboxes.running).toEqual([]);
     // The commands went into the run's container, and the refused one never did.
-    expect(sandboxes.runners.get(container)?.requests.map((r) => r.command)).toEqual([
-      'ls',
-      'git diff',
-    ]);
+    expect(sandboxes.runners.get(container)?.requests.map((r) => r.command)).toEqual(['ls', DIFF]);
     expect(sink.steps).toMatchObject([
       { runId: job.runId, seq: 0, input: 'ls', allowed: true, exitCode: 0, outputTrimmed: 'out' },
       { runId: job.runId, seq: 1, input: 'curl example.com', allowed: false },
@@ -261,7 +265,7 @@ describe('runFixJob', () => {
     const kill = new AbortController();
     const { deps, link } = setup([submitReply()], ({ command }) => {
       // The kill arrives while the diff is being read, and takes the container with it.
-      if (command === 'git diff') {
+      if (command === DIFF) {
         kill.abort();
         throw new Error('container is gone');
       }
@@ -306,16 +310,20 @@ describe('runFixJob', () => {
     const path = 'apps/demo-app/lib/money.ts';
     // The sandbox as the host tools read it: one changed file.
     const workspace = ({ command }: RunRequest) => {
-      if (command.startsWith('git status')) return FakeRunner.exited(0, ` M ${path}\0`);
-      if (command.startsWith('git ls-files')) return FakeRunner.exited(0, '');
-      if (command.startsWith('stat -c')) return FakeRunner.exited(0, '4\nVVNECg==\n');
+      if (command.startsWith(`${SAFE_GIT} status`)) return FakeRunner.exited(0, ` M ${path}\0`);
+      if (command.startsWith('stat -c')) return FakeRunner.exited(0, '4 644 regular file\n');
+      if (command.startsWith('base64')) return FakeRunner.exited(0, 'VVNECg==\n.\n');
       return FakeRunner.exited(0, '');
     };
+    const tier2 = (extra: Partial<typeof job> = {}) => ({
+      ...claim(),
+      job: { ...job, tier: 2 as const, ...extra },
+    });
 
     it('pushes the fix, opens a PR and reports its url when the run finishes', async () => {
       const github = new FakeGitHub({ [path]: "'USDD'\n" });
       const { deps, sink } = setup([pushReply, prReply, submitReply()], workspace, { github });
-      const finished = await runFixJob({ ...claim(), job: { ...job, tier: 2 } }, deps);
+      const finished = await runFixJob(tier2(), deps);
 
       const branch = `pageagents/${job.runId}`;
       expect(github.files(branch)[path]!.text).toBe('USD\n');
@@ -331,6 +339,66 @@ describe('runFixJob', () => {
         status: 'succeeded',
         prUrl: 'https://github.com/page-demo/shop/pull/1',
       });
+      expect(github.pullRequests[0]).toMatchObject({ state: 'open' });
+    });
+
+    it('puts the escalation note from the tier below in the PR body', async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      const { deps } = setup([pushReply, prReply, submitReply()], workspace, { github });
+      const escalationNote = {
+        summary: 'Tier 1 ran out of steps.',
+        tried: ['cat lib/money.ts'],
+        blocker: 'Out of steps.',
+      };
+      await runFixJob(tier2({ escalationNote }), deps);
+      expect(github.pullRequests[0]!.body).toContain(
+        '### Escalation note from the tier below\n\nTier 1 ran out of steps.',
+      );
+    });
+
+    it('closes the PR of a run that escalates after opening it', async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      const { deps } = setup([pushReply, prReply, bashReply('ls')], workspace, {
+        github,
+        agentConfig: { stepLimit: 3 },
+      });
+      const finished = await runFixJob(tier2(), deps);
+
+      expect(finished).toMatchObject({ status: 'escalated', toTier: 3, prUrl: null });
+      expect(github.pullRequests[0]).toMatchObject({ state: 'closed' });
+      expect(github.pullRequests[0]!.comments[0]).toMatch(
+        new RegExp(`run \`${job.runId}\` ended as escalated`),
+      );
+    });
+
+    it('still reports the PR when it cannot be closed', async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      github.failOn.add('closePullRequest');
+      const { deps } = setup([pushReply, prReply, bashReply('ls')], workspace, {
+        github,
+        agentConfig: { stepLimit: 3 },
+      });
+      const finished = await runFixJob(tier2(), deps);
+      expect(finished).toMatchObject({
+        status: 'escalated',
+        prUrl: 'https://github.com/page-demo/shop/pull/1',
+      });
+    });
+
+    it('sends nothing to GitHub once the run is killed', async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      const kill = new AbortController();
+      const { deps } = setup(
+        [bashReply('ls'), pushReply, submitReply()],
+        (request) => {
+          if (request.command === 'ls') kill.abort();
+          return workspace(request);
+        },
+        { github },
+      );
+      const finished = await runFixJob(tier2(), deps, kill.signal);
+      expect(finished).toMatchObject({ status: 'killed', prUrl: null });
+      expect(github.calls).toEqual([]);
     });
 
     it('refuses the host tools at Tier 1 and logs the refusal', async () => {
@@ -352,7 +420,7 @@ describe('runFixJob', () => {
 
     it('refuses the host tools when the node has no GitHub', async () => {
       const { deps, sink } = setup([pushReply, submitReply()], workspace);
-      await runFixJob({ ...claim(), job: { ...job, tier: 2 } }, deps);
+      await runFixJob(tier2(), deps);
       expect(sink.steps).toMatchObject([
         { allowed: false, outputTrimmed: 'refused: git.pushBranch is not set up on this node' },
       ]);
