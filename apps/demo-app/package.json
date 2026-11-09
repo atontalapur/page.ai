@@ -16,8 +16,8 @@
     "db:seed": "node scripts/db.ts seed"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.13",
-    "@next/eslint-plugin-next": "16.4.3",
+    "@electric-sql/pglite": "^0.5.15",
+    "@next/eslint-plugin-next": "16.4.5",
     "@page/config": "workspace:*",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
@@ -29,10 +29,10 @@
     "vitest": "catalog:"
   },
   "dependencies": {
-    "next": "16.4.3",
+    "next": "16.4.5",
     "pg": "catalog:",
-    "posthog-js": "^1.444.0",
-    "posthog-node": "^5.61.1",
+    "posthog-js": "^1.445.3",
+    "posthog-node": "^5.61.2",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "zod": "catalog:"
