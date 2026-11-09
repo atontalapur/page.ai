@@ -63,7 +63,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
           # Seconds of scenarios per code shard to aim for, and the most code shards.
-          BUDGET: 45
+          BUDGET: 70
           MAX_SHARDS: 10
           INPUTS: |
             ^scenarios/

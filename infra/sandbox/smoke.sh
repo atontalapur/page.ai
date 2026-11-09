@@ -51,6 +51,9 @@ sx sh -c 'echo x > /workspace/.probe && rm /workspace/.probe' || fail "repo is n
 echo "ok: /workspace is writable"
 
 sx sh -c 'wget -q -T 3 -O /dev/null http://example.com' 2>/dev/null && fail "network is reachable"
+# The name lookup above fails before any packet leaves, so also try an IP address: this
+# proves there's no route at all, not just no DNS.
+sx sh -c 'wget -q -T 3 -O /dev/null http://1.1.1.1' 2>/dev/null && fail "an IP address is reachable"
 echo "ok: no network"
 
 # The agent passes repo-relative paths here by mistake. An exit 0 would read as a test
