@@ -1,5 +1,5 @@
 import { FakeRunner, type RunRequest, type RunResult } from '@page/toolkit';
-import { sandboxName, type Sandbox, type Sandboxes } from './sandbox.ts';
+import { sandboxName, type Reaped, type Sandbox, type Sandboxes } from './sandbox.ts';
 
 type Responder = (request: RunRequest) => RunResult | Promise<RunResult>;
 
@@ -43,10 +43,10 @@ export class FakeSandboxes implements Sandboxes {
     return Promise.resolve();
   }
 
-  reap(): Promise<string[]> {
-    const reaped = [...this.strays, ...this.running];
+  reap(): Promise<Reaped> {
+    const removed = [...this.strays, ...this.running];
     this.strays = [];
-    for (const name of reaped) if (!this.stopped.includes(name)) this.stopped.push(name);
-    return Promise.resolve(reaped);
+    for (const name of removed) if (!this.stopped.includes(name)) this.stopped.push(name);
+    return Promise.resolve({ removed, failed: [] });
   }
 }

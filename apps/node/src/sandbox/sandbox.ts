@@ -18,12 +18,17 @@ export interface Sandboxes {
   start(runId: string): Promise<Sandbox>;
   stop(sandbox: Sandbox): Promise<void>;
   /**
-   * Removes every sandbox container on this host, running or not, and resolves with their
-   * names. The daemon calls it at startup, before it claims anything, to clear what a
+   * Removes every sandbox container on this host, running or not. One container that
+   * won't go doesn't stop the rest: it is listed in `failed` with the reason. The daemon calls it at startup, before it claims anything, to clear what a
    * crashed or SIGKILLed daemon left behind. One daemon per Docker host, so every
    * `pageagents-*` container is its own.
    */
-  reap(): Promise<string[]>;
+  reap(): Promise<Reaped>;
+}
+
+export interface Reaped {
+  removed: string[];
+  failed: { name: string; error: Error }[];
 }
 
 /** Every container the daemon starts is named this way, so it can find and reap strays. */

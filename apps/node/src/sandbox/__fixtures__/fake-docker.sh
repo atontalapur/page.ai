@@ -1,9 +1,12 @@
 #!/bin/sh
 # Stands in for `docker` in DockerSandboxes' unit tests. Appends its argv, one line per
 # argument and a blank line after, to $FAKE_DOCKER_LOG. The image or container name
-# picks a failure to fake.
-for arg in "$@"; do printf '%s\n' "$arg" >> "$FAKE_DOCKER_LOG"; done
-printf '\n' >> "$FAKE_DOCKER_LOG"
+# picks a failure to fake. reap runs several at once, and the shell's printf can split
+# a line across writes, so each record is built apart and appended by one `cat`.
+for arg in "$@"; do printf '%s\n' "$arg"; done > "$FAKE_DOCKER_LOG.$$"
+printf '\n' >> "$FAKE_DOCKER_LOG.$$"
+cat "$FAKE_DOCKER_LOG.$$" >> "$FAKE_DOCKER_LOG"
+rm -f "$FAKE_DOCKER_LOG.$$"
 case "$1" in
   run)
     case " $* " in

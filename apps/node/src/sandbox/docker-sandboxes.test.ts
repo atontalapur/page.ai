@@ -83,17 +83,42 @@ describe('DockerSandboxes', { timeout: 20_000 }, () => {
   it('reaps every leftover sandbox container and nothing else', async () => {
     process.env.FAKE_DOCKER_PS = `pageagents-a\nsomething-else\npageagents-b\n`;
     const sandboxes = new DockerSandboxes({ image: 'page-sandbox', docker });
-    expect(await sandboxes.reap()).toEqual(['pageagents-a', 'pageagents-b']);
-    expect(calls()).toEqual([
-      ['ps', '--all', '--filter', 'label=page.sandbox=1', '--format', '{{.Names}}'],
-      ['rm', '--force', 'pageagents-a'],
-      ['rm', '--force', 'pageagents-b'],
+    expect(await sandboxes.reap()).toEqual({
+      removed: ['pageagents-a', 'pageagents-b'],
+      failed: [],
+    });
+    const [list, ...removals] = calls();
+    expect(list).toEqual([
+      'ps',
+      '--all',
+      '--filter',
+      'label=page.sandbox=1',
+      '--format',
+      '{{.Names}}',
+    ]);
+    // The removals run at once, so their order isn't fixed.
+    expect(removals).toEqual(
+      expect.arrayContaining([
+        ['rm', '--force', 'pageagents-a'],
+        ['rm', '--force', 'pageagents-b'],
+      ]),
+    );
+    expect(removals).toHaveLength(2);
+  });
+
+  it('removes the rest when one leftover will not go, and reports that one', async () => {
+    process.env.FAKE_DOCKER_PS = `pageagents-a\npageagents-down\npageagents-b\n`;
+    const sandboxes = new DockerSandboxes({ image: 'page-sandbox', docker });
+    const { removed, failed } = await sandboxes.reap();
+    expect(removed).toEqual(['pageagents-a', 'pageagents-b']);
+    expect(failed).toMatchObject([
+      { name: 'pageagents-down', error: { message: /Cannot connect to the Docker daemon/ } },
     ]);
   });
 
   it('reaps nothing when there are no leftovers', async () => {
     const sandboxes = new DockerSandboxes({ image: 'page-sandbox', docker });
-    expect(await sandboxes.reap()).toEqual([]);
+    expect(await sandboxes.reap()).toEqual({ removed: [], failed: [] });
     expect(calls()).toHaveLength(1);
   });
 

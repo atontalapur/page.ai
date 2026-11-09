@@ -39,29 +39,42 @@ export interface Daemon {
  */
 export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
   const { jobs, sandboxes, sink, link, model } = adapters;
-  const runs = new Map<string, AbortController>();
+  // Each run's kill switch, with a logger that carries the run's issueId, runId and tier.
+  const runs = new Map<string, { kill: AbortController; logger: Logger }>();
+  // The link has no `off`, so the kill handler goes on once however often start() runs.
+  let listening = false;
   return {
     async start() {
       // Before claiming, so a stray can't be mistaken for a run in hand.
-      const reaped = await sandboxes.reap();
-      if (reaped.length > 0) logger.warn({ containers: reaped }, 'removed leftover sandboxes');
-      link.on('run.kill', ({ runId }) => {
-        const run = runs.get(runId);
-        if (run === undefined) {
-          logger.info({ runId }, 'kill for a run this daemon is not running; ignored');
-          return;
-        }
-        logger.info({ runId }, 'killing run');
-        run.abort();
-      });
+      const { removed, failed } = await sandboxes.reap();
+      if (removed.length > 0) logger.warn({ containers: removed }, 'removed leftover sandboxes');
+      for (const { name, error } of failed) {
+        logger.error({ container: name, err: error }, 'could not remove a leftover sandbox');
+      }
+      if (!listening) {
+        listening = true;
+        link.on('run.kill', ({ runId }) => {
+          const run = runs.get(runId);
+          if (run === undefined) {
+            logger.info({ runId }, 'kill for a run this daemon is not running; ignored');
+            return;
+          }
+          run.logger.info('killing run');
+          run.kill.abort();
+        });
+      }
       await jobs.start(async (claimed) => {
-        const { runId } = claimed.job;
-        const kill = new AbortController();
-        runs.set(runId, kill);
+        const { issueId, runId, tier } = claimed.job;
+        const entry = {
+          kill: new AbortController(),
+          logger: logger.child({ issueId, runId, tier }),
+        };
+        runs.set(runId, entry);
         try {
-          await runFixJob(claimed, { sandboxes, sink, link, model, logger }, kill.signal);
+          await runFixJob(claimed, { sandboxes, sink, link, model, logger }, entry.kill.signal);
         } finally {
-          runs.delete(runId);
+          // A retry of the same runId may have replaced this entry; leave the newer one.
+          if (runs.get(runId) === entry) runs.delete(runId);
         }
       });
       logger.info('claiming fix jobs');

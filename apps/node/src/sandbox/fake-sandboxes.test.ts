@@ -31,8 +31,11 @@ describe('FakeSandboxes', () => {
     const sandboxes = new FakeSandboxes();
     sandboxes.strays = ['pageagents-old'];
     await sandboxes.start('a');
-    expect(await sandboxes.reap()).toEqual(['pageagents-old', 'pageagents-a']);
+    expect(await sandboxes.reap()).toEqual({
+      removed: ['pageagents-old', 'pageagents-a'],
+      failed: [],
+    });
     expect(sandboxes.running).toEqual([]);
-    expect(await sandboxes.reap()).toEqual([]);
+    expect(await sandboxes.reap()).toEqual({ removed: [], failed: [] });
   });
 });
