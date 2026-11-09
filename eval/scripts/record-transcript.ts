@@ -22,7 +22,7 @@ import {
   StepLog,
 } from '@page/toolkit';
 import { loadScenario, ScenarioError } from '../src/scenario.ts';
-import { shellIn, startSandbox, stopSandbox } from './sandbox.ts';
+import { plantBug, shellIn, startSandbox, stopSandbox } from './sandbox.ts';
 
 const USAGE =
   'usage: OPENROUTER_API_KEY=... node eval/scripts/record-transcript.ts <image> <scenario-id> --model <id> [--out <dir>]';
@@ -63,8 +63,7 @@ const containerStartedAt = Date.now();
 const name = startSandbox(image);
 try {
   const sh = shellIn(name);
-  const broke = await sh(breakScript!);
-  if (broke.code !== 0) throw new Error(`break.sh exited ${broke.code}:\n${broke.output}`);
+  await plantBug(sh, breakScript!);
 
   const runner = new DockerExecRunner({ container: name });
   const tier = scenario.meta.expectedTier;

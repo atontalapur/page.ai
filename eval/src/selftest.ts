@@ -149,6 +149,15 @@ export function framesExistScript(frames: ReportFrame[], unchecked: string[] = [
  * after reference_fix.patch it passes again. Stops at the first step that goes wrong.
  * The report's stack frames must also fit the code break.sh leaves behind (#74).
  */
+/** A script that applies `patch` in /workspace, for a sandbox shell. */
+export function applyPatchScript(patch: string): string {
+  // Quoted heredoc, so git apply gets the patch byte for byte. The delimiter can't
+  // appear in a patch line, which starts with a space, +, - or a header. A --binary data
+  // line is 1 + 5k characters long, so it can't be the 14-character delimiter either.
+  const body = patch.endsWith('\n') ? patch : `${patch}\n`;
+  return `git apply --whitespace=nowarn - <<'PAGE_PATCH_EOF'\n${body}PAGE_PATCH_EOF\n`;
+}
+
 export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<SelfTestResult> {
   if (scenario.kind !== 'code') throw new Error(`${scenario.id} is an ${scenario.kind} scenario`);
   const read = (file: string) => readFile(join(scenario.dir, file), 'utf8');
@@ -157,10 +166,7 @@ export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<Se
     read('check.sh'),
     read('reference_fix.patch'),
   ]);
-  // Quoted heredoc, so git apply gets the patch byte for byte. The delimiter can't
-  // appear in a patch line, which always starts with a space, +, - or a header.
-  const body = patch.endsWith('\n') ? patch : `${patch}\n`;
-  const apply = `git apply --whitespace=nowarn - <<'PAGE_PATCH_EOF'\n${body}PAGE_PATCH_EOF\n`;
+  const apply = applyPatchScript(patch);
   const { report } = scenario.meta;
   const frames = framesExistScript(reportFrames(report), uncheckedFrames(report));
 

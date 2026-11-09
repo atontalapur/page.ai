@@ -29,9 +29,13 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5
 - `--config` picks the tiers a run climbs: `tier1-only`, `tier3-start` or `ladder`
   (Tier 1, then 2, then 3). A run moves up a tier when the agent stops without
   submitting, as the orchestrator escalates an issue.
-- Every attempt starts a fresh sandbox, runs `break.sh`, gives the agent the scenario's
-  `report`, then pipes `check.sh` in. The check runs on every outcome, so a tier that
-  gave up on a patch that already passed is counted as a false escalation.
+- Every attempt starts a fresh sandbox and runs `break.sh`, then starts the repo over so
+  the broken code is its only commit, as a production bug already in `HEAD` would be.
+  The agent gets the scenario's `report`. Its diff (everything since that commit,
+  including new files and its own commits) is then checked in a second fresh sandbox:
+  `break.sh`, the diff, `check.sh`. The check never enters the agent's sandbox and isn't
+  squeezed into the last seconds of its wall clock. It runs on every outcome, so a tier
+  that gave up on a patch that already passed is counted as a false escalation.
 - From Tier 2 the agent's push and PR go to an in-memory GitHub, never the demo repo.
 - `--max-cost` is the total budget. Each attempt's agent limit is lowered to what is
   left, no attempt starts once it is spent, and a run the budget cut short is dropped

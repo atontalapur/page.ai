@@ -1,4 +1,5 @@
-// One eval attempt in a real sandbox: break.sh, the agent at one tier, then check.sh.
+// One eval attempt in real sandboxes: break.sh, the agent at one tier, then check.sh on
+// the agent's diff in a second sandbox.
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -15,19 +16,46 @@ import {
 } from '@page/toolkit';
 import type { Attempt } from '../src/results.ts';
 import type { AttemptFn } from '../src/runner.ts';
-import { shellIn, startSandbox, stopSandbox } from './sandbox.ts';
+import type { Scenario } from '../src/scenario.ts';
+import {
+  agentDiff,
+  checkInFreshSandbox,
+  plantBug,
+  shellIn,
+  startSandbox,
+  stopSandbox,
+} from './sandbox.ts';
+
+interface Scripts {
+  breakScript: string;
+  checkScript: string;
+}
 
 export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
+  // Every tier and run of a scenario uses the same two scripts.
+  const scripts = new Map<string, Promise<Scripts>>();
+  const scriptsFor = (scenario: Scenario) => {
+    let read = scripts.get(scenario.dir);
+    if (read === undefined) {
+      read = Promise.all(
+        ['break.sh', 'check.sh'].map((f) => readFile(join(scenario.dir, f), 'utf8')),
+      ).then(([breakScript, checkScript]) => ({
+        breakScript: breakScript!,
+        checkScript: checkScript!,
+      }));
+      scripts.set(scenario.dir, read);
+    }
+    return read;
+  };
+
   return async (scenario, tier, costLimitUsd): Promise<Attempt> => {
-    const [breakScript, checkScript] = await Promise.all(
-      ['break.sh', 'check.sh'].map((f) => readFile(join(scenario.dir, f), 'utf8')),
-    );
+    const { breakScript, checkScript } = await scriptsFor(scenario);
     const startedAt = Date.now();
     const name = startSandbox(image);
+    let agent: Omit<Attempt, 'checkPassed'>;
     try {
       const sh = shellIn(name);
-      const broke = await sh(breakScript!);
-      if (broke.code !== 0) throw new Error(`${scenario.id}: break.sh exited ${broke.code}`);
+      await plantBug(sh, breakScript);
 
       const runner = new DockerExecRunner({ container: name });
       const issueId = randomUUID();
@@ -63,25 +91,24 @@ export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
           ),
         },
       );
-
-      // check.sh goes over stdin after the run, so the agent never sees it. It runs on
-      // every outcome, so an escalated patch that already works is counted.
-      const check = await sh(checkScript!);
-      const diff = await sh('git diff --no-ext-diff --no-textconv');
-      return {
+      agent = {
         tier,
         exitStatus: run.exitStatus,
-        checkPassed: check.code === 0,
         prOpened: hostTools?.prUrl != null,
         modelCalls: run.modelCalls,
         costUsd: run.costUsd,
         durationMs: Date.now() - startedAt,
         steps: sink.steps.length,
         blockedSteps: sink.steps.filter((s) => !s.allowed).length,
-        diff: diff.code === 0 ? diff.output : '',
+        diff: await agentDiff(sh),
       };
     } finally {
       stopSandbox(name);
     }
+
+    // check.sh never enters the agent's sandbox. It runs on every outcome, so an
+    // escalated patch that already works is counted.
+    const checkPassed = await checkInFreshSandbox(image, { breakScript, checkScript }, agent.diff);
+    return { ...agent, checkPassed };
   };
 }
