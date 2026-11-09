@@ -62,6 +62,20 @@ environment.
 Nest needs legacy decorators with emitted metadata, which Node's type stripping can't run,
 so the app is compiled with `tsc` to `dist/` rather than run from source.
 
+## Deploy to Railway staging
+
+`Dockerfile` builds from the repo root (`docker build -f apps/orchestrator/Dockerfile .`)
+and `railway.json` gates each deploy on `/health`. Migrations run on boot, so there is no
+pre-deploy step. The compiled app imports `@page/contracts` and `@page/db-migrations` as
+`.ts` sources, and Node won't strip types under `node_modules`, so the image keeps the
+workspace layout instead of using `pnpm deploy`. One-time service setup:
+
+1. New service from this GitHub repo, root directory `/`.
+2. Settings, Config-as-code file path: `/apps/orchestrator/railway.json`.
+3. Set `DATABASE_URL=${{Postgres.DATABASE_URL}}` (the project's Postgres service). Railway
+   sets `PORT`; `HOST` and `PGBOSS_SCHEMA` keep their defaults.
+4. Generate a public domain.
+
 ## Test
 
 - `pnpm --filter @page/orchestrator test` runs on PGlite (in-memory Postgres), pg-boss
