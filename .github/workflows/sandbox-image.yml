@@ -1,26 +1,13 @@
-# Builds the agent sandbox image (#5), runs infra/sandbox/smoke.sh against it, and on main
-# pushes it to GHCR. Not a required check: it only runs when the image's inputs change.
+# Builds the agent sandbox image (#5), runs infra/sandbox/smoke.sh against it, and on a push
+# to main that changed its inputs pushes it to GHCR. `sandbox-image` is a required check on
+# main: on a PR that doesn't touch the image's inputs it's skipped, which counts as passing.
+# Renaming it breaks the ruleset.
 name: Sandbox image
 
 on:
   pull_request:
-    paths: &inputs
-      - infra/sandbox/**
-      - apps/demo-app/**
-      - packages/config/**
-      - apps/node/src/sandbox/**
-      - apps/node/scripts/sandbox-run.ts
-      - apps/node/package.json
-      - .dockerignore
-      - .gitignore
-      - .nvmrc
-      - package.json
-      - pnpm-lock.yaml
-      - pnpm-workspace.yaml
-      - .github/workflows/sandbox-image.yml
   push:
     branches: [main]
-    paths: *inputs
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -33,21 +20,64 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}/sandbox
 
 jobs:
-  image:
+  # A required check must report on every PR, so the path filter lives here instead of on
+  # the trigger: when no input changed, the job below is skipped, which counts as passing.
+  # Pushes to main go through the same filter, so this is the only list.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.changes.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: changes
+        uses: ./.github/actions/changes
+        with:
+          patterns: |
+            ^infra/sandbox/
+            ^apps/demo-app/
+            ^packages/config/
+            ^apps/node/src/sandbox/
+            ^apps/node/scripts/sandbox-run\.ts$
+            ^apps/node/package\.json$
+            ^\.dockerignore$
+            ^\.gitignore$
+            ^\.nvmrc$
+            ^package\.json$
+            ^pnpm-lock\.yaml$
+            ^pnpm-workspace\.yaml$
+            ^\.github/workflows/sandbox-image\.yml$
+            ^\.github/actions/changes/
+
+  # Runs, and fails at once, if changes didn't succeed: skipped would count as passing.
+  sandbox-image:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.run == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v7
-      # smoke.sh starts the container through apps/node/scripts/sandbox-run.ts, which needs
+      - if: needs.changes.result != 'success'
+        env:
+          RESULT: ${{ needs.changes.result }}
+        run: |
+          echo "::error::the changes job ended '$RESULT', so whether the image's inputs changed is unknown"
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # smoke.sh starts its containers through apps/node/scripts/sandbox-run.ts, which needs
       # only Node itself, so no pnpm install.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/build-push-action@v7
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          # Hosted runners are thrown away, and removing the builder takes ~5s.
+          cleanup: false
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: infra/sandbox/Dockerfile
@@ -57,7 +87,7 @@ jobs:
           cache-to: type=gha,scope=sandbox,mode=max
       - run: infra/sandbox/smoke.sh "$IMAGE:$GITHUB_SHA"
       - if: github.event_name == 'push'
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

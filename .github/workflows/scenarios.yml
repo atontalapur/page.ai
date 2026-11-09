@@ -3,36 +3,20 @@
 # reference_fix.patch. An ops scenario (Tier 3) runs against the compose demo app: check.sh
 # passes, fails after break-ops.sh and passes after fix-ops.sh.
 # A PR that changes only scenarios/ self-tests the scenarios it touches. Any other input
-# (the runner, the demo app, the sandbox image) and every push to main self-tests all of
-# them.
-# Not a required check: it only runs when its inputs change.
+# (the runner, the demo app, the sandbox image), and any input on a push to main, self-tests
+# all of them; a run that touches none of the inputs below runs no shards. `selftest` is a
+# required check on main that sums up the shards; renaming it breaks the ruleset.
+# The code scenarios split by estimated cost into parallel shards, each building the image
+# from the warm cache and running a few scenarios at once. The ops scenarios split the same
+# way into shards of their own, one at a time each: every ops shard starts its own compose
+# app (~66s, uncached) and skips the image build. A slow ops scenario gets a shard of its
+# own: that costs an extra runner and compose start, so it only pays as ops scenarios grow.
 name: Scenarios
 
 on:
   pull_request:
-    # sandbox-image.yml's inputs (what the scenarios run against), plus the scenarios and
-    # the runner.
-    paths: &inputs
-      - scenarios/**
-      - eval/**
-      - packages/contracts/**
-      - infra/sandbox/**
-      - apps/demo-app/**
-      - packages/config/**
-      - apps/node/src/sandbox/**
-      - apps/node/scripts/sandbox-run.ts
-      - apps/node/package.json
-      - .dockerignore
-      - .gitignore
-      - .nvmrc
-      - package.json
-      - pnpm-lock.yaml
-      - pnpm-workspace.yaml
-      - docker-compose.yml
-      - .github/workflows/scenarios.yml
   push:
     branches: [main]
-    paths: *inputs
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -45,70 +29,201 @@ env:
   IMAGE: page-sandbox:${{ github.sha }}
 
 jobs:
-  selftest:
+  pick:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
+    outputs:
+      shards: ${{ steps.pick.outputs.shards }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # sandbox-image.yml's inputs (what the scenarios run against), plus the scenarios and
+      # the runner.
+      - id: changes
+        uses: ./.github/actions/changes
+        with:
+          patterns: |
+            ^scenarios/
+            ^eval/
+            ^packages/contracts/
+            ^infra/sandbox/
+            ^apps/demo-app/
+            ^packages/config/
+            ^apps/node/src/sandbox/
+            ^apps/node/scripts/sandbox-run\.ts$
+            ^apps/node/package\.json$
+            ^\.dockerignore$
+            ^\.gitignore$
+            ^\.nvmrc$
+            ^package\.json$
+            ^pnpm-lock\.yaml$
+            ^pnpm-workspace\.yaml$
+            ^docker-compose\.yml$
+            ^\.github/workflows/scenarios\.yml$
+            ^\.github/actions/changes/
       - name: Pick scenarios
         id: pick
         env:
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
+          RUN: ${{ steps.changes.outputs.run }}
+          CHANGED: ${{ steps.changes.outputs.files }}
+          # Seconds of wall per shard to aim for, not counting setup, and the most shards.
+          # A code shard runs CONCURRENCY scenarios at once, 1 CPU each on a 4-vCPU runner.
+          CODE_BUDGET: 35
+          CONCURRENCY: 3
+          OPS_BUDGET: 60
+          MAX_SHARDS: 10
         run: |
           all="$(find scenarios -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
-          if [ "$EVENT" != pull_request ]; then
+          # On a PR with RUN true, CHANGED lists the changed inputs. Anything outside a
+          # scenario's own directory can break every scenario: the runner, the demo app, and
+          # the shared scripts at the top of scenarios/ (ops.sh, compose-deploy.sh) that ops
+          # scenarios source.
+          if [ "$RUN" != true ]; then
+            ids=""
+          elif [ "$EVENT" != pull_request ]; then
+            ids="$all"
+          elif grep -qvE '^scenarios/[^/]+/' <<<"$CHANGED"; then
             ids="$all"
           else
-            changed="$(git diff --name-only "$BASE"...HEAD)"
-            # Anything outside scenarios/ can break every scenario, so this needs no second
-            # copy of the trigger list.
-            if grep -qv '^scenarios/' <<<"$changed"; then
-              ids="$all"
-            else
-              # Directories the PR touched that still exist (a deleted scenario has nothing to test).
-              ids="$(grep -oP '^scenarios/\K[^/]+(?=/)' <<<"$changed" | sort -u | grep -xF -f <(echo "$all") || true)"
-            fi
+            # Directories the PR touched that still exist (a deleted scenario has nothing to test).
+            ids="$(grep -oP '^scenarios/\K[^/]+(?=/)' <<<"$CHANGED" | sort -u | grep -xF -f <(echo "$all") || true)"
           fi
-          # Ops scenarios (Tier 3) need the live compose app; a break-ops.sh marks one.
-          ops="$(for id in $ids; do [ -e "scenarios/$id/break-ops.sh" ] && echo "$id"; done || true)"
-          echo "Scenarios: ${ids:-none}"
-          echo "Ops scenarios: ${ops:-none}"
-          echo "ids=$(echo $ids)" >> "$GITHUB_OUTPUT"
-          echo "ops=$(echo $ops)" >> "$GITHUB_OUTPUT"
-      - if: steps.pick.outputs.ids != ''
-        uses: ./.github/actions/setup
-        with:
-          filter: '@page/eval...'
-      - if: steps.pick.outputs.ids != ''
-        uses: docker/setup-buildx-action@v4
-      # Same cache scope as sandbox-image.yml, so an unchanged demo app builds from cache.
-      - if: steps.pick.outputs.ids != ''
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: infra/sandbox/Dockerfile
-          load: true
-          tags: ${{ env.IMAGE }}
-          cache-from: type=gha,scope=sandbox
+          # Ops scenarios (Tier 3) need the live compose app; a break-ops.sh marks one. One
+          # that builds a bad deploy image (build_image, compose-deploy.sh) takes ~53s to
+          # self-test, any other ~7s. A code scenario whose check runs on PGlite
+          # (node --liftoff-only, see scenarios/README.md) takes ~31s, any other a few seconds.
+          ops="$(for id in $ids; do
+            [ -e "scenarios/$id/break-ops.sh" ] || continue
+            # -q exits 0 on a match even if fix-ops.sh is missing. Only a call counts, not a comment.
+            if grep -qsE '^[[:space:]]*build_image\b' "scenarios/$id/break-ops.sh" "scenarios/$id/fix-ops.sh"; then
+              echo "$id 53"
+            else
+              echo "$id 7"
+            fi
+          done)"
+          code="$(for id in $ids; do
+            [ -e "scenarios/$id/break-ops.sh" ] && continue
+            if grep -qs -e --liftoff-only "scenarios/$id/check.sh"; then echo "$id 31"; else echo "$id 3"; fi
+          done)"
+          echo "Code scenarios, estimated seconds: ${code:-none}"
+          echo "Ops scenarios, estimated seconds: ${ops:-none}"
+          # Enough shards for about BUDGET seconds of wall each, at c scenarios at a time, and
+          # no more than c over half of it on one shard. Longest first, each onto the shard
+          # with the least so far. A shard runs its ids in that order, each on the first free
+          # slot, so est is that shard's wall. No ids, no shards.
+          plan="$(jq -cn --arg code "$code" --arg ops "$ops" --argjson code_budget "$CODE_BUDGET" \
+            --argjson c "$CONCURRENCY" --argjson ops_budget "$OPS_BUDGET" --argjson max "$MAX_SHARDS" '
+            def costs: split("\n") | map(select(. != "") | split(" ") | {id: .[0], s: (.[1] | tonumber)});
+            def shards($kind; $budget; $c):
+              . as $xs
+              | ([$max, ($xs | length), ([1, ($xs | map(.s) | (add // 0) / $c / $budget | ceil),
+                  ($xs | map(select(.s > $budget / 2)) | length / $c | ceil)] | max)] | min) as $k
+              | reduce ($xs | sort_by(-.s, .id))[] as $x ([range($k) | {s: 0, ids: [], slots: [range($c) | 0]}];
+                  (to_entries | min_by(.value.s) | .key) as $i
+                  | (.[$i].slots | to_entries | min_by(.value) | .key) as $j
+                  | .[$i].s += $x.s | .[$i].ids += [$x.id] | .[$i].slots[$j] += $x.s)
+              | [to_entries[] | {
+                  name: "\($kind) \(.key + 1) of \($k)",
+                  ops: ($kind == "ops"),
+                  concurrency: $c,
+                  ids: (.value.ids | join(" ")),
+                  est: (.value.slots | max)
+                }];
+            ($code | costs | shards("code"; $code_budget; $c)) + ($ops | costs | shards("ops"; $ops_budget; 1))')"
+          jq -r '.[] | "\(.name): \(.ids) (~\(.est)s of tests)"' <<<"$plan"
+          shards="$(jq -c 'map(del(.est))' <<<"$plan")"
+          echo "Shards: $shards"
+          echo "shards=$shards" >> "$GITHUB_OUTPUT"
+
+  shard:
+    needs: pick
+    if: needs.pick.outputs.shards != '[]'
+    name: selftest ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.pick.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The ops self-test drives the ops API, so the app gets a throwaway secret for this
       # run. Setting DEMO_APP_URL and OPS_SECRET sends ops scenarios down that path.
-      - if: steps.pick.outputs.ops != ''
+      # The app builds and starts in the background while pnpm installs. It builds on the
+      # default builder, not from the gha cache: 024's bad deploy build (compose-deploy.sh)
+      # reuses its dependency layer there.
+      - if: matrix.ops
         name: Start the compose demo app
         run: |
           secret="$(openssl rand -hex 32)"
           echo "::add-mask::$secret"
           echo "OPS_SECRET=$secret" >> "$GITHUB_ENV"
           echo "DEMO_APP_URL=http://localhost:3000" >> "$GITHUB_ENV"
-          OPS_SECRET="$secret" docker compose up -d --build --wait demo-app
-      - if: steps.pick.outputs.ids != ''
-        env:
-          IDS: ${{ steps.pick.outputs.ids }}
-        # IDS is unquoted on purpose: one argument per scenario id. Named ids make an ops
-        # scenario fail, not skip, if the app above didn't start.
-        run: pnpm scenarios:selftest "$IMAGE" $IDS
-      - if: failure() && steps.pick.outputs.ops != ''
+          # bash -e would end the subshell on a failed start before it writes the status.
+          (
+            status=0
+            OPS_SECRET="$secret" docker compose up -d --build --wait demo-app || status=$?
+            echo "$status" > "$RUNNER_TEMP/compose.tmp"
+            mv "$RUNNER_TEMP/compose.tmp" "$RUNNER_TEMP/compose.exit"
+          ) > "$RUNNER_TEMP/compose.log" 2>&1 &
+      - uses: ./.github/actions/setup
+        with:
+          filter: '@page/eval...'
+      - if: matrix.ops
+        name: Wait for the compose demo app
+        timeout-minutes: 10
+        # Bounded below the step timeout, so a hung start still prints its build log.
+        run: |
+          for _ in $(seq 540); do
+            [ -e "$RUNNER_TEMP/compose.exit" ] && break
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/compose.log"
+          if [ ! -e "$RUNNER_TEMP/compose.exit" ]; then
+            echo "::error::the compose demo app didn't start within 9 minutes"
+            exit 1
+          fi
+          exit "$(cat "$RUNNER_TEMP/compose.exit")"
+      - if: '!matrix.ops'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          # Hosted runners are thrown away, and removing the builder takes ~15s.
+          cleanup: false
+      # Same cache scope as sandbox-image.yml, so an unchanged demo app builds from cache.
+      - if: '!matrix.ops'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: infra/sandbox/Dockerfile
+          load: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha,scope=sandbox
+      - env:
+          IDS: ${{ matrix.ids }}
+          SELFTEST_CONCURRENCY: ${{ matrix.concurrency }}
+        # One argument per scenario id, in pick's order. Named ids make an ops scenario fail,
+        # not skip, if the app above didn't start. An ops shard never builds IMAGE: ops
+        # scenarios run on the host, so the runner doesn't use it.
+        run: |
+          read -ra ids <<<"$IDS"
+          pnpm scenarios:selftest "$IMAGE" "${ids[@]}"
+      - if: failure() && matrix.ops
         name: Demo app logs
         run: docker compose logs --no-color --tail 200 demo-app demo-app-migrate
+
+  # The one stable name for the ruleset: shard names change with the shard count. Passes when
+  # every shard passed or none were needed, fails if pick or any shard failed or was cancelled.
+  selftest:
+    needs: [pick, shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          PICK: ${{ needs.pick.result }}
+          SHARD: ${{ needs.shard.result }}
+        run: |
+          echo "pick: $PICK, shards: $SHARD"
+          [ "$PICK" = success ] && { [ "$SHARD" = success ] || [ "$SHARD" = skipped ]; }

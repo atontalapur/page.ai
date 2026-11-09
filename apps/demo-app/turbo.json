@@ -1,0 +1,11 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      // lint and typecheck run `next typegen`, which writes .next/types, and next build
+      // deletes .next/types when it starts. Running them in parallel races.
+      "dependsOn": ["^build", "lint", "typecheck"]
+    }
+  }
+}
