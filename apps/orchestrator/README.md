@@ -4,6 +4,21 @@ NestJS (Fastify adapter) service that owns the issue lifecycle. It stores issues
 through Kysely, moves them through a state machine, and queues fix jobs on pg-boss for
 `apps/node` daemons to claim.
 
+## Modules
+
+`AppModule` serves `/health` and `/issues` and imports seven feature modules. Each one is
+still a stub: an empty service and a controller with no routes.
+
+| Module            | Will own                                                                 |
+| ----------------- | ------------------------------------------------------------------------ |
+| `IngestModule`    | PostHog webhook: secret check, upsert by fingerprint, queue triage (#29) |
+| `TriageModule`    | Class and severity by model with a rule fallback, then notify (#30)      |
+| `RunsModule`      | Steps, diffs and results the node daemon streams back per run (#8)       |
+| `TiersModule`     | Escalation after a run: up a tier, or to failed past Tier 3              |
+| `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions             |
+| `NotifyModule`    | Twilio call and SMS to on-call, once per issue (#31)                     |
+| `GatewayModule`   | Socket.IO events to and from the UI and node daemons (#34)               |
+
 ## Issue lifecycle
 
 ```
