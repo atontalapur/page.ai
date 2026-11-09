@@ -14,8 +14,10 @@ format.
 - `split.json` is the dev / held-out split for the evaluation (#16): 20 dev, 10 held
   out, even by class. It was committed before any tuning. Tuning looks only at the dev
   set; the held-out bugs run once, after the escalation threshold is frozen.
-  `src/split.test.ts` checks that every scenario is in one set and that the held-out ones
-  follow from the seed, so nobody hand-picked them.
+  `src/split.test.ts` checks that every scenario is in one set and that the file equals
+  what `deriveSplit` gives for the seed, so nobody hand-picked them. The three ops
+  scenarios (024, 029, 030) are in the split, but the runner can't play them yet and
+  lists them as skipped.
 
 ## Eval runner (#15)
 

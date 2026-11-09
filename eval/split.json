@@ -1,7 +1,7 @@
 {
   "v": 1,
   "seed": "pageagents-split-1",
-  "method": "Stratified by class and expected tier. Within each stratum, scenarios are sorted by sha256(seed + \":\" + id) and the first ones are held out. Committed before any tuning.",
+  "method": "Stratified by class and expected tier (eval/src/split.ts deriveSplit). Each class gets its share of the 10 by largest remainder, dealt across its tiers lowest first, one per stratum per round. Within a stratum, scenarios are sorted by sha256(seed + \":\" + id). Ops scenarios (024, 029, 030) stay in; the runner lists them as skipped until it can play them. Committed before any tuning.",
   "dev": [
     "001-bad-currency-code",
     "003-order-date-options",
