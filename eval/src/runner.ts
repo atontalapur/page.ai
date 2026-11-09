@@ -10,6 +10,15 @@ import {
 import type { Scenario } from './scenario.ts';
 
 /**
+ * Whether the daemon would hand this run to the next tier. Only running out of budget
+ * escalates (apps/node/src/run/outcome.ts); a model, format or audit failure fails the
+ * issue and pages a human, since a higher tier won't fix those.
+ */
+export function escalates(exitStatus: Attempt['exitStatus']): boolean {
+  return exitStatus === 'step_limit' || exitStatus === 'cost_limit' || exitStatus === 'time_limit';
+}
+
+/**
  * Plays one tier of one scenario: a fresh sandbox, break.sh, the agent at `tier` with at
  * most `costLimitUsd` to spend, then check.sh. The Docker-backed one is in
  * `scripts/attempt.ts`; tests pass a fake.
@@ -39,7 +48,8 @@ export function skipReason(scenario: Scenario): string | undefined {
 
 /**
  * Plays every scenario `runsPerScenario` times under one configuration and collects the
- * results. Each run climbs the configuration's tiers until an agent submits; check.sh runs
+ * results. Each run climbs the configuration's tiers while the agent runs out of budget,
+ * and stops at a submit or any other exit, as the daemon does; check.sh runs
  * after every attempt, so an escalated patch that already fixed the bug still counts, as
  * a false escalation.
  */
@@ -74,7 +84,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
         );
         spent += attempt.costUsd;
         attempts.push(attempt);
-        if (attempt.exitStatus === 'submitted') break;
+        if (!escalates(attempt.exitStatus)) break;
       }
       // A run cut short by the budget says nothing about the agent, so it is left out.
       if (stoppedForBudget && !attempts.some((a) => a.exitStatus === 'submitted')) break outer;

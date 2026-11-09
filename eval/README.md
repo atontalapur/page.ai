@@ -27,8 +27,9 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5
 ```
 
 - `--config` picks the tiers a run climbs: `tier1-only`, `tier3-start` or `ladder`
-  (Tier 1, then 2, then 3). A run moves up a tier when the agent stops without
-  submitting, as the orchestrator escalates an issue.
+  (Tier 1, then 2, then 3). A run moves up a tier only when the agent runs out of
+  steps, budget or time, as the daemon escalates an issue. Any other exit (model,
+  format or audit failure) pages a human at that tier.
 - Every attempt starts a fresh sandbox and runs `break.sh`, then starts the repo over so
   the broken code is its only commit, as a production bug already in `HEAD` would be.
   The agent gets the scenario's `report`. Its diff (everything since that commit,

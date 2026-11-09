@@ -104,6 +104,16 @@ describe('runEval', () => {
     expect(calls.map((c) => c.tier)).toEqual([3]);
   });
 
+  it.each(['format_errors', 'model_error', 'audit_failed', 'aborted'] as const)(
+    'pages without climbing when a tier ends with %s',
+    async (exitStatus) => {
+      const { fn, calls } = scripted([{ exitStatus, checkPassed: false }]);
+      const [run] = (await runEval(base(fn))).runs;
+      expect(calls.map((c) => c.tier)).toEqual([1]);
+      expect(run).toMatchObject({ tierLanded: null, fixed: false, paged: true });
+    },
+  );
+
   it('plays every scenario N times, run by run', async () => {
     const { fn, calls } = scripted([]);
     const results = await runEval(
