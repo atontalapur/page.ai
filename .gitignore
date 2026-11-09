@@ -16,3 +16,6 @@ coverage/
 
 # Scratch directory the scenario checks write into the demo app.
 .page-check/
+
+# Local agent instructions, not tracked.
+CLAUDE.md
