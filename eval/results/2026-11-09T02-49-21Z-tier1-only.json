@@ -95,6 +95,7 @@
     }
   ],
   "skipped": [],
+  "errors": [],
   "summary": {
     "runs": 3,
     "fixed": 3,

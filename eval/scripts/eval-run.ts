@@ -103,6 +103,8 @@ await writeFile(path, `${JSON.stringify(results, null, 2)}\n`);
 
 const s = results.summary;
 for (const skip of results.skipped) console.log(`  ${skip.scenario}: skipped, ${skip.reason}`);
+for (const e of results.errors)
+  console.log(`  ${e.scenario} #${e.run} T${e.tier}: error, ${e.message}`);
 if (results.stoppedForBudget) console.log(`budget of $${maxCost} reached; later runs not played`);
 console.log(
   `fixed ${s.fixed}/${s.runs} (${(s.fixRate * 100).toFixed(0)}%), $${s.costUsd.toFixed(4)}, ` +

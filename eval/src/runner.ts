@@ -66,6 +66,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
   const tiers = EVAL_CONFIGS[options.config];
   const runs: ScenarioRun[] = [];
   const skipped: EvalResults['skipped'] = [];
+  const errors: EvalResults['errors'] = [];
   let spent = 0;
   let stoppedForBudget = false;
 
@@ -78,6 +79,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
   outer: for (let run = 1; run <= options.runsPerScenario; run++) {
     for (const scenario of playable) {
       const attempts: Attempt[] = [];
+      let crashed = false;
       for (const tier of tiers) {
         const remaining = options.maxCostUsd - spent;
         // Too little left for a real attempt: it would only be cut short.
@@ -86,7 +88,18 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
           break;
         }
         const limit = Math.min(options.attemptCostLimitUsd, remaining);
-        const attempt = await options.attempt(scenario, tier, limit);
+        let attempt: Attempt;
+        try {
+          attempt = await options.attempt(scenario, tier, limit);
+        } catch (error) {
+          // A sandbox or script failure says nothing about the agent. Record it, drop the
+          // run and go on, so the runs already paid for still reach the results file.
+          // What the attempt spent is unknown, so its whole limit counts as spent.
+          spent += limit;
+          errors.push({ scenario: scenario.id, run, tier, message: String(error) });
+          crashed = true;
+          break;
+        }
         spent += attempt.costUsd;
         attempts.push(attempt);
         // Out of money because the budget lowered the limit, not the agent's own limit.
@@ -99,6 +112,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
       // A run cut short by the budget, at any tier, says nothing about the agent, so it is
       // left out, and nothing after it runs.
       if (stoppedForBudget) break outer;
+      if (crashed) continue;
       const result = scenarioRun(scenario, run, attempts);
       runs.push(result);
       options.onRun?.(result);
@@ -117,6 +131,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     stoppedForBudget,
     runs,
     skipped,
+    errors,
     summary: summarize(runs),
   };
 }

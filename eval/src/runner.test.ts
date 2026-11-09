@@ -178,6 +178,25 @@ describe('runEval', () => {
     expect(results.runs[0]).toMatchObject({ paged: true });
   });
 
+  it('records an attempt that throws, drops its run, and plays the rest', async () => {
+    const calls: { id: string; costLimitUsd: number }[] = [];
+    const fn: AttemptFn = (s, tier, costLimitUsd) => {
+      calls.push({ id: s.id, costLimitUsd });
+      if (s.id === '001-a') return Promise.reject(new Error('break.sh exited 1'));
+      return Promise.resolve(attempt(tier));
+    };
+    const results = await runEval(
+      base(fn, { scenarios: [scenario('001-a'), scenario('002-b')], maxCostUsd: 0.8 }),
+    );
+    expect(results.errors).toEqual([
+      { scenario: '001-a', run: 1, tier: 1, message: 'Error: break.sh exited 1' },
+    ]);
+    expect(results.runs.map((r) => r.scenario)).toEqual(['002-b']);
+    // The crashed attempt's whole limit counts as spent.
+    expect(calls[1]!.costLimitUsd).toBeCloseTo(0.3);
+    expect(evalResultsSchema.parse(results)).toEqual(results);
+  });
+
   it('starts no attempt with less than the minimum left', async () => {
     const { fn, calls } = scripted([{ costUsd: 0.96 }]);
     const results = await runEval(

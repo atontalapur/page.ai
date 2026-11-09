@@ -103,6 +103,15 @@ export const evalResultsSchema = z.strictObject({
   stoppedForBudget: z.boolean(),
   runs: z.array(scenarioRunSchema),
   skipped: z.array(z.strictObject({ scenario: z.string(), reason: z.string() })),
+  /** Attempts that threw (sandbox or script failure). Their runs are left out. */
+  errors: z.array(
+    z.strictObject({
+      scenario: z.string(),
+      run: z.int().positive(),
+      tier: tierSchema,
+      message: z.string(),
+    }),
+  ),
   summary: evalSummarySchema,
 });
 export type EvalResults = z.infer<typeof evalResultsSchema>;
