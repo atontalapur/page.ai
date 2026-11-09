@@ -25,11 +25,18 @@ export function escalates(exitStatus: Attempt['exitStatus']): boolean {
  */
 export type AttemptFn = (scenario: Scenario, tier: Tier, costLimitUsd: number) => Promise<Attempt>;
 
+/** The least budget an attempt starts with. Below it the run would only be cut short. */
+export const MIN_ATTEMPT_USD = 0.05;
+
 export interface RunEvalOptions {
   config: EvalConfig;
   scenarios: Scenario[];
   runsPerScenario: number;
-  /** Total spend across every attempt. No attempt starts once it is reached. */
+  /**
+   * Total spend across every attempt. No attempt starts with less than MIN_ATTEMPT_USD
+   * left. The agent checks its limit before each model call, so the total can go over by
+   * one call's cost.
+   */
   maxCostUsd: number;
   /** The most one attempt may spend, before the remaining budget lowers it. */
   attemptCostLimitUsd: number;
@@ -73,21 +80,25 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
       const attempts: Attempt[] = [];
       for (const tier of tiers) {
         const remaining = options.maxCostUsd - spent;
-        if (remaining <= 0) {
+        // Too little left for a real attempt: it would only be cut short.
+        if (remaining < MIN_ATTEMPT_USD) {
           stoppedForBudget = true;
           break;
         }
-        const attempt = await options.attempt(
-          scenario,
-          tier,
-          Math.min(options.attemptCostLimitUsd, remaining),
-        );
+        const limit = Math.min(options.attemptCostLimitUsd, remaining);
+        const attempt = await options.attempt(scenario, tier, limit);
         spent += attempt.costUsd;
         attempts.push(attempt);
+        // Out of money because the budget lowered the limit, not the agent's own limit.
+        if (attempt.exitStatus === 'cost_limit' && limit < options.attemptCostLimitUsd) {
+          stoppedForBudget = true;
+          break;
+        }
         if (!escalates(attempt.exitStatus)) break;
       }
-      // A run cut short by the budget says nothing about the agent, so it is left out.
-      if (stoppedForBudget && !attempts.some((a) => a.exitStatus === 'submitted')) break outer;
+      // A run cut short by the budget, at any tier, says nothing about the agent, so it is
+      // left out, and nothing after it runs.
+      if (stoppedForBudget) break outer;
       const result = scenarioRun(scenario, run, attempts);
       runs.push(result);
       options.onRun?.(result);

@@ -151,6 +151,34 @@ describe('runEval', () => {
     expect(results.runs.map((r) => r.scenario)).toEqual(['001-a']);
   });
 
+  it('drops a run whose last tier the budget cut short, not paging it', async () => {
+    const { fn } = scripted([
+      { costUsd: 0.7 },
+      { exitStatus: 'cost_limit', checkPassed: false, costUsd: 0.3 },
+    ]);
+    const results = await runEval(
+      base(fn, { config: 'tier1-only', scenarios: [scenario('001-a'), scenario('002-b')] }),
+    );
+    expect(results.stoppedForBudget).toBe(true);
+    expect(results.runs.map((r) => r.scenario)).toEqual(['001-a']);
+  });
+
+  it('keeps a run that hit its own cost limit, with the full limit to spend', async () => {
+    const { fn } = scripted([{ exitStatus: 'cost_limit', checkPassed: false, costUsd: 0.5 }]);
+    const results = await runEval(base(fn, { config: 'tier1-only', maxCostUsd: 5 }));
+    expect(results.stoppedForBudget).toBe(false);
+    expect(results.runs[0]).toMatchObject({ paged: true });
+  });
+
+  it('starts no attempt with less than the minimum left', async () => {
+    const { fn, calls } = scripted([{ costUsd: 0.96 }]);
+    const results = await runEval(
+      base(fn, { scenarios: [scenario('001-a'), scenario('002-b')], maxCostUsd: 1 }),
+    );
+    expect(calls.map((c) => c.id)).toEqual(['001-a']);
+    expect(results.stoppedForBudget).toBe(true);
+  });
+
   it('reports blocked steps per 100 steps', async () => {
     const { fn } = scripted([{ steps: 8, blockedSteps: 2 }]);
     const { summary } = await runEval(base(fn));

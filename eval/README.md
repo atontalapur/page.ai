@@ -39,13 +39,14 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5
   that gave up on a patch that already passed is counted as a false escalation.
 - From Tier 2 the agent's push and PR go to an in-memory GitHub, never the demo repo.
 - `--max-cost` is the total budget. Each attempt's agent limit is lowered to what is
-  left, no attempt starts once it is spent, and a run the budget cut short is dropped
-  and flagged with `stoppedForBudget`.
+  left, and no attempt starts with less than $0.05 left. A run the budget cut short, at
+  any tier, is dropped and flagged with `stoppedForBudget`. The agent checks its limit
+  before each model call, so the total can go over by one call's cost.
 - Ops scenarios (Tier 3) are skipped with a reason for now: they need a live demo app.
 - Results go to `eval/results/<start>-<config>.json` (`src/results.ts` has the schema):
   per run the tiers tried, tier landed, fixed, paged, time to fix or page, cost, steps
   and blocked steps, and the agent's diff; plus a summary.
 - `.github/workflows/eval-nightly.yml` runs the first 10 dev scenarios under `ladder`
-  every night at 2 a.m. Pacific, capped at $1, and commits the results to the
+  every night at 2 a.m. Pacific, with a $1 budget, and commits the results to the
   `eval/nightly-results` branch. It needs the `OPENROUTER_API_KEY` secret and the
   `OPENROUTER_MODEL` repository variable.

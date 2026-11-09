@@ -1,5 +1,5 @@
 # Nightly eval (#15): plays the first 10 dev scenarios from eval/split.json under the full
-# ladder with a real model, capped at $1, and commits the results JSON to the
+# ladder with a real model, on a $1 budget, and commits the results JSON to the
 # eval/nightly-results branch (main is protected). Held-out scenarios never run here.
 # Needs the OPENROUTER_API_KEY secret and the OPENROUTER_MODEL variable.
 # Not a required check.
