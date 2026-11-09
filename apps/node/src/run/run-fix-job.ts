@@ -69,7 +69,7 @@ export async function runFixJob(
     sandbox = await deps.sandboxes.start(runId);
   } catch (error) {
     logger.error({ err: error }, 'sandbox did not start');
-    return finish({ kind: 'sandbox_failed', message: String(error) });
+    return finish(stoppedEnd() ?? { kind: 'sandbox_failed', message: String(error) });
   }
   logger.info({ container: sandbox.name }, 'sandbox started');
 
@@ -137,7 +137,9 @@ export async function runFixJob(
     if (end.kind === 'agent' && end.run.exitStatus === 'submitted') {
       await sendDiff(sandbox, runId, deps.link, logger);
     }
-    return finish(end);
+    // A kill or expiry that lands after the agent returned (say during sendDiff) still
+    // ends the run, and removing the sandbox may have cost it the diff.
+    return finish(stoppedEnd() ?? end);
   } finally {
     stopped.removeEventListener('abort', onAbort);
     // Try again if the removal on abort failed, so cleanup still runs on every path.

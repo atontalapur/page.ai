@@ -246,6 +246,31 @@ describe('runFixJob', () => {
     expect(sandboxes.runners.get(container)?.requests).toEqual([]);
   });
 
+  it('reports a kill that lands while a failing sandbox start runs as killed', async () => {
+    const kill = new AbortController();
+    const { deps, sandboxes } = setup([]);
+    sandboxes.failStart = true;
+    deps.sandboxes.start = ((start) => (runId: string) => {
+      kill.abort();
+      return start(runId);
+    })(sandboxes.start.bind(sandboxes));
+    expect(await runFixJob(claim(), deps, kill.signal)).toMatchObject({ status: 'killed' });
+  });
+
+  it('reports a kill that lands after the agent submitted as killed', async () => {
+    const kill = new AbortController();
+    const { deps, link } = setup([submitReply()], ({ command }) => {
+      // The kill arrives while the diff is being read, and takes the container with it.
+      if (command === 'git diff') {
+        kill.abort();
+        throw new Error('container is gone');
+      }
+      return FakeRunner.exited(0);
+    });
+    expect(await runFixJob(claim(), deps, kill.signal)).toMatchObject({ status: 'killed' });
+    expect(link.payloads('node.diff')).toEqual([]);
+  });
+
   it('reports a kill over an expiry when both fire', async () => {
     const kill = new AbortController();
     const expiry = new AbortController();
