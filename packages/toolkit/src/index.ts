@@ -1,4 +1,4 @@
-export { execute, DEFAULT_TIMEOUT_MS } from './exec/execute.ts';
+export { execute, DEFAULT_TIMEOUT_MS, hostToolArgs } from './exec/execute.ts';
 export type {
   EditCall,
   ExecCall,

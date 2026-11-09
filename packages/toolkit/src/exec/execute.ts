@@ -115,8 +115,11 @@ function run(call: ToolCall, ctx: ExecContext, base: StepBase): Promise<RunOutco
   }
 }
 
-/** A host tool call's tool and arguments, without the `kind` every one of them shares. */
-function hostToolArgs(call: HostToolCall): Record<string, string> {
+/**
+ * A host tool call's tool and arguments, without the `kind` every one of them shares. This
+ * is the step's input, so replay and test helpers build it here too.
+ */
+export function hostToolArgs(call: HostToolCall): Record<string, string> {
   return call.tool === 'git.pushBranch'
     ? { tool: call.tool, message: call.message }
     : { tool: call.tool, title: call.title, body: call.body };

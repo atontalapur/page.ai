@@ -1,5 +1,5 @@
 import type { ChatMessage, CompletionResult } from '@page/model-client';
-import type { ExecErr, ExecOk, Result, ToolCall } from '@page/toolkit';
+import { hostToolArgs, type ExecErr, type ExecOk, type Result, type ToolCall } from '@page/toolkit';
 import type { AgentConfig, AgentDeps, ExitStatus } from './agent.ts';
 import type { AgentTask } from './prompts.ts';
 
@@ -83,8 +83,7 @@ function sameCall(a: ToolCall, b: ToolCall): boolean {
     );
   }
   if (b.kind !== 'host_tool') return false;
-  if (a.tool === 'git.pushBranch') return b.tool === a.tool && b.message === a.message;
-  return b.tool === a.tool && b.title === a.title && b.body === a.body;
+  return JSON.stringify(hostToolArgs(a)) === JSON.stringify(hostToolArgs(b));
 }
 
 const describeTurn = (turn: Turn | undefined) =>

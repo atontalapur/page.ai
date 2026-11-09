@@ -5,7 +5,15 @@ import type {
   ModelClient,
   ModelError,
 } from '@page/model-client';
-import { err, ok, type ExecErr, type ExecOk, type Result, type ToolCall } from '@page/toolkit';
+import {
+  err,
+  hostToolArgs,
+  ok,
+  type ExecErr,
+  type ExecOk,
+  type Result,
+  type ToolCall,
+} from '@page/toolkit';
 import type { ExecuteFn, ExecuteOptions } from './agent.ts';
 
 export type ScriptedReply = string | { content: string; costUsd?: number; finishReason?: string };
@@ -66,11 +74,7 @@ function inputOf(call: ToolCall): string {
   if (call.kind === 'edit') {
     return JSON.stringify({ path: call.path, oldText: call.oldText, newText: call.newText });
   }
-  return JSON.stringify(
-    call.tool === 'git.pushBranch'
-      ? { tool: call.tool, message: call.message }
-      : { tool: call.tool, title: call.title, body: call.body },
-  );
+  return JSON.stringify(hostToolArgs(call));
 }
 
 export const okResult = (call: ToolCall, output = '') =>
