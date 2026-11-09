@@ -11,6 +11,7 @@ describe('loadConfig', () => {
       host: '0.0.0.0',
       pgbossSchema: 'pgboss',
       useFakeAdapters: false,
+      logLevel: 'info',
     });
   });
 
@@ -47,6 +48,14 @@ describe('loadConfig', () => {
     expect(fake('0').useFakeAdapters).toBe(false);
     // A copied .env.example leaves it blank.
     expect(fake('').useFakeAdapters).toBe(false);
+  });
+
+  it('reads LOG_LEVEL, with blank meaning the default', () => {
+    expect(loadConfig({ DATABASE_URL, LOG_LEVEL: 'debug' }).logLevel).toBe('debug');
+    expect(loadConfig({ DATABASE_URL, LOG_LEVEL: '' }).logLevel).toBe('info');
+    expect(() => loadConfig({ DATABASE_URL, LOG_LEVEL: 'loud' })).toThrow(
+      /^invalid config: LOG_LEVEL: Invalid option/,
+    );
   });
 
   it('rejects an unknown USE_FAKE_ADAPTERS value', () => {

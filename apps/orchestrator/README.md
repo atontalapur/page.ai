@@ -81,17 +81,25 @@ so the app is compiled with `tsc` to `dist/` rather than run from source.
 
 `src/config.ts` reads these once at boot:
 
-| Variable            | Default   | Notes                                            |
-| ------------------- | --------- | ------------------------------------------------ |
-| `DATABASE_URL`      |           | Required; a `postgres://` or `postgresql://` URL |
-| `PORT`              | `4000`    | Railway sets it                                  |
-| `HOST`              | `0.0.0.0` |                                                  |
-| `PGBOSS_SCHEMA`     | `pgboss`  | Must match the node daemon's                     |
-| `USE_FAKE_ADAPTERS` | `false`   | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`  |
+| Variable            | Default   | Notes                                              |
+| ------------------- | --------- | -------------------------------------------------- |
+| `DATABASE_URL`      |           | Required; a `postgres://` or `postgresql://` URL   |
+| `PORT`              | `4000`    | Railway sets it                                    |
+| `HOST`              | `0.0.0.0` |                                                    |
+| `PGBOSS_SCHEMA`     | `pgboss`  | Must match the node daemon's                       |
+| `USE_FAKE_ADAPTERS` | `false`   | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`    |
+| `LOG_LEVEL`         | `info`    | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
 
 A missing or bad var stops startup with exit code 1 and one log line naming each, e.g.
-`invalid config: DATABASE_URL is required`. `USE_FAKE_ADAPTERS` is parsed as in `apps/node`
-(blank counts as `false`), but nothing in the orchestrator reads it yet.
+`invalid config: DATABASE_URL is required`. `USE_FAKE_ADAPTERS` and `LOG_LEVEL` are parsed
+as in `apps/node` (blank counts as unset), but nothing in the orchestrator reads
+`USE_FAKE_ADAPTERS` yet.
+
+## Logs
+
+pino writes JSON lines to stdout, Nest's own logs included (under a `context` field). Lines
+about one issue carry `issueId`, and `runId` and `tier` once it has them; `issueLogger()` in
+`src/logger.ts` adds those fields to a child logger.
 
 ## Deploy to Railway staging
 
