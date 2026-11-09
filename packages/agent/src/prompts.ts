@@ -1,4 +1,4 @@
-import type { ExecErr, ExecOk, Result } from '@page/toolkit';
+import type { ExecContext, ExecErr, ExecOk, Result } from '@page/toolkit';
 import { ACTION_TAGS } from './actions.ts';
 
 // Adapted from upstream mini-swe-agent's mini_textbased.yaml (SWE-agent/mini-swe-agent at
@@ -11,20 +11,43 @@ import { ACTION_TAGS } from './actions.ts';
 const APP = 'apps/demo-app';
 const PNPM = 'pnpm --filter @page/demo-app';
 
-const { exec: BASH, edit: EDIT, submit: SUBMIT } = ACTION_TAGS;
+const { exec: BASH, edit: EDIT, submit: SUBMIT, pushBranch: PUSH, openPr: OPEN_PR } = ACTION_TAGS;
 const FENCE = '```';
+
+type Tier = ExecContext['tier'];
 
 export interface AgentTask {
   /** The bug report: what broke, the error, and where it showed up. */
   task: string;
+  /** The run's tier. From Tier 2 the agent pushes its fix and opens a PR. Unset is Tier 1. */
+  tier?: Tier;
 }
 
-export function systemPrompt(): string {
+// Tier 2 and up push the fix and open a PR through the host tools.
+const publishes = (tier: Tier | undefined) => tier !== undefined && tier >= 2;
+
+const PUBLISH_BLOCKS = `3. Pushing your changes to this run's branch, with the commit message:
+
+${FENCE}${PUSH}
+fix(cart): reject a zero quantity
+${FENCE}
+
+4. Opening a pull request from that branch, once it is pushed. The first line is the title and the rest is the description:
+
+${FENCE}${OPEN_PR}
+fix(cart): reject a zero quantity
+What was broken, why, and how you checked the fix.
+${FENCE}
+
+`;
+
+export function systemPrompt(tier?: Tier): string {
+  const publish = publishes(tier);
   return `You are a careful software engineer fixing a bug in a TypeScript repository. You work by running shell commands and editing files, one action at a time.
 
 Your response must contain exactly ONE action block. Put a THOUGHT section before it that explains your reasoning.
 
-There are three kinds of action block:
+There are ${publish ? 'five' : 'three'} kinds of action block:
 
 1. A shell command:
 
@@ -43,7 +66,7 @@ the new text
 >>>>>>> REPLACE
 ${FENCE}
 
-3. Submitting your work, once the fix is in and the tests pass:
+${publish ? `${PUBLISH_BLOCKS}5` : '3'}. Submitting your work, once the fix is in and the tests pass${publish ? ' and the pull request is open' : ''}:
 
 ${FENCE}${SUBMIT}
 ${FENCE}
@@ -51,7 +74,11 @@ ${FENCE}
 Failure to follow these rules will cause your response to be rejected.`;
 }
 
-export function instancePrompt({ task }: AgentTask): string {
+const PUBLISH_STEP = `5. Push your changes with a ${PUSH} block, then open a pull request with a ${OPEN_PR} block.
+`;
+
+export function instancePrompt({ task, tier }: AgentTask): string {
+  const publish = publishes(tier);
   return `Please fix this bug:
 
 <bug_report>
@@ -66,7 +93,7 @@ Work step by step so you can check each change as you go.
 2. Find or write a test that shows the bug, and run it to see it fail.
 3. Edit the source code to fix the bug.
 4. Run the test again to confirm the fix, then the whole suite, lint and typecheck: \`${PNPM} test\`, \`${PNPM} lint\` and \`${PNPM} typecheck\`.
-5. Submit with a ${SUBMIT} block. Do not put anything else in that response. After you submit, you cannot continue working on this task.
+${publish ? `${PUBLISH_STEP}6` : '5'}. Submit with a ${SUBMIT} block. Do not put anything else in that response. After you submit, you cannot continue working on this task.
 
 ## Rules
 

@@ -1,6 +1,15 @@
 import { DEFAULT_AGENT_CONFIG, runAgent, type AgentConfig, type ExecuteFn } from '@page/agent';
+import type { Tier } from '@page/contracts';
 import type { ModelClient } from '@page/model-client';
-import { DEFAULT_TIMEOUT_MS, execute, StepLog, type AuditSink } from '@page/toolkit';
+import {
+  DEFAULT_TIMEOUT_MS,
+  execute,
+  GitHubHostTools,
+  SAFE_GIT,
+  StepLog,
+  type AuditSink,
+  type GitHub,
+} from '@page/toolkit';
 import type { Logger } from 'pino';
 import type { ClaimedJob } from '../jobs/job-source.ts';
 import type { OrchestratorLink } from '../link/link.ts';
@@ -17,6 +26,11 @@ export interface RunDeps {
   sink: AuditSink;
   link: OrchestratorLink;
   model: ModelClient;
+  /**
+   * The demo repo. With it, the run gets the Tier 2 host tools, which execute() still
+   * refuses below Tier 2. Without it, every host tool call is refused.
+   */
+  github?: GitHub;
   logger: Logger;
   agentConfig?: Partial<AgentConfig>;
   /** Milliseconds; injectable so tests control the wall clock. */
@@ -44,9 +58,10 @@ export async function runFixJob(
   const logger = deps.logger.child({ issueId, runId, tier });
   const now = deps.now ?? Date.now;
   const tried: string[] = [];
+  let hostTools: GitHubHostTools | undefined;
 
   const finish = (end: RunEnd): RunFinished => {
-    const event = finishedEvent(runId, tier, end, tried);
+    const event = finishedEvent(runId, tier, end, tried, hostTools?.prUrl ?? null);
     deps.link.send('node.run.finished', event);
     logger.info({ status: event.status }, 'run finished');
     return event;
@@ -106,12 +121,24 @@ export async function runFixJob(
       runId,
       logger,
     });
+    if (deps.github !== undefined) {
+      hostTools = new GitHubHostTools({
+        github: deps.github,
+        workspace: sandbox.runner,
+        issueId,
+        runId,
+        // The host tools send nothing to GitHub once the run is stopped.
+        signal: stopped,
+        ...(job.escalationNote === undefined ? {} : { escalationNote: job.escalationNote }),
+      });
+    }
     const run: ExecuteFn = (call, { timeoutMs = Infinity }) =>
       execute(call, {
         tier,
         runner: sandbox.runner,
         steps,
         timeoutMs: Math.min(DEFAULT_TIMEOUT_MS, timeoutMs),
+        ...(hostTools === undefined ? {} : { hostTools }),
       });
 
     // The container's wall clock started with it, so the agent's budget starts there too.
@@ -124,7 +151,7 @@ export async function runFixJob(
     let end: RunEnd;
     try {
       const agentRun = await runAgent(
-        { task: job.report },
+        { task: job.report, tier },
         { model: deps.model, execute: run, now, signal: stopped },
         config,
       );
@@ -139,12 +166,40 @@ export async function runFixJob(
     }
     // A kill or expiry that lands after the agent returned (say during sendDiff) still
     // ends the run, and removing the sandbox may have cost it the diff.
-    return finish(stoppedEnd() ?? end);
+    const final = stoppedEnd() ?? end;
+    if (hostTools !== undefined) await closeUnfinishedPr(hostTools, final, runId, tier, logger);
+    return finish(final);
   } finally {
     stopped.removeEventListener('abort', onAbort);
     // Try again if the removal on abort failed, so cleanup still runs on every path.
     if (!(await (removing ?? Promise.resolve(false)))) await deps.sandboxes.stop(sandbox);
     logger.info({ container: sandbox.name }, 'sandbox removed');
+  }
+}
+
+/**
+ * A run that opened a PR and then didn't succeed closes it, so the tier above doesn't open
+ * a second one next to it. Best effort: a PR that won't close is logged, and still reported.
+ */
+async function closeUnfinishedPr(
+  hostTools: GitHubHostTools,
+  end: RunEnd,
+  runId: string,
+  tier: Tier,
+  logger: Logger,
+): Promise<void> {
+  if (end.kind === 'agent' && end.run.exitStatus === 'submitted') return;
+  const pr = hostTools.pr;
+  if (pr === null) return;
+  const { status } = finishedEvent(runId, tier, end, []);
+  const comment =
+    `PageAgents closed this PR: run \`${runId}\` ended as ${status} before the fix was ` +
+    'done, so this branch is not the fix. A later run opens its own PR.';
+  try {
+    await hostTools.closePr(comment);
+    logger.info({ pr: pr.url }, 'closed the PR of a run that did not succeed');
+  } catch (error) {
+    logger.warn({ err: error, pr: pr.url }, 'could not close the PR of a run that did not succeed');
   }
 }
 
@@ -156,7 +211,11 @@ async function sendDiff(
   logger: Logger,
 ): Promise<void> {
   try {
-    const result = await sandbox.runner.run({ command: 'git diff', timeoutMs: DIFF_TIMEOUT_MS });
+    // No external diff or textconv driver: the repo's config and attributes are the agent's.
+    const result = await sandbox.runner.run({
+      command: `${SAFE_GIT} diff --no-ext-diff --no-textconv`,
+      timeoutMs: DIFF_TIMEOUT_MS,
+    });
     if (result.status === 'exited' && result.exitCode === 0) {
       link.send('node.diff', { v: 1, runId, diff: result.stdout });
       return;

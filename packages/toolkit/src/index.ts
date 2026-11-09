@@ -1,10 +1,16 @@
-export { execute, DEFAULT_TIMEOUT_MS } from './exec/execute.ts';
+export { execute, DEFAULT_TIMEOUT_MS, hostToolArgs } from './exec/execute.ts';
 export type {
   EditCall,
   ExecCall,
   ExecContext,
   ExecErr,
   ExecOk,
+  HostToolCall,
+  HostToolName,
+  HostToolOutcome,
+  HostTools,
+  OpenPrCall,
+  PushBranchCall,
   RunErr,
   RunOutcome,
   ToolCall,
@@ -14,7 +20,7 @@ export type { DockerExecRunnerOptions } from './exec/docker-runner.ts';
 export { FakeRunner } from './exec/fake-runner.ts';
 export type { ExecRunner, RunRequest, RunResult } from './exec/runner.ts';
 export { DEFAULT_OUTPUT_BUDGET, trimOutput } from './exec/trim.ts';
-export { checkCommand } from './policy/policy.ts';
+export { checkCommand, checkHostTool, HOST_TOOL_TIERS } from './policy/policy.ts';
 export type { Verdict } from './policy/policy.ts';
 export { WORKSPACE, writePathRefusal } from './policy/paths.ts';
 export { err, ok } from './result.ts';
@@ -36,3 +42,25 @@ export type {
   RollbackOptions,
   RollbackPlan,
 } from './deploy/rollback.ts';
+export { AGENT_BRANCH_PREFIX, assertAgentBranch, GitHubError } from './github/github.ts';
+export type {
+  BranchHead,
+  FileMode,
+  GitHub,
+  NewCommit,
+  NewPullRequest,
+  PullRequest,
+  TreeEntry,
+} from './github/github.ts';
+export { FakeGitHub } from './github/fake-github.ts';
+export type { FakeGitHubMethod } from './github/fake-github.ts';
+export { GITHUB_API, RestGitHub } from './github/rest-github.ts';
+export type { RestGitHubOptions } from './github/rest-github.ts';
+export {
+  GitHubHostTools,
+  MAX_PR_TITLE,
+  MAX_PUSH_FILES,
+  MAX_PUSH_FILE_BYTES,
+  SAFE_GIT,
+} from './github/host-tools.ts';
+export type { GitHubHostToolsOptions } from './github/host-tools.ts';

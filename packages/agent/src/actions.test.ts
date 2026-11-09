@@ -235,4 +235,55 @@ describe('parseAction', () => {
       action: { call: { path: 'a.ts', oldText: 'x', newText: 'y' } },
     });
   });
+
+  it('reads a push block as git.pushBranch with the commit message', () => {
+    const reply = `THOUGHT: tests pass.\n\n${fence('page_push_branch', '\nfix(cart): reject zero\n\nMore detail.\n')}`;
+    expect(parseAction(reply)).toEqual({
+      ok: true,
+      action: {
+        kind: 'host_tool',
+        call: {
+          kind: 'host_tool',
+          tool: 'git.pushBranch',
+          message: 'fix(cart): reject zero\n\nMore detail.',
+        },
+      },
+    });
+  });
+
+  it('wants a commit message in a push block', () => {
+    expect(errorOf(fence('page_push_branch', '  '))).toMatch(
+      /commit message, and this one is empty/,
+    );
+  });
+
+  it('reads a PR block as the title line and the description', () => {
+    const reply = fence(
+      'page_open_pr',
+      '\n  fix(cart): reject zero  \nThe cart took 0.\n\nTests pass.\n',
+    );
+    expect(parseAction(reply)).toEqual({
+      ok: true,
+      action: {
+        kind: 'host_tool',
+        call: {
+          kind: 'host_tool',
+          tool: 'github.openPr',
+          title: 'fix(cart): reject zero',
+          body: 'The cart took 0.\n\nTests pass.',
+        },
+      },
+    });
+  });
+
+  it('allows a PR with a title and no description', () => {
+    expect(parseAction(fence('page_open_pr', 'fix it'))).toMatchObject({
+      ok: true,
+      action: { call: { title: 'fix it', body: '' } },
+    });
+  });
+
+  it('wants a title in a PR block', () => {
+    expect(errorOf(fence('page_open_pr', '\n\n'))).toMatch(/PR title on the first line/);
+  });
 });

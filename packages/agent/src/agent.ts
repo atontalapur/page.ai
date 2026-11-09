@@ -94,7 +94,7 @@ export async function runAgent(
   const now = deps.now ?? Date.now;
   const startedAt = now();
   const messages: ChatMessage[] = [
-    { role: 'system', content: systemPrompt() },
+    { role: 'system', content: systemPrompt(task.tier) },
     { role: 'user', content: instancePrompt(task) },
   ];
   let modelCalls = 0;

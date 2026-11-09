@@ -24,6 +24,14 @@ describe('finishedEvent', () => {
     expect(schema.parse(event)).toEqual(event);
   });
 
+  it('carries the PR the run opened', () => {
+    const prUrl = 'https://github.com/acme/shop/pull/4';
+    const event = finishedEvent(runId, 2, agent('submitted'), [], prUrl);
+    expect(event).toMatchObject({ status: 'succeeded', prUrl });
+    expect(schema.parse(event)).toEqual(event);
+    expect(finishedEvent(runId, 2, { kind: 'killed' }, [], prUrl)).toMatchObject({ prUrl });
+  });
+
   it.each(['step_limit', 'cost_limit', 'time_limit'] as const)(
     'escalates a %s to the next tier with what was tried',
     (status) => {

@@ -22,7 +22,8 @@ const clip = (text: string, limit: number) =>
   text.length <= limit ? text : `${text.slice(0, limit - 3)}...`;
 
 /**
- * The `node.run.finished` event for a run. `tried` is what the agent ran, in order.
+ * The `node.run.finished` event for a run. `tried` is what the agent ran, in order, and
+ * `prUrl` the PR it opened, if it got that far.
  *
  * A submitted run is a success with no confidence: nothing scores runs yet. A run that ran
  * out of budget escalates a tier (Tier 3 has nowhere to go, so it fails). A killed run is
@@ -34,8 +35,9 @@ export function finishedEvent(
   tier: Tier,
   end: RunEnd,
   tried: readonly string[],
+  prUrl: string | null = null,
 ): RunFinished {
-  const base = { v: 1 as const, runId, prUrl: null, confidence: null };
+  const base = { v: 1 as const, runId, prUrl, confidence: null };
   if (end.kind === 'agent' && end.run.exitStatus === 'submitted') {
     return { ...base, status: 'succeeded', note: null };
   }

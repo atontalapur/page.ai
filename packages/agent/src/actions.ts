@@ -1,8 +1,11 @@
-import type { EditCall, ExecCall } from '@page/toolkit';
+import type { EditCall, ExecCall, HostToolCall } from '@page/toolkit';
 
 /** What one model reply asks for: a toolkit call, or the end of the run. */
 export type Action =
-  { kind: 'exec'; call: ExecCall } | { kind: 'edit'; call: EditCall } | { kind: 'submit' };
+  | { kind: 'exec'; call: ExecCall }
+  | { kind: 'edit'; call: EditCall }
+  | { kind: 'host_tool'; call: HostToolCall }
+  | { kind: 'submit' };
 
 export type ParseResult = { ok: true; action: Action } | { ok: false; error: string };
 
@@ -10,6 +13,9 @@ export const ACTION_TAGS = {
   exec: 'page_bash',
   edit: 'page_edit',
   submit: 'page_submit',
+  // Tier 2 host tools. Any tier can write them; execute() refuses them below Tier 2.
+  pushBranch: 'page_push_branch',
+  openPr: 'page_open_pr',
 } as const;
 
 const SEARCH = '<<<<<<< SEARCH';
@@ -82,6 +88,8 @@ export function parseAction(reply: string): ParseResult {
 
   if (tag === ACTION_TAGS.submit) return { ok: true, action: { kind: 'submit' } };
   if (tag === ACTION_TAGS.edit) return parseEdit(body);
+  if (tag === ACTION_TAGS.pushBranch) return parsePushBranch(body);
+  if (tag === ACTION_TAGS.openPr) return parseOpenPr(body);
 
   const command = body.join('\n').trim();
   if (command === '') return { ok: false, error: `The ${ACTION_TAGS.exec} block is empty.` };
@@ -115,4 +123,42 @@ function parseEdit(body: string[]): ParseResult {
     };
   }
   return { ok: true, action: { kind: 'edit', call: { kind: 'edit', path, oldText, newText } } };
+}
+
+/** The whole block is the commit message. */
+function parsePushBranch(body: string[]): ParseResult {
+  const message = body.join('\n').trim();
+  if (message === '') {
+    return {
+      ok: false,
+      error: `A ${ACTION_TAGS.pushBranch} block holds the commit message, and this one is empty.`,
+    };
+  }
+  return {
+    ok: true,
+    action: { kind: 'host_tool', call: { kind: 'host_tool', tool: 'git.pushBranch', message } },
+  };
+}
+
+/** The first non-blank line is the title; the rest is the body. */
+function parseOpenPr(body: string[]): ParseResult {
+  const start = body.findIndex((line) => line.trim() !== '');
+  if (start === -1) {
+    return {
+      ok: false,
+      error: `A ${ACTION_TAGS.openPr} block is the PR title on the first line, then the description.`,
+    };
+  }
+  const title = body[start]!.trim();
+  const description = body
+    .slice(start + 1)
+    .join('\n')
+    .trim();
+  return {
+    ok: true,
+    action: {
+      kind: 'host_tool',
+      call: { kind: 'host_tool', tool: 'github.openPr', title, body: description },
+    },
+  };
 }

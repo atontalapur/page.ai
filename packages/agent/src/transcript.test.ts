@@ -187,4 +187,30 @@ describe('replayDeps', () => {
       /turn 1: the loop ran a different call/,
     );
   });
+
+  it.each([
+    ['a different message', '```page_push_branch\nfix: other\n```'],
+    ['a different tool', '```page_open_pr\nfix: round\n```'],
+    ['an exec', '```page_bash\nls\n```'],
+  ])('compares host tool calls field by field (%s)', async (_, reply) => {
+    const push = { kind: 'host_tool', tool: 'git.pushBranch', message: 'fix: round' } as const;
+    const turns: Turn[] = [
+      modelTurn(reply),
+      { type: 'execute', call: push, result: okResult(push) },
+    ];
+    await expect(runAgent(task, replayDeps({ turns, clock: [] }).deps)).rejects.toThrow(
+      /turn 1: the loop ran a different call/,
+    );
+  });
+
+  it('compares a PR title and body', async () => {
+    const pr = { kind: 'host_tool', tool: 'github.openPr', title: 't', body: 'b' } as const;
+    const turns: Turn[] = [
+      modelTurn('```page_open_pr\nt\nother\n```'),
+      { type: 'execute', call: pr, result: okResult(pr) },
+    ];
+    await expect(runAgent(task, replayDeps({ turns, clock: [] }).deps)).rejects.toThrow(
+      /turn 1: the loop ran a different call/,
+    );
+  });
 });

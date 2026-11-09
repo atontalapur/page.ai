@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { fingerprintSchema, idSchema, tierSchema } from './common.ts';
+import { escalationNoteSchema } from './escalation.ts';
 
 // pg-boss payloads (#26). Producers and consumers both parse with these. A breaking change
 // bumps `v`, and a consumer rejects a `v` it does not know.
@@ -22,6 +23,8 @@ export const fixJobSchema = z.strictObject({
   // The triaged error report the agent works from: request, status, error and stack, never
   // the cause. Optional until triage (#30) builds one; the daemon fails a run without it.
   report: z.string().trim().min(1).optional(),
+  // What the tier below left when it escalated to this run. A Tier 2 PR body carries it.
+  escalationNote: escalationNoteSchema.optional(),
 });
 
 export const NOTIFY_CHANNELS = ['call', 'sms'] as const;
