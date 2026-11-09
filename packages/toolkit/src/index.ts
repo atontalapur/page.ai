@@ -61,5 +61,6 @@ export {
   MAX_PR_TITLE,
   MAX_PUSH_FILES,
   MAX_PUSH_FILE_BYTES,
+  SAFE_GIT,
 } from './github/host-tools.ts';
 export type { GitHubHostToolsOptions } from './github/host-tools.ts';
