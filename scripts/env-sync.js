@@ -16,7 +16,7 @@
 // literal. dotenvx.parse would run `$(...)` in a decrypted value, so it never reads this file.
 // Files are parsed with node:util parseEnv, which reads them the way `node --env-file` does.
 import { createRequire } from 'node:module';
-import { chmodSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 import { parseEnv } from 'node:util';
 
@@ -55,13 +55,14 @@ function privateKey() {
   fail(`no ${KEY_NAME}. Ask a teammate for it and put it in ${KEYS} as ${KEY_NAME}=<key>.`);
 }
 
-// Bare when it's safe for `node --env-file`, else double-quoted.
+// Bare when it's safe for `node --env-file`, else single-quoted, which Node reads literally.
+// Double quotes are the fallback only without a backslash, since Node expands `\n` in them.
 function format(key, value) {
   if (/^[\w.:/+=@,-]*$/.test(value)) return `${key}=${value}`;
-  if (value.includes('\n') || (value.includes('"') && value.includes("'"))) {
-    fail(`${key} has a newline or both quote kinds; set it in ${LOCAL} by hand`);
-  }
-  return value.includes('"') ? `${key}='${value}'` : `${key}="${value}"`;
+  if (value.includes('\n')) fail(`${key} has a newline; set it in ${LOCAL} by hand`);
+  if (!value.includes("'")) return `${key}='${value}'`;
+  if (!value.includes('"') && !value.includes('\\')) return `${key}="${value}"`;
+  fail(`${key} has a quote mix that ${LOCAL} can't hold literally; set it by hand`);
 }
 
 function pull() {
@@ -89,14 +90,16 @@ function pull() {
     console.log(`created ${LOCAL} from ${EXAMPLE}`);
   }
 
+  // Rewrite every line that sets a shared key, not just the first: `node --env-file` uses the
+  // last definition, so a stale duplicate further down would win.
   const lines = readFileSync(LOCAL, 'utf8').split('\n');
   const pending = new Map(Object.entries(shared));
-  const changed = [];
+  const changed = new Set();
   for (let i = 0; i < lines.length; i++) {
     const key = /^\s*(?:export\s+)?([\w.-]+)\s*=/.exec(lines[i])?.[1];
-    if (key === undefined || !pending.has(key)) continue;
-    const line = format(key, pending.get(key));
-    if (lines[i] !== line) changed.push(key);
+    if (key === undefined || !Object.hasOwn(shared, key)) continue;
+    const line = format(key, shared[key]);
+    if (lines[i] !== line) changed.add(key);
     lines[i] = line;
     pending.delete(key);
   }
@@ -105,17 +108,17 @@ function pull() {
     if (!lines.includes(HEADER)) lines.push('', HEADER);
     for (const [key, value] of pending) {
       lines.push(format(key, value));
-      changed.push(key);
+      changed.add(key);
     }
     lines.push('');
   }
 
   writeFileSync(LOCAL, lines.join('\n'), { mode: 0o600 });
   chmodSync(LOCAL, 0o600);
-  const unchanged = Object.keys(shared).length - changed.length;
+  const unchanged = Object.keys(shared).length - changed.size;
   console.log(
-    changed.length > 0
-      ? `updated ${changed.join(', ')} in ${LOCAL}; ${unchanged} already current`
+    changed.size > 0
+      ? `updated ${[...changed].join(', ')} in ${LOCAL}; ${unchanged} already current`
       : `${LOCAL} already has all ${unchanged} shared values`,
   );
 }
@@ -130,17 +133,37 @@ async function share(keys) {
   if (unknown.length > 0) {
     fail(`${unknown.join(', ')} not in SHARED_KEYS; add it in scripts/env-sync.js first`);
   }
+  // Check every key before writing any, so a bad key can't leave .env.shared half-updated.
+  const unset = keys.filter((k) => local[k] === undefined || local[k] === '');
+  if (unset.length > 0) fail(`${unset.join(', ')} not set in ${LOCAL}`);
+  // dotenvx.set keeps a value plaintext when .env.shared already holds that key in plaintext.
+  const before = existsSync(SHARED) ? readFileSync(SHARED, 'utf8') : undefined;
+  const existing = before === undefined ? {} : parseEnv(before);
+  const plain = keys.filter(
+    (k) => Object.hasOwn(existing, k) && !existing[k].startsWith(ENCRYPTED),
+  );
+  if (plain.length > 0) {
+    fail(`${SHARED} has ${plain.join(', ')} unencrypted; remove those lines and share again`);
+  }
+
+  // Put .env.shared back as it was if anything below fails, so nothing partial is committed.
+  const abort = (message) => {
+    if (before === undefined) rmSync(SHARED, { force: true });
+    else writeFileSync(SHARED, before);
+    fail(`${message}; ${SHARED} left unchanged`);
+  };
   for (const key of keys) {
-    const value = local[key];
-    if (value === undefined || value === '') fail(`${key} is not set in ${LOCAL}`);
-    const { processedEnvs } = await dotenvx.set(key, value, {
+    const { processedEnvs } = await dotenvx.set(key, local[key], {
       path: SHARED,
       envKeysFile: KEYS,
       ...LOCAL_ONLY,
     });
     const error = processedEnvs.find((env) => env.error)?.error;
-    if (error) fail(`could not share ${key}: ${error.message}`);
+    if (error) abort(`could not share ${key}: ${error.message}`);
   }
+  const written = parseFile(SHARED);
+  const leaked = keys.filter((k) => !written[k]?.startsWith(ENCRYPTED));
+  if (leaked.length > 0) abort(`dotenvx did not encrypt ${leaked.join(', ')}`);
   console.log(`commit ${SHARED}; teammates then run pnpm env:pull`);
 }
 
