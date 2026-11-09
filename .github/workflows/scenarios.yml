@@ -6,9 +6,9 @@
 # (the runner, the demo app, the sandbox image) and every push to main self-tests all of
 # them, and a PR that touches none of the inputs below runs no shards. `selftest` is a
 # required check on main that sums up the shards; renaming it breaks the ruleset.
-# The code scenarios split round-robin into up to four parallel shards, each building the
-# image from the warm cache; the ops scenarios get one shard of their own, the only one that
-# starts the compose app and the only one that skips the image build.
+# The code scenarios split by estimated cost into parallel shards, each building the image
+# from the warm cache; the ops scenarios get one shard of their own, the only one that starts
+# the compose app and the only one that skips the image build.
 # Not a required check: it only runs when its inputs change.
 name: Scenarios
 
@@ -62,7 +62,9 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
-          SHARDS: 4
+          # Seconds of scenarios per code shard to aim for, and the most code shards.
+          BUDGET: 45
+          MAX_SHARDS: 10
           INPUTS: |
             ^scenarios/
             ^eval/
@@ -101,22 +103,36 @@ jobs:
               ids="$(grep -oP '^scenarios/\K[^/]+(?=/)' <<<"$changed" | sort -u | grep -xF -f <(echo "$all") || true)"
             fi
           fi
-          # Ops scenarios (Tier 3) need the live compose app; a break-ops.sh marks one.
+          # Ops scenarios (Tier 3) need the live compose app; a break-ops.sh marks one. A code
+          # scenario whose check runs on PGlite (node --liftoff-only, see scenarios/README.md)
+          # takes ~31s to self-test, any other a few seconds.
           ops="$(for id in $ids; do [ -e "scenarios/$id/break-ops.sh" ] && echo "$id"; done || true)"
-          code="$(for id in $ids; do [ -e "scenarios/$id/break-ops.sh" ] || echo "$id"; done)"
-          echo "Code scenarios: ${code:-none}"
+          code="$(for id in $ids; do
+            [ -e "scenarios/$id/break-ops.sh" ] && continue
+            if grep -qs -e --liftoff-only "scenarios/$id/check.sh"; then echo "$id 31"; else echo "$id 3"; fi
+          done)"
+          echo "Code scenarios, estimated seconds: ${code:-none}"
           echo "Ops scenarios: ${ops:-none}"
-          # Round-robin, since neighbouring ids tend to cost about the same. No ids, no shards.
-          shards="$(jq -cn --arg code "$code" --arg ops "$ops" --argjson n "$SHARDS" '
-            ($code | split("\n") | map(select(. != ""))) as $c
+          # Enough shards for about BUDGET seconds each, and no two over half of it together.
+          # Longest first, each onto the shard with the least so far. No ids, no shards.
+          plan="$(jq -cn --arg code "$code" --arg ops "$ops" \
+            --argjson budget "$BUDGET" --argjson max "$MAX_SHARDS" '
+            ($code | split("\n") | map(select(. != "") | split(" ") | {id: .[0], s: (.[1] | tonumber)})) as $c
             | ($ops | split("\n") | map(select(. != "")) | join(" ")) as $ops
-            | ([$n, ($c | length)] | min) as $k
-            | [range($k) as $i | {
-                name: "code \($i + 1) of \($k)",
+            | ([$max, ($c | length), ([1, ($c | map(.s) | (add // 0) / $budget | ceil),
+                ($c | map(select(.s > $budget / 2)) | length)] | max)] | min) as $k
+            | (reduce ($c | sort_by(-.s, .id))[] as $x ([range($k) | {s: 0, ids: []}];
+                (to_entries | min_by(.value.s) | .key) as $i
+                | .[$i].s += $x.s | .[$i].ids += [$x.id])) as $bins
+            | [$bins | to_entries[] | {
+                name: "code \(.key + 1) of \($k)",
                 ops: false,
-                ids: ([range($i; $c | length; $k) as $j | $c[$j]] | join(" "))
+                ids: (.value.ids | sort | join(" ")),
+                est: .value.s
               }]
               + if $ops == "" then [] else [{name: "ops", ops: true, ids: $ops}] end')"
+          jq -r '.[] | "\(.name): \(.ids)" + if .est then " (~\(.est)s)" else "" end' <<<"$plan"
+          shards="$(jq -c 'map(del(.est))' <<<"$plan")"
           echo "Shards: $shards"
           echo "shards=$shards" >> "$GITHUB_OUTPUT"
 
@@ -132,9 +148,35 @@ jobs:
         include: ${{ fromJSON(needs.pick.outputs.shards) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The ops self-test drives the ops API, so the app gets a throwaway secret for this
+      # run. Setting DEMO_APP_URL and OPS_SECRET sends ops scenarios down that path.
+      # The app builds and starts in the background while pnpm installs. It builds on the
+      # default builder, not from the gha cache: 024's bad deploy build (compose-deploy.sh)
+      # reuses its dependency layer there.
+      - if: matrix.ops
+        name: Start the compose demo app
+        run: |
+          secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$secret"
+          echo "OPS_SECRET=$secret" >> "$GITHUB_ENV"
+          echo "DEMO_APP_URL=http://localhost:3000" >> "$GITHUB_ENV"
+          # bash -e would end the subshell on a failed start before it writes the status.
+          (
+            status=0
+            OPS_SECRET="$secret" docker compose up -d --build --wait demo-app || status=$?
+            echo "$status" > "$RUNNER_TEMP/compose.tmp"
+            mv "$RUNNER_TEMP/compose.tmp" "$RUNNER_TEMP/compose.exit"
+          ) > "$RUNNER_TEMP/compose.log" 2>&1 &
       - uses: ./.github/actions/setup
         with:
           filter: '@page/eval...'
+      - if: matrix.ops
+        name: Wait for the compose demo app
+        timeout-minutes: 10
+        run: |
+          until [ -e "$RUNNER_TEMP/compose.exit" ]; do sleep 1; done
+          cat "$RUNNER_TEMP/compose.log"
+          exit "$(cat "$RUNNER_TEMP/compose.exit")"
       - if: '!matrix.ops'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
@@ -149,16 +191,6 @@ jobs:
           load: true
           tags: ${{ env.IMAGE }}
           cache-from: type=gha,scope=sandbox
-      # The ops self-test drives the ops API, so the app gets a throwaway secret for this
-      # run. Setting DEMO_APP_URL and OPS_SECRET sends ops scenarios down that path.
-      - if: matrix.ops
-        name: Start the compose demo app
-        run: |
-          secret="$(openssl rand -hex 32)"
-          echo "::add-mask::$secret"
-          echo "OPS_SECRET=$secret" >> "$GITHUB_ENV"
-          echo "DEMO_APP_URL=http://localhost:3000" >> "$GITHUB_ENV"
-          OPS_SECRET="$secret" docker compose up -d --build --wait demo-app
       - env:
           IDS: ${{ matrix.ids }}
         # One argument per scenario id. Named ids make an ops scenario fail, not skip, if the
