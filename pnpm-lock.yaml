@@ -250,6 +250,9 @@ importers:
       '@dotenvx/dotenvx':
         specifier: 2.38.2
         version: 2.38.2
+      '@dotenvx/primitives':
+        specifier: 3.3.1
+        version: 3.3.1
       '@page/config':
         specifier: workspace:*
         version: link:packages/config

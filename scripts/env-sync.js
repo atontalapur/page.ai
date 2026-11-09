@@ -10,13 +10,23 @@
 //
 // Only what's in .env.shared is overwritten on pull; every other line in .env stays. A
 // missing .env is created from .env.example first.
+//
+// .env.shared is public and anyone can encrypt into it, so pull treats it as untrusted: only
+// the keys in SHARED_KEYS, every value encrypted, and each decrypted value written as a
+// literal. dotenvx.parse would run `$(...)` in a decrypted value, so it never reads this file.
+// Files are parsed with node:util parseEnv, which reads them the way `node --env-file` does.
 import { createRequire } from 'node:module';
 import { chmodSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
+import { parseEnv } from 'node:util';
 
 const require = createRequire(import.meta.url);
 const dotenvx = require('@dotenvx/dotenvx');
+const { decrypt } = require('@dotenvx/primitives');
 
+// Adding a shared secret means adding it here, so the change shows up in review.
+const SHARED_KEYS = ['NODE_SHARED_SECRET', 'POSTHOG_WEBHOOK_SECRET', 'OPENROUTER_API_KEY'];
+const ENCRYPTED = 'encrypted:';
 const SHARED = '.env.shared';
 const KEYS = '.env.keys';
 const LOCAL = '.env';
@@ -33,7 +43,7 @@ function fail(message) {
 }
 
 function parseFile(path) {
-  return dotenvx.parse(readFileSync(path, 'utf8'), { processEnv: {} });
+  return parseEnv(readFileSync(path, 'utf8'));
 }
 
 function privateKey() {
@@ -56,13 +66,22 @@ function format(key, value) {
 
 function pull() {
   if (!existsSync(SHARED)) fail(`${SHARED} not found; run from the repo root`);
-  const shared = dotenvx.parse(readFileSync(SHARED, 'utf8'), {
-    processEnv: {},
-    privateKey: privateKey(),
-  });
-  delete shared[PUBLIC_KEY];
-  const broken = Object.keys(shared).filter((k) => shared[k].startsWith('encrypted:'));
-  if (broken.length > 0) fail(`could not decrypt ${broken.join(', ')}; wrong ${KEY_NAME}?`);
+  const encrypted = parseFile(SHARED);
+  delete encrypted[PUBLIC_KEY];
+  const unknown = Object.keys(encrypted).filter((k) => !SHARED_KEYS.includes(k));
+  if (unknown.length > 0) fail(`${SHARED} has keys that aren't shared: ${unknown.join(', ')}`);
+  const plain = Object.keys(encrypted).filter((k) => !encrypted[k].startsWith(ENCRYPTED));
+  if (plain.length > 0) fail(`${SHARED} has unencrypted values for ${plain.join(', ')}`);
+
+  const key = privateKey();
+  const shared = {};
+  for (const [name, value] of Object.entries(encrypted)) {
+    try {
+      shared[name] = decrypt(key, value);
+    } catch (error) {
+      fail(`could not decrypt ${name}: ${error.message}`);
+    }
+  }
 
   if (!existsSync(LOCAL)) {
     if (!existsSync(EXAMPLE)) fail(`${LOCAL} and ${EXAMPLE} not found; run from the repo root`);
@@ -107,6 +126,10 @@ async function share(keys) {
   // The first share creates .env.shared and the key pair in .env.keys. Later shares encrypt
   // with the public key in .env.shared, so they don't need the private key.
   const local = parseFile(LOCAL);
+  const unknown = keys.filter((k) => !SHARED_KEYS.includes(k));
+  if (unknown.length > 0) {
+    fail(`${unknown.join(', ')} not in SHARED_KEYS; add it in scripts/env-sync.js first`);
+  }
   for (const key of keys) {
     const value = local[key];
     if (value === undefined || value === '') fail(`${key} is not set in ${LOCAL}`);

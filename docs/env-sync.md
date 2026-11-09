@@ -27,7 +27,12 @@ After `env:share`, commit `.env.shared` in a PR. Teammates run `pnpm env:pull` o
 
 ## What is shared
 
-`NODE_SHARED_SECRET`, `POSTHOG_WEBHOOK_SECRET` and `OPENROUTER_API_KEY`.
+`NODE_SHARED_SECRET`, `POSTHOG_WEBHOOK_SECRET` and `OPENROUTER_API_KEY`. The list is
+`SHARED_KEYS` in `scripts/env-sync.js`. To share a new key, add it there first.
+
+Anyone can encrypt a value with the public key, so `env:pull` treats `.env.shared` as untrusted.
+It refuses keys outside `SHARED_KEYS` and any value that isn't encrypted, and it writes each
+decrypted value as plain text without expanding `$VAR` or running `$(...)`.
 
 `GITHUB_TOKEN` is not shared. Each dev makes their own fine-grained token, as in
 [demo-repo.md](demo-repo.md). A shared one would let every holder merge on `page-demo`, and its
