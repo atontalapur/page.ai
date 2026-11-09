@@ -1,44 +1,52 @@
-// Usage: node eval/scripts/record-frames.ts <image> [--replace] [scenario-id...]
+// Usage: node eval/scripts/record-frames.ts <image> [scenario-id...]
+//        node eval/scripts/record-frames.ts <image> --replace <scenario-id...>
 // Records meta.json frameLines for the named code scenarios (all of them by default): runs
 // break.sh in a fresh sandbox and stores the text of each repo line the report's stack cites.
 // Run it from the repo root right after capturing a report with trigger.sh.
 //
-// An entry that exists and now reads differently means the cited line changed, so the report
-// points at the wrong code. That fails unless --replace is given: recapture the report first,
-// then replace.
+// The lines come from the image, not the working tree, so rebuild it first:
+//   docker build -f infra/sandbox/Dockerfile -t page-sandbox .
+//
+// A frame that fails the self-test's position checks (past the end, not on a token start)
+// isn't recorded, since its report already points at the wrong code. An entry that exists and
+// now reads differently means the same, so it fails unless --replace is given: recapture the
+// report first, then replace. --replace needs the scenario ids, so it can't re-record every
+// scenario at once.
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { listScenarioIds, loadScenario, ScenarioError } from '../src/scenario.ts';
-import { type ReportFrame, frameLinesScript, reportFrames } from '../src/selftest.ts';
-import { shellIn, startSandbox, stopSandbox } from './sandbox.ts';
+import { listScenarioIds, loadScenario, problemsOf } from '../src/scenario.ts';
+import {
+  type ReportFrame,
+  frameLinesScript,
+  parseFrameLines,
+  reportFrames,
+} from '../src/selftest.ts';
+import { withSandbox } from './sandbox.ts';
 
 const SCENARIOS_DIR = 'scenarios';
+const USAGE = [
+  'usage: node eval/scripts/record-frames.ts <image> [scenario-id...]',
+  '       node eval/scripts/record-frames.ts <image> --replace <scenario-id...>',
+].join('\n');
 
 const args = process.argv.slice(2);
 const replace = args.includes('--replace');
 const [image, ...ids] = args.filter((arg) => arg !== '--replace');
-if (!image) {
-  console.error('usage: node eval/scripts/record-frames.ts <image> [--replace] [scenario-id...]');
+if (!image || (replace && ids.length === 0)) {
+  console.error(USAGE);
   process.exit(2);
 }
 
-async function linesAfterBreak(
-  dir: string,
-  frames: ReportFrame[],
-): Promise<Record<string, string>> {
-  const name = startSandbox(image!);
-  try {
-    const sh = shellIn(name);
+function linesAfterBreak(dir: string, frames: ReportFrame[]): Promise<Record<string, string>> {
+  return withSandbox(image!, async (sh) => {
     const broke = await sh(await readFile(join(dir, 'break.sh'), 'utf8'));
     if (broke.code !== 0) {
       throw new Error(`break.sh exited ${broke.code}\n${broke.output.trimEnd()}`);
     }
     const read = await sh(frameLinesScript(frames));
     if (read.code !== 0) throw new Error(read.output.trimEnd());
-    return JSON.parse(read.output) as Record<string, string>;
-  } finally {
-    stopSandbox(name);
-  }
+    return parseFrameLines(read.output);
+  });
 }
 
 let failed = 0;
@@ -60,7 +68,7 @@ for (const id of ids.length > 0 ? ids : await listScenarioIds(SCENARIOS_DIR)) {
       failed++;
       console.log(`FAIL ${id}`);
       console.log(`  changed since the report was captured: ${changed.join(', ')}`);
-      console.log('  recapture the report with trigger.sh, then rerun with --replace');
+      console.log(`  recapture the report with trigger.sh, then rerun with --replace ${id}`);
       continue;
     }
 
@@ -72,9 +80,7 @@ for (const id of ids.length > 0 ? ids : await listScenarioIds(SCENARIOS_DIR)) {
     console.log(`ok   ${id}: ${Object.keys(lines).length} cited line(s)`);
   } catch (err) {
     failed++;
-    console.log(`FAIL ${id}`);
-    const problems = err instanceof ScenarioError ? err.problems : [String(err)];
-    console.log(`  ${problems.join('\n').replace(/\n/g, '\n  ')}`);
+    console.log(`FAIL ${id}\n  ${problemsOf(err).join('\n').replace(/\n/g, '\n  ')}`);
   }
 }
 

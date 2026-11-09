@@ -43,6 +43,14 @@ describe('scenarioMetaSchema', () => {
     }
   });
 
+  it('rejects frameLines on an ops scenario, which never checks them', () => {
+    const ops = { ...valid, expectedTier: 3 };
+    expect(scenarioMetaSchema.parse(ops)).toEqual(ops);
+    expect(() => scenarioMetaSchema.parse({ ...ops, frameLines: { 'a.ts:1': 'x' } })).toThrow(
+      /ops scenarios/,
+    );
+  });
+
   it('rejects unknown keys', () => {
     expect(() => scenarioMetaSchema.parse({ ...valid, fix: 'x' })).toThrow();
   });

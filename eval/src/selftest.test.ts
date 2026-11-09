@@ -9,6 +9,7 @@ import {
   framesExistScript,
   type HostShell,
   NO_CHECK_IN_SANDBOX,
+  parseFrameLines,
   type ReportFrame,
   reportFrames,
   type SandboxShell,
@@ -252,7 +253,7 @@ describe('uncheckedFrames', () => {
 
 // Each test starts sh and node, which takes tens of ms alone but seconds when turbo runs
 // every package's tests at once. Two tests timed out at the 5s default.
-describe('framesExistScript', { timeout: 20_000 }, () => {
+describe('frame scripts', { timeout: 20_000 }, () => {
   let dir: string;
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'frames-'));
@@ -275,128 +276,182 @@ describe('framesExistScript', { timeout: 20_000 }, () => {
     return { code: status, output: stdout + stderr };
   }
 
-  function run(
-    frames: ReportFrame[],
-    unchecked: string[] = [],
-    lines?: Record<string, string>,
-  ): { code: number | null; output: string } {
-    return sh(framesExistScript(frames, unchecked, lines));
-  }
+  // frameLinesScript runs the position checks alone, so they're tested through it.
+  const positions = (frames: ReportFrame[]) => sh(frameLinesScript(frames));
 
-  it('passes when every frame is inside its file', async () => {
-    await write('a/[slug]/page.tsx', 'one\ntwo two\n');
-    expect(run([{ path: 'a/[slug]/page.tsx', line: 2, column: 5 }])).toEqual({
-      code: 0,
-      output: '',
+  describe('position checks', () => {
+    it('passes when every frame is inside its file', async () => {
+      await write('a/[slug]/page.tsx', 'one\ntwo two\n');
+      expect(positions([{ path: 'a/[slug]/page.tsx', line: 2, column: 5 }]).code).toBe(0);
+    });
+
+    it('passes on the last line of a file with no trailing newline', async () => {
+      await write('a.ts', 'one\ntwo');
+      expect(positions([{ path: 'a.ts', line: 2, column: 1 }]).code).toBe(0);
+    });
+
+    it('reports a missing file', () => {
+      expect(positions([{ path: 'gone.ts', line: 1, column: 1 }])).toEqual({
+        code: 1,
+        output: 'gone.ts:1:1: no such file\n',
+      });
+    });
+
+    it('reports a line past the end of the file', async () => {
+      await write('a.ts', 'one\n');
+      expect(positions([{ path: 'a.ts', line: 2, column: 1 }])).toEqual({
+        code: 1,
+        output: 'a.ts:2:1: past the end of the file\n',
+      });
+    });
+
+    it('reports a column past the end of the line', async () => {
+      await write('a.ts', 'one\n');
+      expect(positions([{ path: 'a.ts', line: 1, column: 4 }])).toEqual({
+        code: 1,
+        output: 'a.ts:1:4: past the end of the line\n',
+      });
+    });
+
+    it.each([
+      [0, 1],
+      [1, 0],
+      [2 ** 63, 1],
+      [1, Infinity],
+    ])('rejects line %s, column %s', async (line, column) => {
+      await write('a.ts', 'one\n');
+      expect(positions([{ path: 'a.ts', line, column }])).toEqual({
+        code: 1,
+        output: `a.ts:${line}:${column}: lines and columns are whole numbers from 1\n`,
+      });
+    });
+
+    it('passes a frame at the start of a token', async () => {
+      await write('a.ts', '  const { db } = await shop();\n  x.load(y);\n');
+      const frames = [
+        { path: 'a.ts', line: 1, column: 18 },
+        { path: 'a.ts', line: 1, column: 28 },
+        { path: 'a.ts', line: 2, column: 5 },
+      ];
+      expect(positions(frames).code).toBe(0);
+    });
+
+    it('reports a frame inside a word or on a space', async () => {
+      await write('a.ts', '  await shop();\n');
+      expect(positions([{ path: 'a.ts', line: 1, column: 4 }])).toEqual({
+        code: 1,
+        output: 'a.ts:1:4: not the start of a token in "await shop();"\n',
+      });
+      expect(positions([{ path: 'a.ts', line: 1, column: 1 }]).code).toBe(1);
+    });
+
+    it('counts columns in UTF-16 code units, as V8 does', async () => {
+      await write('a.ts', '"×😀" + f();\n');
+      expect(positions([{ path: 'a.ts', line: 1, column: 9 }]).code).toBe(0);
+      // Counting bytes would put `f` at 13, past the end of this 12-unit line.
+      expect(positions([{ path: 'a.ts', line: 1, column: 13 }]).code).toBe(1);
+    });
+
+    it.each([
+      ['a lone CR', 'one\rtwo\n'],
+      ['U+2028', 'const s = "\u2028";\ntwo\n'],
+      ['U+2029', '// \u2029\ntwo\n'],
+    ])('refuses a file with %s, which tools number differently', async (_, text) => {
+      await write('a.ts', text);
+      expect(positions([{ path: 'a.ts', line: 2, column: 1 }])).toEqual({
+        code: 1,
+        output:
+          'a.ts:2:1: the file has a lone CR, U+2028 or U+2029, which tools number differently\n',
+      });
+    });
+
+    it('reads a CRLF file line by line', async () => {
+      await write('a.ts', 'one\r\n  f();\r\n');
+      const { code, output } = positions([{ path: 'a.ts', line: 2, column: 3 }]);
+      expect(code).toBe(0);
+      expect(parseFrameLines(output)).toEqual({ 'a.ts:2': '  f();' });
+    });
+
+    it('reports every bad frame, and keeps a path with a quote or $ literal', async () => {
+      await write(`it's$HOME.ts`, 'one\n');
+      const { code, output } = positions([
+        { path: 'gone.ts', line: 1, column: 1 },
+        { path: `it's$HOME.ts`, line: 1, column: 1 },
+        { path: `it's$HOME.ts`, line: 9, column: 1 },
+      ]);
+      expect(code).toBe(1);
+      expect(output).toBe(
+        `gone.ts:1:1: no such file\nit's$HOME.ts:9:1: past the end of the file\n`,
+      );
     });
   });
 
-  it('passes on the last line of a file with no trailing newline', async () => {
-    await write('a.ts', 'one\ntwo');
-    expect(run([{ path: 'a.ts', line: 2, column: 1 }]).code).toBe(0);
-  });
+  describe('frameLinesScript', () => {
+    it('prints each cited line keyed path:line, once per line', async () => {
+      await write('a/[slug]/page.tsx', 'one\n  f(g());\n');
+      const frames = [
+        { path: 'a/[slug]/page.tsx', line: 2, column: 3 },
+        { path: 'a/[slug]/page.tsx', line: 2, column: 5 },
+        { path: 'a/[slug]/page.tsx', line: 1, column: 1 },
+      ];
+      const { code, output } = positions(frames);
+      expect(code).toBe(0);
+      expect(parseFrameLines(output)).toEqual({
+        'a/[slug]/page.tsx:2': '  f(g());',
+        'a/[slug]/page.tsx:1': 'one',
+      });
+    });
 
-  it('reports a missing file', () => {
-    expect(run([{ path: 'gone.ts', line: 1, column: 1 }])).toEqual({
-      code: 1,
-      output: 'gone.ts:1:1: no such file\n',
+    it('records nothing when a frame fails a position check', async () => {
+      await write('a.ts', '  await shop();\n');
+      const { code, output } = positions([{ path: 'a.ts', line: 1, column: 4 }]);
+      expect(code).toBe(1);
+      expect(() => parseFrameLines(output)).toThrow(/no frame lines/);
     });
   });
 
-  it('reports a line past the end of the file', async () => {
-    await write('a.ts', 'one\n');
-    expect(run([{ path: 'a.ts', line: 2, column: 1 }])).toEqual({
-      code: 1,
-      output: 'a.ts:2:1: past the end of the file\n',
+  describe('parseFrameLines', () => {
+    it('reads the marked line and ignores warnings around it', () => {
+      const output = [
+        '(node:12) ExperimentalWarning: something',
+        'PAGE_FRAME_LINES {"a.ts:1":"one"}',
+        '(Use `node --trace-warnings ...`)',
+      ].join('\n');
+      expect(parseFrameLines(output)).toEqual({ 'a.ts:1': 'one' });
     });
   });
 
-  it('reports a column past the end of the line', async () => {
-    await write('a.ts', 'one\n');
-    expect(run([{ path: 'a.ts', line: 1, column: 4 }])).toEqual({
-      code: 1,
-      output: 'a.ts:1:4: past the end of the line\n',
-    });
-  });
-
-  it.each([
-    [0, 1],
-    [1, 0],
-    [2 ** 63, 1],
-    [1, Infinity],
-  ])('rejects line %s, column %s', async (line, column) => {
-    await write('a.ts', 'one\n');
-    expect(run([{ path: 'a.ts', line, column }])).toEqual({
-      code: 1,
-      output: `a.ts:${line}:${column}: lines and columns are whole numbers from 1\n`,
-    });
-  });
-
-  it('passes a frame at the start of a token', async () => {
-    await write('a.ts', '  const { db } = await shop();\n  x.load(y);\n');
-    const frames = [
-      { path: 'a.ts', line: 1, column: 18 },
-      { path: 'a.ts', line: 1, column: 28 },
-      { path: 'a.ts', line: 2, column: 5 },
-    ];
-    expect(run(frames)).toEqual({ code: 0, output: '' });
-  });
-
-  it('reports a frame inside a word or on a space', async () => {
-    await write('a.ts', '  await shop();\n');
-    expect(run([{ path: 'a.ts', line: 1, column: 4 }])).toEqual({
-      code: 1,
-      output: 'a.ts:1:4: not the start of a token in "await shop();"\n',
-    });
-    expect(run([{ path: 'a.ts', line: 1, column: 1 }]).code).toBe(1);
-  });
-
-  it('counts columns in UTF-16 code units, as V8 does', async () => {
-    await write('a.ts', '"×😀" + f();\n');
-    expect(run([{ path: 'a.ts', line: 1, column: 9 }]).code).toBe(0);
-    // Counting bytes would put `f` at 13, past the end of this 12-unit line.
-    expect(run([{ path: 'a.ts', line: 1, column: 13 }]).code).toBe(1);
-  });
-
-  it('reports a stack line it could not check', () => {
-    expect(run([], ['at /workspace/apps/a.ts:1:2'])).toEqual({
-      code: 1,
-      output: 'at /workspace/apps/a.ts:1:2: not a repo-relative path:line:column frame\n',
-    });
-  });
-
-  it('reports every bad frame, and keeps a path with a quote or $ literal', async () => {
-    await write(`it's$HOME.ts`, 'one\n');
-    const { code, output } = run([
-      { path: 'gone.ts', line: 1, column: 1 },
-      { path: `it's$HOME.ts`, line: 1, column: 1 },
-      { path: `it's$HOME.ts`, line: 9, column: 1 },
-    ]);
-    expect(code).toBe(1);
-    expect(output).toBe(`gone.ts:1:1: no such file\nit's$HOME.ts:9:1: past the end of the file\n`);
-  });
-
-  describe('with frameLines', () => {
+  describe('framesExistScript', () => {
+    const run = (frames: ReportFrame[], lines: Record<string, string>, unchecked: string[] = []) =>
+      sh(framesExistScript(frames, unchecked, lines));
     const frame = { path: 'a.ts', line: 2, column: 3 };
 
     it('passes when the cited line reads as recorded', async () => {
       await write('a.ts', 'one\n  f();\r\n');
-      expect(run([frame], [], { 'a.ts:2': '  f();' })).toEqual({ code: 0, output: '' });
+      expect(run([frame], { 'a.ts:2': '  f();' })).toEqual({ code: 0, output: '' });
     });
 
     it('reports a cited line that moved inside its file', async () => {
       // A line added at the top: line 2 is now what line 1 was, and column 3 is still the
       // start of a token, so only the recorded text catches it.
       await write('a.ts', '// new\none\n  f();\n');
-      expect(run([frame], [], { 'a.ts:2': '  f();' })).toEqual({
+      expect(run([frame], { 'a.ts:2': '  f();' })).toEqual({
         code: 1,
-        output: 'a.ts:2:3: the line changed since the report was captured, from "f();" to "one"\n',
+        output:
+          'a.ts:2:3: the line changed since the report was captured, from "  f();" to "one"\n',
       });
+    });
+
+    it('shows a change that is only whitespace', async () => {
+      await write('a.ts', 'one\n    f();\n');
+      expect(run([frame], { 'a.ts:2': '  f();' }).output).toBe(
+        'a.ts:2:3: the line changed since the report was captured, from "  f();" to "    f();"\n',
+      );
     });
 
     it('reports a frame with no entry and an entry with no frame', async () => {
       await write('a.ts', 'one\n  f();\n');
-      expect(run([frame], [], { 'a.ts:1': 'one' })).toEqual({
+      expect(run([frame], { 'a.ts:1': 'one' })).toEqual({
         code: 1,
         output:
           'a.ts:2:3: not in meta.json frameLines; run pnpm scenarios:frames\n' +
@@ -404,39 +459,25 @@ describe('framesExistScript', { timeout: 20_000 }, () => {
       });
     });
 
-    it('still reports a missing file before a missing entry', () => {
-      expect(run([{ path: 'gone.ts', line: 1, column: 1 }], [], {})).toEqual({
+    it('reports a position problem on a line that reads as recorded', async () => {
+      await write('a.ts', 'one\n  f();\n');
+      expect(run([{ ...frame, column: 1 }], { 'a.ts:2': '  f();' })).toEqual({
+        code: 1,
+        output: 'a.ts:2:1: not the start of a token in "f();"\n',
+      });
+    });
+
+    it('reports a missing file before a missing entry', () => {
+      expect(run([{ path: 'gone.ts', line: 1, column: 1 }], {})).toEqual({
         code: 1,
         output: 'gone.ts:1:1: no such file\n',
       });
     });
-  });
 
-  describe('frameLinesScript', () => {
-    it('prints each cited line keyed path:line, once per line', async () => {
-      await write('a/[slug]/page.tsx', 'one\n  f(g());\r\n');
-      const frames = [
-        { path: 'a/[slug]/page.tsx', line: 2, column: 3 },
-        { path: 'a/[slug]/page.tsx', line: 2, column: 5 },
-        { path: 'a/[slug]/page.tsx', line: 1, column: 1 },
-      ];
-      const { code, output } = sh(frameLinesScript(frames));
-      expect(code).toBe(0);
-      expect(JSON.parse(output)).toEqual({
-        'a/[slug]/page.tsx:2': '  f(g());',
-        'a/[slug]/page.tsx:1': 'one',
-      });
-    });
-
-    it('exits 1 for a missing file or a line past the end', async () => {
-      await write('a.ts', 'one\n');
-      const frames = [
-        { path: 'gone.ts', line: 1, column: 1 },
-        { path: 'a.ts', line: 5, column: 1 },
-      ];
-      expect(sh(frameLinesScript(frames))).toEqual({
+    it('reports a stack line it could not check', () => {
+      expect(run([], {}, ['at /workspace/apps/a.ts:1:2'])).toEqual({
         code: 1,
-        output: 'gone.ts:1:1: no such file\na.ts:5:1: past the end of the file\n',
+        output: 'at /workspace/apps/a.ts:1:2: not a repo-relative path:line:column frame\n',
       });
     });
   });

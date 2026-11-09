@@ -17,15 +17,18 @@ The agent gets it as its task, so it must not say why the bug happens or how to 
 anything that points at the fix, such as a Postgres `hint`.
 
 `frameLines` holds the text of each repo line the report's stack cites, as `break.sh` leaves
-it, keyed `path:line`. After capturing a report, record it in the sandbox:
+it, keyed `path:line`. Code scenarios only. After capturing a report, rebuild the sandbox
+image so it has the code the report came from, and record the lines in it:
 
 ```sh
+docker build -f infra/sandbox/Dockerfile -t page-sandbox .
 pnpm scenarios:frames page-sandbox 001-bad-currency-code
 ```
 
-If the self-test says a cited line changed, the report points at the wrong code. Recapture
-it with `trigger.sh`, then rerun with `--replace`. Replacing without recapturing hides the
-problem this catches.
+A frame that fails the self-test's position checks isn't recorded. If the self-test says a
+cited line changed, the report points at the wrong code. Recapture it with `trigger.sh`,
+then rerun with `--replace` and the scenario's id (`--replace` needs ids). Replacing
+without recapturing hides the problem this catches.
 
 `break.sh` and `check.sh` run in the sandbox image (Alpine, busybox `sh`, no bash) from
 `/workspace`, the repo root, as the sandbox user. They get no network. `check.sh` must

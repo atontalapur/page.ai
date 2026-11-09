@@ -88,54 +88,57 @@ export function uncheckedFrames(report: string): string[] {
   );
 }
 
-// The scripts below run as `node -` in the sandbox. This reads one line the way V8 numbers
-// them, without its line ending: { source }, undefined past the end, or { error }.
-const READ_LINE = String.raw`const { readFileSync } = require('node:fs');
-function readLine(path, line) {
+// The scripts below run as `node -` in the sandbox. `locate` finds where a frame lands:
+// `source` is the text of its line when the line exists, and `problem` says why the frame
+// doesn't fit. Node counts columns in UTF-16 code units, as V8 does, and a frame must land
+// on the start of a token.
+const LOCATE = String.raw`const { readFileSync } = require('node:fs');
+function locate({ path, line, column }) {
+  if (!Number.isSafeInteger(line) || !Number.isSafeInteger(column) || line < 1 || column < 1) {
+    return { problem: 'lines and columns are whole numbers from 1' };
+  }
   let text;
   try {
     text = readFileSync(path, 'utf8');
   } catch (error) {
-    return { error: error.code === 'ENOENT' ? 'no such file' : "can't read: " + error.code };
+    return { problem: error.code === 'ENOENT' ? 'no such file' : "can't read: " + error.code };
+  }
+  // V8 ends a line at these too, but source maps may not, so a frame's line is ambiguous.
+  if (/\r(?!\n)|[\u2028\u2029]/.test(text)) {
+    return { problem: 'the file has a lone CR, U+2028 or U+2029, which tools number differently' };
   }
   const lines = text === '' ? [] : text.replace(/\n$/, '').split('\n');
-  return { source: lines[line - 1]?.replace(/\r$/, '') };
+  const source = lines[line - 1]?.replace(/\r$/, '');
+  if (source === undefined) return { problem: 'past the end of the file' };
+  if (column > source.length) return { source, problem: 'past the end of the line' };
+  const [before, here] = [source[column - 2] ?? '', source[column - 1]];
+  if (/\s/.test(here) || (/[\w$]/.test(here) && /[\w$]/.test(before))) {
+    return { source, problem: 'not the start of a token in ' + JSON.stringify(source.trim()) };
+  }
+  return { source };
 }
 `;
 
-// Node counts columns in UTF-16 code units, as V8 does. With input.lines (meta.json
-// frameLines), each cited line must read as it did when the report was captured, so a line
-// that moved inside its file fails (#79). A frame must also land on the start of a token.
+// Each cited line must also read as meta.json frameLines recorded it, so a line that moved
+// inside its file fails (#79).
 const FRAME_CHECK = String.raw`const problems = [];
 const cited = new Set();
-for (const { at, key, path, line, column } of input.frames) {
+for (const frame of input.frames) {
+  const { at, key } = frame;
   cited.add(key);
-  if (!Number.isSafeInteger(line) || !Number.isSafeInteger(column) || line < 1 || column < 1) {
-    problems.push(at + ': lines and columns are whole numbers from 1');
-    continue;
-  }
-  const { error, source } = readLine(path, line);
-  if (error) {
-    problems.push(at + ': ' + error);
-  } else if (source === undefined) {
-    problems.push(at + ': past the end of the file');
-  } else if (input.lines && !Object.hasOwn(input.lines, key)) {
+  const { source, problem } = locate(frame);
+  if (source !== undefined && !Object.hasOwn(input.lines, key)) {
     problems.push(at + ': not in meta.json frameLines; run pnpm scenarios:frames');
-  } else if (input.lines && input.lines[key] !== source) {
+  } else if (source !== undefined && input.lines[key] !== source) {
     problems.push(
       at + ': the line changed since the report was captured, from ' +
-        JSON.stringify(input.lines[key].trim()) + ' to ' + JSON.stringify(source.trim()),
+        JSON.stringify(input.lines[key]) + ' to ' + JSON.stringify(source),
     );
-  } else if (column > source.length) {
-    problems.push(at + ': past the end of the line');
-  } else {
-    const [before, here] = [source[column - 2] ?? '', source[column - 1]];
-    if (/\s/.test(here) || (/[\w$]/.test(here) && /[\w$]/.test(before))) {
-      problems.push(at + ': not the start of a token in ' + JSON.stringify(source.trim()));
-    }
+  } else if (problem) {
+    problems.push(at + ': ' + problem);
   }
 }
-for (const key of Object.keys(input.lines ?? {})) {
+for (const key of Object.keys(input.lines)) {
   if (!cited.has(key)) problems.push(key + ': in meta.json frameLines, but no frame cites it');
 }
 for (const line of input.unchecked) {
@@ -147,20 +150,20 @@ if (problems.length > 0) {
 }
 `;
 
-// Prints the cited lines as a JSON object keyed path:line, or exits 1 if one is missing.
+// Prints the cited lines after FRAME_LINES_MARKER, or exits 1 if a frame doesn't fit.
+const FRAME_LINES_MARKER = 'PAGE_FRAME_LINES ';
 const FRAME_LINES = String.raw`const found = {};
 const problems = [];
-for (const { at, key, path, line } of input.frames) {
-  const { error, source } = readLine(path, line);
-  if (error) problems.push(at + ': ' + error);
-  else if (source === undefined) problems.push(at + ': past the end of the file');
-  else found[key] = source;
+for (const frame of input.frames) {
+  const { source, problem } = locate(frame);
+  if (problem) problems.push(frame.at + ': ' + problem);
+  else found[frame.key] = source;
 }
 if (problems.length > 0) {
-  console.error(problems.join('\n'));
+  console.log(problems.join('\n'));
   process.exitCode = 1;
 } else {
-  console.log(JSON.stringify(found));
+  console.log(input.marker + JSON.stringify(found));
 }
 `;
 
@@ -172,7 +175,7 @@ export function frameLineKey(frame: ReportFrame): string {
 function nodeScript(input: object, body: string): string {
   // Quoted heredoc, so nothing is expanded. The delimiter can't be a line of its own here:
   // the input is one line of JSON after `const input =`.
-  return `node - <<'PAGE_FRAMES_EOF'\nconst input = ${JSON.stringify(input)};\n${READ_LINE}${body}PAGE_FRAMES_EOF\n`;
+  return `node - <<'PAGE_FRAMES_EOF'\nconst input = ${JSON.stringify(input)};\n${LOCATE}${body}PAGE_FRAMES_EOF\n`;
 }
 
 function frameInput(frames: ReportFrame[]) {
@@ -185,21 +188,35 @@ function frameInput(frames: ReportFrame[]) {
 
 /**
  * A script that exits 1 if a frame's file is gone, its line or column is past the end, or its
- * column isn't the start of a token, and for any stack line in `unchecked`. With `lines`
- * (meta.json frameLines), it also exits 1 if a cited line has no entry or reads differently,
- * or an entry has no frame.
+ * column isn't the start of a token; if a cited line has no `lines` entry (meta.json
+ * frameLines) or reads differently; if an entry has no frame; and for any stack line in
+ * `unchecked`.
  */
 export function framesExistScript(
   frames: ReportFrame[],
-  unchecked: string[] = [],
-  lines?: Record<string, string>,
+  unchecked: string[],
+  lines: Record<string, string>,
 ): string {
-  return nodeScript({ frames: frameInput(frames), unchecked, lines: lines ?? null }, FRAME_CHECK);
+  return nodeScript({ frames: frameInput(frames), unchecked, lines }, FRAME_CHECK);
 }
 
-/** A script that prints each frame's line as a JSON object keyed by `frameLineKey`. */
+/**
+ * A script that prints each frame's line keyed by `frameLineKey` (read it with
+ * `parseFrameLines`), and exits 1 if a frame fails the same position checks as
+ * `framesExistScript`.
+ */
 export function frameLinesScript(frames: ReportFrame[]): string {
-  return nodeScript({ frames: frameInput(frames) }, FRAME_LINES);
+  return nodeScript({ frames: frameInput(frames), marker: FRAME_LINES_MARKER }, FRAME_LINES);
+}
+
+/**
+ * The lines from `frameLinesScript`'s output. The sandbox shell mixes stderr into the
+ * output, so a Node warning can sit next to them; only the marked line is read.
+ */
+export function parseFrameLines(output: string): Record<string, string> {
+  const line = output.split('\n').find((l) => l.startsWith(FRAME_LINES_MARKER));
+  if (line === undefined) throw new Error(`no frame lines in the output:\n${output.trimEnd()}`);
+  return JSON.parse(line.slice(FRAME_LINES_MARKER.length)) as Record<string, string>;
 }
 
 /**
