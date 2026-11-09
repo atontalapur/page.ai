@@ -9,7 +9,8 @@
 # The code scenarios split by estimated cost into parallel shards, each building the image
 # from the warm cache and running a few scenarios at once. The ops scenarios split the same
 # way into shards of their own, one at a time each: every ops shard starts its own compose
-# app and skips the image build.
+# app (~66s, uncached) and skips the image build. A slow ops scenario gets a shard of its
+# own: that costs an extra runner and compose start, so it only pays as ops scenarios grow.
 name: Scenarios
 
 on:
@@ -95,7 +96,12 @@ jobs:
           # (node --liftoff-only, see scenarios/README.md) takes ~31s, any other a few seconds.
           ops="$(for id in $ids; do
             [ -e "scenarios/$id/break-ops.sh" ] || continue
-            if grep -qsw build_image "scenarios/$id/break-ops.sh"; then echo "$id 53"; else echo "$id 7"; fi
+            # -q exits 0 on a match even if fix-ops.sh is missing. Only a call counts, not a comment.
+            if grep -qsE '^[[:space:]]*build_image\b' "scenarios/$id/break-ops.sh" "scenarios/$id/fix-ops.sh"; then
+              echo "$id 53"
+            else
+              echo "$id 7"
+            fi
           done)"
           code="$(for id in $ids; do
             [ -e "scenarios/$id/break-ops.sh" ] && continue

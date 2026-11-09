@@ -23,10 +23,15 @@ const SCENARIOS_DIR = 'scenarios';
 const NO_APP = 'needs a live demo app: set DEMO_APP_URL and OPS_SECRET';
 const USAGE = 'usage: node eval/scripts/selftest.ts [--concurrency N] <image> [scenario-id...]';
 
-const { values, positionals } = parseArgs({
-  allowPositionals: true,
-  options: { concurrency: { type: 'string' } },
-});
+// A bad flag gets the usage line and exit 2, not a parseArgs stack trace.
+let parsed;
+try {
+  parsed = parseArgs({ allowPositionals: true, options: { concurrency: { type: 'string' } } });
+} catch {
+  console.error(USAGE);
+  process.exit(2);
+}
+const { values, positionals } = parsed;
 const [image, ...ids] = positionals;
 const concurrency = Number(values.concurrency ?? process.env.SELFTEST_CONCURRENCY ?? 1);
 if (!image || !Number.isInteger(concurrency) || concurrency < 1) {
@@ -43,7 +48,9 @@ interface Outcome {
 }
 
 function crashed(id: string, err: unknown): Outcome {
-  return { status: 'fail', lines: [`FAIL ${id}`, `  ${problemsOf(err).join('\n  ')}`] };
+  // An error's text can span lines (a child process's stderr), so indent every one.
+  const text = problemsOf(err).join('\n').trimEnd().replace(/^/gm, '  ');
+  return { status: 'fail', lines: [`FAIL ${id}`, text] };
 }
 
 async function selfTestOne(id: string): Promise<Outcome> {
