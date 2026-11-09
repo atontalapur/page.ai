@@ -62,6 +62,22 @@ environment.
 Nest needs legacy decorators with emitted metadata, which Node's type stripping can't run,
 so the app is compiled with `tsc` to `dist/` rather than run from source.
 
+## Configuration
+
+`src/config.ts` reads these once at boot:
+
+| Variable            | Default   | Notes                                            |
+| ------------------- | --------- | ------------------------------------------------ |
+| `DATABASE_URL`      |           | Required; a `postgres://` or `postgresql://` URL |
+| `PORT`              | `4000`    | Railway sets it                                  |
+| `HOST`              | `0.0.0.0` |                                                  |
+| `PGBOSS_SCHEMA`     | `pgboss`  | Must match the node daemon's                     |
+| `USE_FAKE_ADAPTERS` | `false`   | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`  |
+
+A missing or bad var stops startup with exit code 1 and one log line naming each, e.g.
+`invalid config: DATABASE_URL is required`. `USE_FAKE_ADAPTERS` is parsed as in `apps/node`
+(blank counts as `false`), but nothing in the orchestrator reads it yet.
+
 ## Test
 
 - `pnpm --filter @page/orchestrator test` runs on PGlite (in-memory Postgres), pg-boss

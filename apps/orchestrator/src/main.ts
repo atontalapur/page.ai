@@ -3,13 +3,21 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { loadMigrations } from '@page/db-migrations';
 import { PgBoss } from 'pg-boss';
 import { createApp } from './app.ts';
-import { loadConfig } from './config.ts';
+import { ConfigError, loadConfig, type Config } from './config.ts';
 import { createDb } from './db/database.ts';
 import { migrate } from './db/migrate.ts';
 import { createFixJobQueue } from './queue/fix-jobs.ts';
 
 const logger = new Logger('orchestrator');
-const config = loadConfig();
+let config: Config;
+try {
+  config = loadConfig();
+} catch (err) {
+  if (!(err instanceof ConfigError)) throw err;
+  // The message already names each bad var; a stack trace would only bury it.
+  logger.error(err.message);
+  process.exit(1);
+}
 
 const db = createDb(config.databaseUrl);
 const boss = new PgBoss({ connectionString: config.databaseUrl, schema: config.pgbossSchema });
