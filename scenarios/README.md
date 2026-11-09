@@ -128,7 +128,13 @@ Run it from the repo root against a built sandbox image:
 docker build -f infra/sandbox/Dockerfile -t page-sandbox .
 pnpm scenarios:selftest page-sandbox                         # every scenario
 pnpm scenarios:selftest page-sandbox 001-bad-currency-code   # just these
+pnpm scenarios:selftest page-sandbox --concurrency 3         # 3 code scenarios at a time
 ```
+
+Each code scenario runs in its own sandbox container (1 CPU, 1 GB), so several can run at
+once (`--concurrency N` or `SELFTEST_CONCURRENCY`, default 1). Output stays one block per
+scenario, in the order given. Ops scenarios always run one at a time: they share one live
+app.
 
 Ops scenarios also need the compose demo app with the ops API on. Without
 `DEMO_APP_URL` and `OPS_SECRET` they are skipped when no ids are named, and fail when
@@ -141,4 +147,7 @@ pnpm scenarios:selftest page-sandbox 029-shipping-override-out-of-range
 ```
 
 CI self-tests the scenarios a PR touches (`.github/workflows/scenarios.yml`), starting the
-compose app when one of them is an ops scenario.
+compose app when one of them is an ops scenario. It packs them into shards by estimated
+cost: a PGlite check (`--liftoff-only`) about 31s, other code checks about 3s, an ops
+scenario that builds a bad deploy image about 53s, other ops about 7s. Code shards run 3
+scenarios at a time, and each ops shard gets its own compose app.

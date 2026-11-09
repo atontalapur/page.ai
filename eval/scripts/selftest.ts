@@ -1,4 +1,4 @@
-// Usage: node eval/scripts/selftest.ts <image> [scenario-id...]
+// Usage: node eval/scripts/selftest.ts [--concurrency N] <image> [scenario-id...]
 // Self-tests the named scenarios (all of them by default). Run from the repo root. Exits 1
 // if any scenario fails.
 //
@@ -7,57 +7,86 @@
 // host against a live demo app, given by DEMO_APP_URL and OPS_SECRET (see
 // scenarios/README.md). Without them, ops scenarios are skipped when no ids are named, and
 // fail when they are, so CI can't pass by skipping them.
+//
+// --concurrency N (or SELFTEST_CONCURRENCY) runs up to N scenarios at once, 1 by default.
+// Each sandbox gets 1 CPU, so leave the host a core. Ops scenarios still run one at a
+// time, since they share the one live app. Results print in the order the ids were given.
 import { join } from 'node:path';
-import { listScenarioIds, loadScenario, problemsOf } from '../src/scenario.ts';
+import { parseArgs } from 'node:util';
+import { runInOrder, serialized } from '../src/pool.ts';
+import { listScenarioIds, loadScenario, problemsOf, type Scenario } from '../src/scenario.ts';
 import { selfTest, selfTestOps } from '../src/selftest.ts';
 import { hostShell, liveAppFromEnv } from './host.ts';
 import { withSandbox } from './sandbox.ts';
 
 const SCENARIOS_DIR = 'scenarios';
 const NO_APP = 'needs a live demo app: set DEMO_APP_URL and OPS_SECRET';
+const USAGE = 'usage: node eval/scripts/selftest.ts [--concurrency N] <image> [scenario-id...]';
 
-const [image, ...ids] = process.argv.slice(2);
-if (!image) {
-  console.error('usage: node eval/scripts/selftest.ts <image> [scenario-id...]');
+const { values, positionals } = parseArgs({
+  allowPositionals: true,
+  options: { concurrency: { type: 'string' } },
+});
+const [image, ...ids] = positionals;
+const concurrency = Number(values.concurrency ?? process.env.SELFTEST_CONCURRENCY ?? 1);
+if (!image || !Number.isInteger(concurrency) || concurrency < 1) {
+  console.error(USAGE);
   process.exit(2);
 }
 const app = liveAppFromEnv();
+const oneOpsAtATime = serialized();
 
-let failed = 0;
-let skipped = 0;
-for (const id of ids.length > 0 ? ids : await listScenarioIds(SCENARIOS_DIR)) {
-  let scenario;
+interface Outcome {
+  status: 'pass' | 'fail' | 'skip';
+  /** The scenario's whole report, printed in one piece. */
+  lines: string[];
+}
+
+function crashed(id: string, err: unknown): Outcome {
+  return { status: 'fail', lines: [`FAIL ${id}`, `  ${problemsOf(err).join('\n  ')}`] };
+}
+
+async function selfTestOne(id: string): Promise<Outcome> {
+  let scenario: Scenario;
   try {
     scenario = await loadScenario(join(SCENARIOS_DIR, id));
   } catch (err) {
-    failed++;
-    console.log(`FAIL ${id}\n  ${problemsOf(err).join('\n  ')}`);
-    continue;
+    return crashed(id, err);
   }
 
   if (scenario.kind === 'ops' && !app) {
-    if (ids.length > 0) failed++;
-    else skipped++;
-    console.log(`${ids.length > 0 ? 'FAIL' : 'SKIP'} ${id}\n  ${NO_APP}`);
-    continue;
+    const status = ids.length > 0 ? 'fail' : 'skip';
+    return { status, lines: [`${status.toUpperCase()} ${id}`, `  ${NO_APP}`] };
   }
 
   try {
     const result =
       scenario.kind === 'ops'
-        ? await selfTestOps(scenario, hostShell(app!))
-        : await withSandbox(image, (sh) => selfTest(scenario, sh));
-    console.log(`${result.passed ? 'PASS' : 'FAIL'} ${id}`);
+        ? await oneOpsAtATime(() => selfTestOps(scenario, hostShell(app!)))
+        : await withSandbox(image!, (sh) => selfTest(scenario, sh));
+    const lines = [`${result.passed ? 'PASS' : 'FAIL'} ${id}`];
     for (const step of result.steps) {
-      console.log(`  ${step.ok ? 'ok  ' : 'FAIL'} ${step.step}`);
-      if (step.detail) console.log(step.detail.replace(/^/gm, '       '));
+      lines.push(`  ${step.ok ? 'ok  ' : 'FAIL'} ${step.step}`);
+      if (step.detail) lines.push(step.detail.replace(/^/gm, '       '));
     }
-    if (!result.passed) failed++;
+    return { status: result.passed ? 'pass' : 'fail', lines };
   } catch (err) {
-    failed++;
-    console.log(`FAIL ${id}\n  ${problemsOf(err).join('\n  ')}`);
+    return crashed(id, err);
   }
 }
+
+let failed = 0;
+let skipped = 0;
+await runInOrder(
+  ids.length > 0 ? ids : await listScenarioIds(SCENARIOS_DIR),
+  concurrency,
+  selfTestOne,
+  ({ status, lines }) => {
+    if (status === 'fail') failed++;
+    if (status === 'skip') skipped++;
+    console.log(lines.join('\n'));
+  },
+);
 
 if (skipped > 0) console.log(`\n${skipped} ops scenario(s) skipped: ${NO_APP}`);
 if (failed > 0) {

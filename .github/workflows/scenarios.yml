@@ -7,8 +7,9 @@
 # all of them; a run that touches none of the inputs below runs no shards. `selftest` is a
 # required check on main that sums up the shards; renaming it breaks the ruleset.
 # The code scenarios split by estimated cost into parallel shards, each building the image
-# from the warm cache; the ops scenarios get one shard of their own, the only one that starts
-# the compose app and the only one that skips the image build.
+# from the warm cache and running a few scenarios at once. The ops scenarios split the same
+# way into shards of their own, one at a time each: every ops shard starts its own compose
+# app and skips the image build.
 name: Scenarios
 
 on:
@@ -66,8 +67,11 @@ jobs:
           EVENT: ${{ github.event_name }}
           RUN: ${{ steps.changes.outputs.run }}
           CHANGED: ${{ steps.changes.outputs.files }}
-          # Seconds of scenarios per code shard to aim for, and the most code shards.
-          BUDGET: 70
+          # Seconds of wall per shard to aim for, not counting setup, and the most shards.
+          # A code shard runs CONCURRENCY scenarios at once, 1 CPU each on a 4-vCPU runner.
+          CODE_BUDGET: 35
+          CONCURRENCY: 3
+          OPS_BUDGET: 60
           MAX_SHARDS: 10
         run: |
           all="$(find scenarios -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
@@ -85,35 +89,44 @@ jobs:
             # Directories the PR touched that still exist (a deleted scenario has nothing to test).
             ids="$(grep -oP '^scenarios/\K[^/]+(?=/)' <<<"$CHANGED" | sort -u | grep -xF -f <(echo "$all") || true)"
           fi
-          # Ops scenarios (Tier 3) need the live compose app; a break-ops.sh marks one. A code
-          # scenario whose check runs on PGlite (node --liftoff-only, see scenarios/README.md)
-          # takes ~31s to self-test, any other a few seconds.
-          ops="$(for id in $ids; do [ -e "scenarios/$id/break-ops.sh" ] && echo "$id"; done || true)"
+          # Ops scenarios (Tier 3) need the live compose app; a break-ops.sh marks one. One
+          # that builds a bad deploy image (build_image, compose-deploy.sh) takes ~53s to
+          # self-test, any other ~7s. A code scenario whose check runs on PGlite
+          # (node --liftoff-only, see scenarios/README.md) takes ~31s, any other a few seconds.
+          ops="$(for id in $ids; do
+            [ -e "scenarios/$id/break-ops.sh" ] || continue
+            if grep -qsw build_image "scenarios/$id/break-ops.sh"; then echo "$id 53"; else echo "$id 7"; fi
+          done)"
           code="$(for id in $ids; do
             [ -e "scenarios/$id/break-ops.sh" ] && continue
             if grep -qs -e --liftoff-only "scenarios/$id/check.sh"; then echo "$id 31"; else echo "$id 3"; fi
           done)"
           echo "Code scenarios, estimated seconds: ${code:-none}"
-          echo "Ops scenarios: ${ops:-none}"
-          # Enough shards for about BUDGET seconds each, and no two over half of it together.
-          # Longest first, each onto the shard with the least so far. No ids, no shards.
-          plan="$(jq -cn --arg code "$code" --arg ops "$ops" \
-            --argjson budget "$BUDGET" --argjson max "$MAX_SHARDS" '
-            ($code | split("\n") | map(select(. != "") | split(" ") | {id: .[0], s: (.[1] | tonumber)})) as $c
-            | ($ops | split("\n") | map(select(. != "")) | join(" ")) as $ops
-            | ([$max, ($c | length), ([1, ($c | map(.s) | (add // 0) / $budget | ceil),
-                ($c | map(select(.s > $budget / 2)) | length)] | max)] | min) as $k
-            | (reduce ($c | sort_by(-.s, .id))[] as $x ([range($k) | {s: 0, ids: []}];
-                (to_entries | min_by(.value.s) | .key) as $i
-                | .[$i].s += $x.s | .[$i].ids += [$x.id])) as $bins
-            | [$bins | to_entries[] | {
-                name: "code \(.key + 1) of \($k)",
-                ops: false,
-                ids: (.value.ids | sort | join(" ")),
-                est: .value.s
-              }]
-              + if $ops == "" then [] else [{name: "ops", ops: true, ids: $ops}] end')"
-          jq -r '.[] | "\(.name): \(.ids)" + if .est then " (~\(.est)s)" else "" end' <<<"$plan"
+          echo "Ops scenarios, estimated seconds: ${ops:-none}"
+          # Enough shards for about BUDGET seconds of wall each, at c scenarios at a time, and
+          # no more than c over half of it on one shard. Longest first, each onto the shard
+          # with the least so far. A shard runs its ids in that order, each on the first free
+          # slot, so est is that shard's wall. No ids, no shards.
+          plan="$(jq -cn --arg code "$code" --arg ops "$ops" --argjson code_budget "$CODE_BUDGET" \
+            --argjson c "$CONCURRENCY" --argjson ops_budget "$OPS_BUDGET" --argjson max "$MAX_SHARDS" '
+            def costs: split("\n") | map(select(. != "") | split(" ") | {id: .[0], s: (.[1] | tonumber)});
+            def shards($kind; $budget; $c):
+              . as $xs
+              | ([$max, ($xs | length), ([1, ($xs | map(.s) | (add // 0) / $c / $budget | ceil),
+                  ($xs | map(select(.s > $budget / 2)) | length / $c | ceil)] | max)] | min) as $k
+              | reduce ($xs | sort_by(-.s, .id))[] as $x ([range($k) | {s: 0, ids: [], slots: [range($c) | 0]}];
+                  (to_entries | min_by(.value.s) | .key) as $i
+                  | (.[$i].slots | to_entries | min_by(.value) | .key) as $j
+                  | .[$i].s += $x.s | .[$i].ids += [$x.id] | .[$i].slots[$j] += $x.s)
+              | [to_entries[] | {
+                  name: "\($kind) \(.key + 1) of \($k)",
+                  ops: ($kind == "ops"),
+                  concurrency: $c,
+                  ids: (.value.ids | join(" ")),
+                  est: (.value.slots | max)
+                }];
+            ($code | costs | shards("code"; $code_budget; $c)) + ($ops | costs | shards("ops"; $ops_budget; 1))')"
+          jq -r '.[] | "\(.name): \(.ids) (~\(.est)s of tests)"' <<<"$plan"
           shards="$(jq -c 'map(del(.est))' <<<"$plan")"
           echo "Shards: $shards"
           echo "shards=$shards" >> "$GITHUB_OUTPUT"
@@ -183,9 +196,10 @@ jobs:
           cache-from: type=gha,scope=sandbox
       - env:
           IDS: ${{ matrix.ids }}
-        # One argument per scenario id. Named ids make an ops scenario fail, not skip, if the
-        # app above didn't start. The ops shard never builds IMAGE: ops scenarios run on the
-        # host, so the runner doesn't use it.
+          SELFTEST_CONCURRENCY: ${{ matrix.concurrency }}
+        # One argument per scenario id, in pick's order. Named ids make an ops scenario fail,
+        # not skip, if the app above didn't start. An ops shard never builds IMAGE: ops
+        # scenarios run on the host, so the runner doesn't use it.
         run: |
           read -ra ids <<<"$IDS"
           pnpm scenarios:selftest "$IMAGE" "${ids[@]}"
