@@ -1,0 +1,112 @@
+# Builds the orchestrator image (#99) and boots it against Postgres, so a broken image fails
+# here instead of on Railway's deploy from main. Nothing is pushed: Railway builds its own.
+# Not a required check: it only runs when the image's inputs change.
+name: Orchestrator image
+
+on:
+  pull_request:
+    paths: &inputs
+      - apps/orchestrator/**
+      - packages/config/**
+      - packages/contracts/**
+      - packages/db-migrations/**
+      - .dockerignore
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .github/workflows/orchestrator-image.yml
+  push:
+    branches: [main]
+    paths: *inputs
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: page-orchestrator:${{ github.sha }}
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      # Same image and credentials as docker-compose.yml.
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: page
+          POSTGRES_PASSWORD: page
+          POSTGRES_DB: page
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U page -d page"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/orchestrator/Dockerfile
+          load: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha,scope=orchestrator
+          cache-to: type=gha,scope=orchestrator,mode=max
+      # --network host lets the container reach the service on the runner's mapped port,
+      # and lets this step reach the app on localhost:4000.
+      - name: Boot against Postgres
+        env:
+          DATABASE_URL: postgres://page:page@localhost:5432/page
+        run: |
+          docker run -d --name orchestrator --network host -e DATABASE_URL "$IMAGE"
+          for _ in $(seq 60); do
+            body="$(curl -fsS http://localhost:4000/health 2>/dev/null)" || body=
+            [ "$body" = '{"status":"ok"}' ] && break
+            if [ "$(docker inspect -f '{{.State.Running}}' orchestrator)" != true ]; then
+              echo "::error::container exited before /health returned 200"
+              exit 1
+            fi
+            sleep 1
+          done
+          if [ "$body" != '{"status":"ok"}' ]; then
+            echo "::error::/health did not return 200 {\"status\":\"ok\"} within 60s"
+            exit 1
+          fi
+          # The service database starts empty, so every migration must apply on boot.
+          if ! docker logs orchestrator 2>&1 | grep -qF '"msg":"applied 001_issues.sql'; then
+            echo "::error::boot log has no 'applied 001_issues.sql' line"
+            exit 1
+          fi
+      - name: Stop cleanly
+        run: |
+          docker stop orchestrator
+          code="$(docker inspect -f '{{.State.ExitCode}}' orchestrator)"
+          if [ "$code" != 0 ]; then
+            echo "::error::orchestrator exited $code on SIGTERM, want 0"
+            exit 1
+          fi
+      - if: failure()
+        name: Container logs
+        run: docker logs orchestrator || true
+      # A missing DATABASE_URL must log one fatal line naming it and exit 1, not crash.
+      - name: Exit 1 without DATABASE_URL
+        run: |
+          code=0
+          out="$(docker run --rm "$IMAGE" 2>&1)" || code=$?
+          echo "$out"
+          if [ "$code" != 1 ]; then
+            echo "::error::exited $code without DATABASE_URL, want 1"
+            exit 1
+          fi
+          if ! jq -Re 'fromjson? | select(.level == 60 and .msg == "invalid config: DATABASE_URL is required")' \
+            <<<"$out" >/dev/null; then
+            echo "::error::no fatal 'invalid config: DATABASE_URL is required' line"
+            exit 1
+          fi
