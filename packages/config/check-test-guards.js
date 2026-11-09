@@ -20,8 +20,8 @@ const SCRIPTS = { unit: 'test', integration: 'test:integration' };
 const NO_FILE = 'zz-no-such-test-file.test.ts';
 const NO_NAME = 'zz no test has this name';
 // Each check starts vitest, and the demo app's boots PGlite. The checks are CPU-bound, so
-// more than one per core doesn't help, and the cap keeps memory in bounds.
-const SLOTS = Math.min(availableParallelism(), 8);
+// more than one per core doesn't help, and 4 (the CI runner's cores) keeps memory in bounds.
+const SLOTS = Math.min(availableParallelism(), 4);
 
 function packages() {
   const dirs = ROOTS.flatMap((root) => readdirSync(root).map((name) => join(root, name)));
@@ -98,7 +98,17 @@ async function checkProject(dir, project, script, files) {
   return failures;
 }
 
+// A package that can't be checked (no vitest to resolve, unreadable list output) is a
+// failure of that package, reported with the rest, not a crash that hides them.
 async function checkPackage(dir) {
+  try {
+    return await checkPackageOrThrow(dir);
+  } catch (error) {
+    return [`${dir}: couldn't run the checks: ${error instanceof Error ? error.message : error}`];
+  }
+}
+
+async function checkPackageOrThrow(dir) {
   const { scripts } = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
   // One list covers both projects; each entry names its project.
   const listed = await vitest(dir, ['list', '--filesOnly', '--json']);
