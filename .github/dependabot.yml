@@ -10,6 +10,9 @@ updates:
       - /.github/actions/*
     schedule:
       interval: weekly
+    # Wait for a new release to settle before proposing it. Security updates aren't delayed.
+    cooldown:
+      default-days: 5
     groups:
       github-actions:
         patterns:
@@ -24,6 +27,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Wait for a new release to settle before proposing it, longer for majors (rewrites like
+    # minimatch 11 ship patch after patch at first). Security updates aren't delayed.
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
     # Raise the range (e.g. ^1.0.0 -> ^1.4.0) instead of only moving the
     # lockfile. Lockfile-only updates of catalog entries can fail with
     # NoChangeError (dependabot/dependabot-core#16722).
