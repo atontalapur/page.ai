@@ -10,13 +10,18 @@
 // guard off with `mergeConfig` fails here too. Run from the repo root.
 import { spawn } from 'node:child_process';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { availableParallelism } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 
 const ROOTS = ['apps', 'packages'];
 const SCRIPTS = { unit: 'test', integration: 'test:integration' };
 const NO_FILE = 'zz-no-such-test-file.test.ts';
 const NO_NAME = 'zz no test has this name';
+// Each check starts vitest, and the demo app's boots PGlite. The checks are CPU-bound, so
+// more than one per core doesn't help, and the cap keeps memory in bounds.
+const SLOTS = Math.min(availableParallelism(), 8);
 
 function packages() {
   const dirs = ROOTS.flatMap((root) => readdirSync(root).map((name) => join(root, name)));
@@ -29,25 +34,42 @@ function packages() {
   });
 }
 
-function vitest(cwd, args) {
-  return new Promise((resolve) => {
-    const child = spawn('pnpm', ['exec', 'vitest', ...args], {
-      cwd,
-      env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' },
-    });
-    let output = '';
-    child.stdout.on('data', (chunk) => (output += chunk));
-    child.stderr.on('data', (chunk) => (output += chunk));
-    child.on('close', (status) => resolve({ status, output }));
-  });
+// Runs at most SLOTS tasks at once, in the order they were queued.
+let running = 0;
+const waiting = [];
+async function slot(task) {
+  if (running >= SLOTS) await new Promise((wake) => waiting.push(wake));
+  running += 1;
+  try {
+    return await task();
+  } finally {
+    running -= 1;
+    waiting.shift()?.();
+  }
 }
 
-async function checkProject(dir, project, script) {
-  const failures = [];
-  const listed = await vitest(dir, ['list', '--project', project, '--filesOnly', '--json']);
-  if (listed.status !== 0) return [`${dir} ${project}: vitest list failed\n${listed.output}`];
-  const files = JSON.parse(listed.output.slice(listed.output.indexOf('[')));
+// The package's own vitest, started with node: `pnpm exec` costs a process per check.
+function vitest(cwd, args) {
+  const require = createRequire(resolve(cwd, 'package.json'));
+  const manifest = require.resolve('vitest/package.json');
+  const bin = join(dirname(manifest), require(manifest).bin.vitest);
+  return slot(
+    () =>
+      new Promise((done) => {
+        const child = spawn(process.execPath, [bin, ...args], {
+          cwd,
+          env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' },
+        });
+        let output = '';
+        child.stdout.on('data', (chunk) => (output += chunk));
+        child.stderr.on('data', (chunk) => (output += chunk));
+        child.on('close', (status) => done({ status, output }));
+      }),
+  );
+}
 
+async function checkProject(dir, project, script, files) {
+  const failures = [];
   if (script !== undefined && /--passWithNoTests\b/.test(script) && files.length > 0) {
     failures.push(
       `${dir}: drop --passWithNoTests from its ${SCRIPTS[project]} script, ` +
@@ -55,41 +77,49 @@ async function checkProject(dir, project, script) {
     );
   }
 
-  const noFile = await vitest(dir, ['run', '--project', project, NO_FILE]);
-  if (noFile.status !== 1 || !noFile.output.includes('No test files found')) {
-    failures.push(`${dir} ${project}: a path that matches no file exited ${noFile.status}`);
-  }
+  const noFile = vitest(dir, ['run', '--project', project, NO_FILE]);
+  // One file is enough: the config and reporter are the same for every file, and
+  // importing all of them takes the orchestrator over 10s.
+  const noName =
+    project === 'unit' && files.length > 0
+      ? vitest(dir, ['run', '--project', project, '-t', NO_NAME, files[0]])
+      : undefined;
 
-  if (project === 'unit' && files.length > 0) {
-    const noName = await vitest(dir, ['run', '--project', project, '-t', NO_NAME]);
-    if (noName.status !== 1 || !noName.output.includes('No tests ran')) {
-      failures.push(`${dir} ${project}: a -t that matches no test exited ${noName.status}`);
+  const { status, output } = await noFile;
+  if (status !== 1 || !output.includes('No test files found')) {
+    failures.push(`${dir} ${project}: a path that matches no file exited ${status}\n${output}`);
+  }
+  if (noName !== undefined) {
+    const { status, output } = await noName;
+    if (status !== 1 || !output.includes('No tests ran')) {
+      failures.push(`${dir} ${project}: a -t that matches no test exited ${status}\n${output}`);
     }
   }
   return failures;
 }
 
-const queue = packages().flatMap((dir) => {
+async function checkPackage(dir) {
   const { scripts } = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-  return Object.entries(SCRIPTS).map(
-    ([project, name]) =>
-      () =>
-        checkProject(dir, project, scripts[name]),
+  // One list covers both projects; each entry names its project.
+  const listed = await vitest(dir, ['list', '--filesOnly', '--json']);
+  if (listed.status !== 0) return [`${dir}: vitest list failed\n${listed.output}`];
+  const entries = JSON.parse(listed.output.slice(listed.output.indexOf('[')));
+  const results = await Promise.all(
+    Object.entries(SCRIPTS).map(([project, name]) => {
+      const files = entries.filter((e) => e.projectName === project).map((e) => e.file);
+      return checkProject(dir, project, scripts[name], files);
+    }),
   );
-});
-const total = queue.length;
-// A few at a time: each check starts vitest, and the demo app's boots PGlite.
-const failures = [];
-async function worker() {
-  for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-    failures.push(...(await next()));
-  }
+  return results.flat();
 }
-await Promise.all(Array.from({ length: 4 }, worker));
+
+const dirs = packages();
+// Failures print in package order, not in the order the checks finish.
+const failures = (await Promise.all(dirs.map(checkPackage))).flat();
 
 if (failures.length > 0) {
   process.stderr.write(`${failures.join('\n')}\n`);
   process.exitCode = 1;
 } else {
-  process.stdout.write(`test guards hold in ${total / 2} packages\n`);
+  process.stdout.write(`test guards hold in ${dirs.length} packages\n`);
 }

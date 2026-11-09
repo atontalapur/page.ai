@@ -26,7 +26,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # commitlint is a root devDependency, so skip the rest of the workspace.
+      # commitlint is a root devDependency, so skip the rest of the workspace. A filtered
+      # install also skips the store cache: fetching its ~130 packages beats restoring 230 MB.
       - uses: ./.github/actions/setup
         with:
           filter: page-ai
