@@ -29,9 +29,9 @@ jobs:
           restore-keys: turbo-${{ runner.os }}-
       - run: pnpm format:check
       - run: pnpm depcruise
-      # One turbo run so lint, typecheck and test share a task graph and run in parallel.
-      # --continue reports every failing task, not just the first.
-      - run: pnpm turbo run lint typecheck test --continue --summarize
+      # One turbo run so lint, typecheck, test and build share a task graph and run in
+      # parallel. --continue reports every failing task, not just the first.
+      - run: pnpm turbo run lint typecheck test build --continue --summarize
       # A run that tests nothing must fail in every package, whatever its config merges in.
       - run: pnpm test:guards
       # Without this, each run restores the last cache, adds to it and saves it under a new

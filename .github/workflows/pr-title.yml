@@ -1,6 +1,10 @@
 # `pr-title` is a required status check on main (see #36). Squash merges use the PR
 # title as the commit subject, so it has to pass commitlint like any other commit.
 # Kept out of ci.yml so editing a title doesn't rerun the whole suite.
+# Every event lints the current title, body-only edits included: a skipped required check
+# counts as passing, so skipping edits let a failing title pass (#99). Each run reads the
+# title from its own payload, so the newest run always lints the current one; cancelling
+# older runs is safe because nothing skips the newest.
 name: PR title
 
 on:
@@ -17,8 +21,6 @@ permissions:
 jobs:
   pr-title:
     runs-on: ubuntu-latest
-    # Skip body-only edits. A skipped required check still counts as passing.
-    if: github.event.action != 'edited' || github.event.changes.title
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
