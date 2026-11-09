@@ -1,0 +1,39 @@
+# Dependabot version updates. PR titles come from the commit message and must
+# pass commitlint (config-conventional), see .github/workflows/pr-title.yml.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    # "/" only scans .github/workflows and a root action.yml, so the composite
+    # actions under .github/actions need their own entry.
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: ci
+      include: scope
+
+  - package-ecosystem: npm
+    # pnpm workspace root: package.json, pnpm-lock.yaml and the catalog in
+    # pnpm-workspace.yaml.
+    directory: /
+    schedule:
+      interval: weekly
+    # Raise the range (e.g. ^1.0.0 -> ^1.4.0) instead of only moving the
+    # lockfile. Lockfile-only updates of catalog entries can fail with
+    # NoChangeError (dependabot/dependabot-core#16722).
+    versioning-strategy: increase
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: chore
+      include: scope
