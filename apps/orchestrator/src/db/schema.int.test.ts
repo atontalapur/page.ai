@@ -168,18 +168,35 @@ describe('orchestrator tables on real Postgres', () => {
     expect(await read()).toMatchObject({ decision: 'approved', decidedBy: 'reviewer' });
   });
 
-  it('deletes a run with its escalations and approvals when its issue goes', async () => {
+  it('keeps the audit record: an issue or run with history cannot be deleted', async () => {
     const runId = await newRun(3);
+    const note = JSON.stringify({ summary: 'x', tried: [], blocker: 'y' });
+    await db
+      .insertInto('escalations')
+      .values({ run_id: runId, from_tier: 2, to_tier: 3, reason: 'needs_higher_tier', note })
+      .execute();
     await db.insertInto('approvals').values({ run_id: runId, action: 'ops.restart' }).execute();
-    const run = await db
+    const { issue_id } = await db
       .selectFrom('runs')
       .select('issue_id')
       .where('id', '=', runId)
       .executeTakeFirstOrThrow();
-    await db.deleteFrom('issues').where('id', '=', run.issue_id).execute();
-    expect(await db.selectFrom('runs').where('id', '=', runId).selectAll().execute()).toEqual([]);
-    expect(
-      await db.selectFrom('approvals').where('run_id', '=', runId).selectAll().execute(),
-    ).toEqual([]);
+
+    // 23001 is restrict_violation: ON DELETE RESTRICT, not a missing row or a cascade.
+    const deleteIssue = () => db.deleteFrom('issues').where('id', '=', issue_id).execute();
+    const deleteRun = () => db.deleteFrom('runs').where('id', '=', runId).execute();
+    await expect(deleteIssue()).rejects.toMatchObject({ code: '23001' });
+    await expect(deleteRun()).rejects.toMatchObject({ code: '23001' });
+    await db.deleteFrom('approvals').where('run_id', '=', runId).execute();
+    // The escalation alone still holds the run.
+    await expect(deleteRun()).rejects.toMatchObject({ code: '23001' });
+
+    const runs = await db.selectFrom('runs').select('id').where('id', '=', runId).execute();
+    const escalations = await db
+      .selectFrom('escalations')
+      .select('id')
+      .where('run_id', '=', runId)
+      .execute();
+    expect([runs.length, escalations.length]).toEqual([1, 1]);
   });
 });

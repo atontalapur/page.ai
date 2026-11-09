@@ -25,8 +25,8 @@ why.
    `apps/orchestrator/src/db/database.ts`. Kysely needs no code generation and no schema
    DSL, and its PGlite dialect lets unit tests use the same queries against in-memory
    Postgres.
-2. **Migrations are plain `.sql` files** in `apps/orchestrator/migrations/`, applied in
-   file-name order. They use Postgres directly (partial indexes, CHECK constraints,
+2. **Migrations are plain `.sql` files** in `packages/db-migrations/migrations/`, applied
+   in file-name order. They use Postgres directly (partial indexes, CHECK constraints,
    `jsonb`) without going through an ORM's schema language.
 3. **The orchestrator migrates at boot.** `migrate()` takes a transaction-scoped advisory
    lock, so concurrent boots serialise, and applies pending files in one transaction,
@@ -41,12 +41,15 @@ the Postgres features above. Drizzle was ruled out because `drizzle-kit` depends
 
 ## Consequences
 
-- The SQL and the TypeScript table types are kept in step by hand. `src/db/schema.test.ts`
-  checks each CHECK list against the contracts enums on PGlite, and
-  `src/db/schema.int.test.ts` writes every table on real Postgres and parses each row with
-  its contracts schema. A change to one without the other fails there.
+- The SQL and the TypeScript table types are kept in step by hand. In
+  `apps/orchestrator/src/db`, `schema.test.ts` checks each CHECK list against the contracts
+  enums on PGlite, and `schema.int.test.ts` writes every table on real Postgres and parses
+  each row with its contracts schema. A change to one without the other fails there.
 - Migrations only go forward. To undo one, write a new file.
 - `jsonb` columns are written as JSON strings, so node-postgres and PGlite serialise them
   the same way.
-- Other packages that need the tables in a test (toolkit's audit sink, the node daemon)
-  apply `apps/orchestrator/migrations` in order instead of keeping their own copy.
+- The migrations and `loadMigrations()` live in `@page/db-migrations`, not in the
+  orchestrator, so tests elsewhere that need the tables (toolkit's audit sink, the node
+  daemon) apply the same files through the same loader instead of reading an app's files.
+- The audit tables (`runs`, `escalations`, `approvals`) don't cascade on delete. An issue
+  with runs, or a run with escalations or approvals, can't be deleted.

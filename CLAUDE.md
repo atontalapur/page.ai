@@ -35,6 +35,8 @@ docker build -f infra/sandbox/Dockerfile -t page-sandbox .
 - `apps/ui`: Vite 8 + React 19 + Tailwind 4.
 - `apps/demo-app`: Next.js 16 + Postgres shop that agents treat as production and that
   the seeded bugs break. Plain SQL migrations, PGlite unit tests, Railway deploy.
+- `packages/db-migrations`: the orchestrator database's SQL migrations and
+  `loadMigrations()`, shared with tests that need its tables.
 - `packages/contracts`: zod schemas shared by everything (db rows, jobs, events,
   webhook, config, `ScenarioMeta`). Fixtures at `@page/contracts/fixtures`.
 - `packages/toolkit`: `execute()`, the only way the agent runs anything. Shell parser,
