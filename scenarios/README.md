@@ -3,18 +3,32 @@
 Seeded bugs for the demo app. Each one lives in `scenarios/<id>/`, where the id is three
 digits and a kebab-case slug (`001-bad-currency-code`).
 
-| File                  | What it does                                                                                    |
-| --------------------- | ----------------------------------------------------------------------------------------------- |
-| `break.sh`            | Plants the bug in a clean demo app. Fails if it couldn't (the code it edits moved).             |
-| `trigger.sh`          | Makes the bug fire on a running app at `$DEMO_APP_URL`, so PostHog sees it.                     |
-| `check.sh`            | Exits 0 when the bug is fixed and 1 while it's there.                                           |
-| `reference_fix.patch` | A known fix, applied on top of `break.sh` with `git apply`.                                     |
-| `meta.json`           | `class`, `expectedTier`, a one-line `description` and a `report` (`ScenarioMeta` in contracts). |
+| File                  | What it does                                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------------- |
+| `break.sh`            | Plants the bug in a clean demo app. Fails if it couldn't (the code it edits moved).            |
+| `trigger.sh`          | Makes the bug fire on a running app at `$DEMO_APP_URL`, so PostHog sees it.                    |
+| `check.sh`            | Exits 0 when the bug is fixed and 1 while it's there.                                          |
+| `reference_fix.patch` | A known fix, applied on top of `break.sh` with `git apply`.                                    |
+| `meta.json`           | `class`, `expectedTier`, a one-line `description`, `report` and `frameLines` (`ScenarioMeta`). |
 
 `report` is the request, the status and the error with its stack, as on-call would see it.
 The agent gets it as its task, so it must not say why the bug happens or how to fix it.
 `description` names the cause and is for people only. Keep the error as thrown, but remove
 anything that points at the fix, such as a Postgres `hint`.
+
+`frameLines` holds the text of each repo line the report's stack cites, as `break.sh` leaves
+it, keyed `path:line`. Code scenarios only. After capturing a report, rebuild the sandbox
+image so it has the code the report came from, and record the lines in it:
+
+```sh
+docker build -f infra/sandbox/Dockerfile -t page-sandbox .
+pnpm scenarios:frames page-sandbox 001-bad-currency-code
+```
+
+A frame that fails the self-test's position checks isn't recorded. If the self-test says a
+cited line changed, the report points at the wrong code. Recapture it with `trigger.sh`,
+then rerun with `--replace` and the scenario's id (`--replace` needs ids). Replacing
+without recapturing hides the problem this catches.
 
 `break.sh` and `check.sh` run in the sandbox image (Alpine, busybox `sh`, no bash) from
 `/workspace`, the repo root, as the sandbox user. They get no network. `check.sh` must
@@ -100,8 +114,8 @@ Every scenario must pass this before it counts:
    The file has to be in the sandbox image (the demo app and `packages/config`), since the
    agent can't open anything else. A stack line that cites a repo file in another form, such
    as `/workspace/apps/...`, `./apps/...` or a frame with no column, fails the step. Paths
-   with a `node_modules` or `.next` segment are skipped. A line that moved but still has a
-   token start at the cited column passes.
+   with a `node_modules` or `.next` segment are skipped. Each cited line must also read as
+   `frameLines` recorded it, so a line that moved inside its file fails.
 3. After `reference_fix.patch`, it passes again.
 
 For an ops scenario the steps are the same against the live app: `check.sh` passes, fails

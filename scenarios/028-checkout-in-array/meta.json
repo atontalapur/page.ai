@@ -2,5 +2,11 @@
   "class": "database",
   "expectedTier": 2,
   "description": "Checkout clears the cart with product_id in ($2) and an array parameter, which Postgres can't cast to integer, so every checkout returns 500",
-  "report": "POST /api/orders returned 500\n\nerror: invalid input syntax for type integer: \"{\"3\"}\"\n    at async apps/demo-app/src/shop/orders.ts:70:5\n    at async Object.transaction (apps/demo-app/src/db/db.ts:32:24)\n    at async apps/demo-app/src/app/api/orders/route.ts:9:21\n    at async handle (apps/demo-app/src/app/api/respond.ts:22:12) {\n  length: 148,\n  severity: 'ERROR',\n  code: '22P02',\n  detail: undefined,\n  hint: undefined,\n  position: undefined,\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: \"unnamed portal parameter $2 = '...'\",\n  schema: undefined,\n  table: undefined,\n  column: undefined,\n  dataType: undefined,\n  constraint: undefined,\n  file: 'numutils.c',\n  line: '615',\n  routine: 'pg_strtoint32_safe'\n}"
+  "report": "POST /api/orders returned 500\n\nerror: invalid input syntax for type integer: \"{\"3\"}\"\n    at async apps/demo-app/src/shop/orders.ts:70:5\n    at async Object.transaction (apps/demo-app/src/db/db.ts:32:24)\n    at async apps/demo-app/src/app/api/orders/route.ts:9:21\n    at async handle (apps/demo-app/src/app/api/respond.ts:22:12) {\n  length: 148,\n  severity: 'ERROR',\n  code: '22P02',\n  detail: undefined,\n  hint: undefined,\n  position: undefined,\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: \"unnamed portal parameter $2 = '...'\",\n  schema: undefined,\n  table: undefined,\n  column: undefined,\n  dataType: undefined,\n  constraint: undefined,\n  file: 'numutils.c',\n  line: '615',\n  routine: 'pg_strtoint32_safe'\n}",
+  "frameLines": {
+    "apps/demo-app/src/shop/orders.ts:70": "    await tx.query('delete from cart_items where cart_id = $1 and product_id in ($2)', [",
+    "apps/demo-app/src/db/db.ts:32": "        const result = await fn(wrap(client));",
+    "apps/demo-app/src/app/api/orders/route.ts:9": "    const orderId = await placeOrder(db, readCartId(cookies), settings);",
+    "apps/demo-app/src/app/api/respond.ts:22": "    return await work();"
+  }
 }

@@ -2,5 +2,9 @@
   "class": "database",
   "expectedTier": 2,
   "description": "getProduct matches \"id = $1 or slug = $1\", which Postgres types as an integer, so every product lookup throws",
-  "report": "GET /api/products/canvas-tote returned 500\n\nerror: operator does not exist: text = integer\n    at async getProduct (apps/demo-app/src/shop/products.ts:21:20)\n    at async GET (apps/demo-app/src/app/api/products/[slug]/route.ts:8:19) {\n  length: 200,\n  severity: 'ERROR',\n  code: '42883',\n  detail: undefined,\n  position: '108',\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: undefined,\n  schema: undefined,\n  table: undefined,\n  column: undefined,\n  dataType: undefined,\n  constraint: undefined,\n  file: 'parse_oper.c',\n  line: '635',\n  routine: 'op_error'\n}"
+  "report": "GET /api/products/canvas-tote returned 500\n\nerror: operator does not exist: text = integer\n    at async getProduct (apps/demo-app/src/shop/products.ts:21:20)\n    at async GET (apps/demo-app/src/app/api/products/[slug]/route.ts:8:19) {\n  length: 200,\n  severity: 'ERROR',\n  code: '42883',\n  detail: undefined,\n  position: '108',\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: undefined,\n  schema: undefined,\n  table: undefined,\n  column: undefined,\n  dataType: undefined,\n  constraint: undefined,\n  file: 'parse_oper.c',\n  line: '635',\n  routine: 'op_error'\n}",
+  "frameLines": {
+    "apps/demo-app/src/shop/products.ts:21": "  const { rows } = await db.query<Product>(",
+    "apps/demo-app/src/app/api/products/[slug]/route.ts:8": "  const product = await getProduct(db, slug);"
+  }
 }
