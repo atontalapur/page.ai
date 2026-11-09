@@ -18,12 +18,20 @@ between the two and never prints them.
 
 ## Commands
 
-| Command                  | What it does                                                                                                            |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `pnpm env:pull`          | Decrypts `.env.shared` and writes its values into `.env`. Other lines in `.env` stay. Needs the private key.            |
-| `pnpm env:share KEY ...` | Copies each `KEY` from your `.env` into `.env.shared`, encrypted. Needs only the public key, which is in `.env.shared`. |
+| Command                  | What it does                                                                                                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm env:pull`          | Decrypts `.env.shared` and writes its values into `.env`, then adds any setting from `.env.example` that `.env` lacks. Settings already in `.env` stay. Needs the private key. |
+| `pnpm env:share KEY ...` | Copies each `KEY` from your `.env` into `.env.shared`, encrypted. Needs only the public key, which is in `.env.shared`.                                                        |
 
 After `env:share`, commit `.env.shared` in a PR. Teammates run `pnpm env:pull` once it merges.
+
+## Settings that aren't secret
+
+Ports, URLs, `OPENROUTER_MODEL`, `GITHUB_REPO` and `USE_FAKE_ADAPTERS` live in plain text in
+`.env.example`. `pnpm env:pull` adds any of them your `.env` doesn't set yet, with the example
+value, so a setting added later reaches everyone on their next pull. A value you already set,
+such as a different `POSTGRES_PORT`, is never overwritten. To change a default for the team,
+edit `.env.example` in a PR.
 
 ## What is shared
 
