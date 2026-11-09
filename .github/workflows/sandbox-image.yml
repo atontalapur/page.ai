@@ -1,10 +1,13 @@
 # Builds the agent sandbox image (#5), runs infra/sandbox/smoke.sh against it, and on main
-# pushes it to GHCR. Not a required check: it only runs when the image's inputs change.
+# pushes it to GHCR. `sandbox-image` is a required check on main: on a PR that doesn't touch
+# the image's inputs it's skipped, which counts as passing. Renaming it breaks the ruleset.
 name: Sandbox image
 
 on:
   pull_request:
-    paths: &inputs
+  push:
+    branches: [main]
+    paths:
       - infra/sandbox/**
       - apps/demo-app/**
       - packages/config/**
@@ -18,9 +21,6 @@ on:
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
       - .github/workflows/sandbox-image.yml
-  push:
-    branches: [main]
-    paths: *inputs
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -33,7 +33,48 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}/sandbox
 
 jobs:
-  image:
+  # A required check must report on every PR, so the path filter lives here instead of on
+  # the pull_request trigger: when no input changed, the job below is skipped, and a skipped
+  # required check counts as passing. Keep this list in step with the push paths above.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          INPUTS: |
+            ^infra/sandbox/
+            ^apps/demo-app/
+            ^packages/config/
+            ^apps/node/src/sandbox/
+            ^apps/node/scripts/sandbox-run\.ts$
+            ^apps/node/package\.json$
+            ^\.dockerignore$
+            ^\.gitignore$
+            ^\.nvmrc$
+            ^package\.json$
+            ^pnpm-lock\.yaml$
+            ^pnpm-workspace\.yaml$
+            ^\.github/workflows/sandbox-image\.yml$
+        run: |
+          # Blank lines would match every file, so drop them from the patterns.
+          if [ "$EVENT" != pull_request ] \
+            || git diff --name-only "$BASE"...HEAD | grep -qE -f <(grep -v '^$' <<<"$INPUTS"); then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  sandbox-image:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

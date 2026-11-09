@@ -4,7 +4,8 @@
 # passes, fails after break-ops.sh and passes after fix-ops.sh.
 # A PR that changes only scenarios/ self-tests the scenarios it touches. Any other input
 # (the runner, the demo app, the sandbox image) and every push to main self-tests all of
-# them.
+# them, and a PR that touches none of the inputs below runs no shards. `selftest` is a
+# required check on main that sums up the shards; renaming it breaks the ruleset.
 # The code scenarios split round-robin into up to four parallel shards, each building the
 # image from the warm cache; the ops scenarios get one shard of their own, the only one that
 # starts the compose app and the only one that skips the image build.
@@ -13,9 +14,11 @@ name: Scenarios
 
 on:
   pull_request:
+  push:
+    branches: [main]
     # sandbox-image.yml's inputs (what the scenarios run against), plus the scenarios and
-    # the runner.
-    paths: &inputs
+    # the runner. pick checks PRs against the same list.
+    paths:
       - scenarios/**
       - eval/**
       - packages/contracts/**
@@ -33,9 +36,6 @@ on:
       - pnpm-workspace.yaml
       - docker-compose.yml
       - .github/workflows/scenarios.yml
-  push:
-    branches: [main]
-    paths: *inputs
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -63,17 +63,38 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
           SHARDS: 4
+          INPUTS: |
+            ^scenarios/
+            ^eval/
+            ^packages/contracts/
+            ^infra/sandbox/
+            ^apps/demo-app/
+            ^packages/config/
+            ^apps/node/src/sandbox/
+            ^apps/node/scripts/sandbox-run\.ts$
+            ^apps/node/package\.json$
+            ^\.dockerignore$
+            ^\.gitignore$
+            ^\.nvmrc$
+            ^package\.json$
+            ^pnpm-lock\.yaml$
+            ^pnpm-workspace\.yaml$
+            ^docker-compose\.yml$
+            ^\.github/workflows/scenarios\.yml$
         run: |
           all="$(find scenarios -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
           if [ "$EVENT" != pull_request ]; then
             ids="$all"
           else
-            changed="$(git diff --name-only "$BASE"...HEAD)"
+            # Only files the scenarios depend on count; blank pattern lines would match all.
+            changed="$(git diff --name-only "$BASE"...HEAD | grep -E -f <(grep -v '^$' <<<"$INPUTS") || true)"
             # Anything outside a scenario's own directory can break every scenario: the
             # runner, the demo app, and the shared scripts at the top of scenarios/ (ops.sh,
             # compose-deploy.sh) that ops scenarios source. So this needs no second copy of
             # the trigger list.
-            if grep -qvE '^scenarios/[^/]+/' <<<"$changed"; then
+            if [ -z "$changed" ]; then
+              ids=""
+            elif grep -qvE '^scenarios/[^/]+/' <<<"$changed"; then
               ids="$all"
             else
               # Directories the PR touched that still exist (a deleted scenario has nothing to test).
@@ -99,7 +120,7 @@ jobs:
           echo "Shards: $shards"
           echo "shards=$shards" >> "$GITHUB_OUTPUT"
 
-  selftest:
+  shard:
     needs: pick
     if: needs.pick.outputs.shards != '[]'
     name: selftest ${{ matrix.name }}
@@ -149,3 +170,18 @@ jobs:
       - if: failure() && matrix.ops
         name: Demo app logs
         run: docker compose logs --no-color --tail 200 demo-app demo-app-migrate
+
+  # The one stable name for the ruleset: shard names change with the shard count. Passes when
+  # every shard passed or none were needed, fails if pick or any shard failed or was cancelled.
+  selftest:
+    needs: [pick, shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          PICK: ${{ needs.pick.result }}
+          SHARD: ${{ needs.shard.result }}
+        run: |
+          echo "pick: $PICK, shards: $SHARD"
+          [ "$PICK" = success ] && { [ "$SHARD" = success ] || [ "$SHARD" = skipped ]; }
