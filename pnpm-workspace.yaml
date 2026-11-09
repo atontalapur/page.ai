@@ -6,7 +6,7 @@ packages:
 # One version per tool across the repo. Reference with "catalog:".
 catalog:
   '@eslint/js': ^10.0.1
-  '@types/node': ^24.19.2
+  '@types/node': ^26.6.5
   '@vitest/coverage-v8': ^5.1.0
   eslint: ^10.14.0
   eslint-config-prettier: ^10.1.8
