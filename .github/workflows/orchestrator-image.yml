@@ -8,16 +8,6 @@ on:
   pull_request:
   push:
     branches: [main]
-    paths:
-      - apps/orchestrator/**
-      - packages/config/**
-      - packages/contracts/**
-      - packages/db-migrations/**
-      - .dockerignore
-      - package.json
-      - pnpm-lock.yaml
-      - pnpm-workspace.yaml
-      - .github/workflows/orchestrator-image.yml
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -31,22 +21,21 @@ env:
 
 jobs:
   # A required check must report on every PR, so the path filter lives here instead of on
-  # the pull_request trigger: when no input changed, the job below is skipped, and a skipped
-  # required check counts as passing. Keep this list in step with the push paths above.
+  # the trigger: when no input changed, the job below is skipped, which counts as passing.
+  # Pushes to main go through the same filter, so this is the only list.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      run: ${{ steps.diff.outputs.run }}
+      run: ${{ steps.changes.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - id: diff
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          INPUTS: |
+      - id: changes
+        uses: ./.github/actions/changes
+        with:
+          patterns: |
             ^apps/orchestrator/
             ^packages/config/
             ^packages/contracts/
@@ -56,18 +45,12 @@ jobs:
             ^pnpm-lock\.yaml$
             ^pnpm-workspace\.yaml$
             ^\.github/workflows/orchestrator-image\.yml$
-        run: |
-          # Blank lines would match every file, so drop them from the patterns.
-          if [ "$EVENT" != pull_request ] \
-            || git diff --name-only "$BASE"...HEAD | grep -qE -f <(grep -v '^$' <<<"$INPUTS"); then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
+            ^\.github/actions/changes/
 
+  # Runs, and fails at once, if changes didn't succeed: skipped would count as passing.
   orchestrator-image:
     needs: changes
-    if: needs.changes.outputs.run == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.run == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -86,6 +69,12 @@ jobs:
           --health-timeout 5s
           --health-retries 15
     steps:
+      - if: needs.changes.result != 'success'
+        env:
+          RESULT: ${{ needs.changes.result }}
+        run: |
+          echo "::error::the changes job ended '$RESULT', so whether the image's inputs changed is unknown"
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -123,9 +112,11 @@ jobs:
             echo "::error::boot log has no '$want' line"
             exit 1
           fi
+      # pg-boss's graceful stop waits up to 30s for running jobs; docker's default 10s would
+      # SIGKILL it (exit 137) first.
       - name: Stop cleanly
         run: |
-          docker stop orchestrator
+          docker stop -t 45 orchestrator
           code="$(docker inspect -f '{{.State.ExitCode}}' orchestrator)"
           if [ "$code" != 0 ]; then
             echo "::error::orchestrator exited $code on SIGTERM, want 0"

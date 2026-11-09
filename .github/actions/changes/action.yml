@@ -1,0 +1,33 @@
+name: Changes
+description: >-
+  Whether this run changed any of the given inputs. A PR diffs against its base, a push
+  against the commit before it. Needs a full-history checkout (fetch-depth 0) first.
+
+inputs:
+  patterns:
+    description: >-
+      Extended regexes, one per line, matched against changed file paths. Blank lines are
+      ignored.
+    required: true
+
+outputs:
+  run:
+    description: >-
+      'true' if a changed file matched, or if there is nothing to diff against (a new branch,
+      or any other event). 'false' only after a successful diff with no match.
+    value: ${{ steps.diff.outputs.run }}
+  files:
+    description: The changed files that matched, one per line. Empty when nothing was diffed.
+    value: ${{ steps.diff.outputs.files }}
+
+runs:
+  using: composite
+  steps:
+    - id: diff
+      shell: bash
+      env:
+        PATTERNS: ${{ inputs.patterns }}
+        EVENT: ${{ github.event_name }}
+        BASE: ${{ github.event.pull_request.base.sha }}
+        BEFORE: ${{ github.event.before }}
+      run: bash "$GITHUB_ACTION_PATH/changes.sh"

@@ -3,8 +3,8 @@
 # reference_fix.patch. An ops scenario (Tier 3) runs against the compose demo app: check.sh
 # passes, fails after break-ops.sh and passes after fix-ops.sh.
 # A PR that changes only scenarios/ self-tests the scenarios it touches. Any other input
-# (the runner, the demo app, the sandbox image) and every push to main self-tests all of
-# them, and a PR that touches none of the inputs below runs no shards. `selftest` is a
+# (the runner, the demo app, the sandbox image), and any input on a push to main, self-tests
+# all of them; a run that touches none of the inputs below runs no shards. `selftest` is a
 # required check on main that sums up the shards; renaming it breaks the ruleset.
 # The code scenarios split by estimated cost into parallel shards, each building the image
 # from the warm cache; the ops scenarios get one shard of their own, the only one that starts
@@ -15,26 +15,6 @@ on:
   pull_request:
   push:
     branches: [main]
-    # sandbox-image.yml's inputs (what the scenarios run against), plus the scenarios and
-    # the runner. pick checks PRs against the same list.
-    paths:
-      - scenarios/**
-      - eval/**
-      - packages/contracts/**
-      - infra/sandbox/**
-      - apps/demo-app/**
-      - packages/config/**
-      - apps/node/src/sandbox/**
-      - apps/node/scripts/sandbox-run.ts
-      - apps/node/package.json
-      - .dockerignore
-      - .gitignore
-      - .nvmrc
-      - package.json
-      - pnpm-lock.yaml
-      - pnpm-workspace.yaml
-      - docker-compose.yml
-      - .github/workflows/scenarios.yml
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -56,15 +36,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Pick scenarios
-        id: pick
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          # Seconds of scenarios per code shard to aim for, and the most code shards.
-          BUDGET: 70
-          MAX_SHARDS: 10
-          INPUTS: |
+      # sandbox-image.yml's inputs (what the scenarios run against), plus the scenarios and
+      # the runner.
+      - id: changes
+        uses: ./.github/actions/changes
+        with:
+          patterns: |
             ^scenarios/
             ^eval/
             ^packages/contracts/
@@ -82,25 +59,31 @@ jobs:
             ^pnpm-workspace\.yaml$
             ^docker-compose\.yml$
             ^\.github/workflows/scenarios\.yml$
+            ^\.github/actions/changes/
+      - name: Pick scenarios
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          RUN: ${{ steps.changes.outputs.run }}
+          CHANGED: ${{ steps.changes.outputs.files }}
+          # Seconds of scenarios per code shard to aim for, and the most code shards.
+          BUDGET: 70
+          MAX_SHARDS: 10
         run: |
           all="$(find scenarios -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
-          if [ "$EVENT" != pull_request ]; then
+          # On a PR with RUN true, CHANGED lists the changed inputs. Anything outside a
+          # scenario's own directory can break every scenario: the runner, the demo app, and
+          # the shared scripts at the top of scenarios/ (ops.sh, compose-deploy.sh) that ops
+          # scenarios source.
+          if [ "$RUN" != true ]; then
+            ids=""
+          elif [ "$EVENT" != pull_request ]; then
+            ids="$all"
+          elif grep -qvE '^scenarios/[^/]+/' <<<"$CHANGED"; then
             ids="$all"
           else
-            # Only files the scenarios depend on count; blank pattern lines would match all.
-            changed="$(git diff --name-only "$BASE"...HEAD | grep -E -f <(grep -v '^$' <<<"$INPUTS") || true)"
-            # Anything outside a scenario's own directory can break every scenario: the
-            # runner, the demo app, and the shared scripts at the top of scenarios/ (ops.sh,
-            # compose-deploy.sh) that ops scenarios source. So this needs no second copy of
-            # the trigger list.
-            if [ -z "$changed" ]; then
-              ids=""
-            elif grep -qvE '^scenarios/[^/]+/' <<<"$changed"; then
-              ids="$all"
-            else
-              # Directories the PR touched that still exist (a deleted scenario has nothing to test).
-              ids="$(grep -oP '^scenarios/\K[^/]+(?=/)' <<<"$changed" | sort -u | grep -xF -f <(echo "$all") || true)"
-            fi
+            # Directories the PR touched that still exist (a deleted scenario has nothing to test).
+            ids="$(grep -oP '^scenarios/\K[^/]+(?=/)' <<<"$CHANGED" | sort -u | grep -xF -f <(echo "$all") || true)"
           fi
           # Ops scenarios (Tier 3) need the live compose app; a break-ops.sh marks one. A code
           # scenario whose check runs on PGlite (node --liftoff-only, see scenarios/README.md)
