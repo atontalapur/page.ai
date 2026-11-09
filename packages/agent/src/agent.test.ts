@@ -243,6 +243,15 @@ describe('runAgent', () => {
     expect(result).toMatchObject({ exitStatus: 'aborted' });
   });
 
+  it('counts the cost of a call that succeeds after the signal fired', async () => {
+    const controller = new AbortController();
+    const model = new ScriptedModel([{ content: submit(), costUsd: 0.4 }]);
+    model.onCall = () => controller.abort();
+    const result = await runAgent(task, { model, ...fakeExecute(), signal: controller.signal });
+    expect(result).toMatchObject({ exitStatus: 'aborted', modelCalls: 1 });
+    expect(result.costUsd).toBeCloseTo(0.4);
+  });
+
   it('ends as aborted, not with the failed command, when the signal fires during execute', async () => {
     const controller = new AbortController();
     const model = new ScriptedModel([bash('ls'), submit()]);

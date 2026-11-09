@@ -127,13 +127,16 @@ export async function runAgent(
       ...withTimeout(timeLeft()),
       ...withSignal(deps.signal),
     });
+    // A call that came back is billed, even when the run was stopped while it was out.
+    if (reply.ok) {
+      modelCalls += 1;
+      costUsd += reply.completion.costUsd;
+    }
     if (aborted()) return finish('aborted');
     if (!reply.ok) {
       // A call the deadline cut short is the time limit, not a model failure.
       return outOfTime() ? finish('time_limit') : finish('model_error', reply.error);
     }
-    modelCalls += 1;
-    costUsd += reply.completion.costUsd;
     messages.push({ role: 'assistant', content: reply.completion.content });
 
     const parsed = parseAction(reply.completion.content);
