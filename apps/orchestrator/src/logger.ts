@@ -58,9 +58,12 @@ export class NestPinoLogger implements LoggerService {
       fields.context = last;
       params = params.slice(0, -1);
     }
+    const rest: unknown[] = [];
     for (const param of params) {
       if (typeof param === 'string' && STACK.test(param)) fields.stack = param;
+      else if (param !== undefined) rest.push(param);
     }
+    if (rest.length > 0) fields.params = rest;
     if (message instanceof Error) this.logger[level]({ ...fields, err: message }, message.message);
     else if (typeof message === 'string') this.logger[level](fields, message);
     else this.logger[level]({ ...fields, detail: message });

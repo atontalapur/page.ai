@@ -91,9 +91,9 @@ so the app is compiled with `tsc` to `dist/` rather than run from source.
 | `LOG_LEVEL`         | `info`    | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
 
 A missing or bad var stops startup with exit code 1 and one log line naming each, e.g.
-`invalid config: DATABASE_URL is required`. `USE_FAKE_ADAPTERS` and `LOG_LEVEL` are parsed
-as in `apps/node` (blank counts as unset), but nothing in the orchestrator reads
-`USE_FAKE_ADAPTERS` yet.
+`invalid config: DATABASE_URL is required`. As in `apps/node`, a blank var counts as unset,
+so a copied `.env.example` gets the defaults. `USE_FAKE_ADAPTERS` and `LOG_LEVEL` use the
+daemon's parsers, but nothing in the orchestrator reads `USE_FAKE_ADAPTERS` yet.
 
 ## Logs
 
@@ -113,7 +113,12 @@ workspace layout instead of using `pnpm deploy`. One-time service setup:
 2. Settings, Config-as-code file path: `/apps/orchestrator/railway.json`.
 3. Set `DATABASE_URL=${{Postgres.DATABASE_URL}}` (the project's Postgres service). Railway
    sets `PORT`; `HOST` and `PGBOSS_SCHEMA` keep their defaults.
-4. Generate a public domain.
+
+Don't generate a public domain yet. The API has no authentication, so anyone with the URL
+could read issues and approve, reject or kill them. Keep the service on Railway's private
+network until the API checks a token. The deploy health check still confirms `/health`
+returns 200. A config error exits 1, and Railway retries it up to 5 times
+(`ON_FAILURE`), then stops.
 
 ## Test
 

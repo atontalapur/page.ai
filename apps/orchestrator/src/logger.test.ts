@@ -99,4 +99,11 @@ describe('NestPinoLogger', () => {
     });
     expect(lines[1]).toMatchObject({ level: 30, detail: { some: 'object' } });
   });
+
+  it('keeps extra params instead of dropping them', () => {
+    const { logger, lines } = capture();
+    const nest = new NestPinoLogger(logger);
+    nest.warn('slow query', { ms: 1200 }, 7, 'Db');
+    expect(lines[0]).toMatchObject({ msg: 'slow query', context: 'Db', params: [{ ms: 1200 }, 7] });
+  });
 });

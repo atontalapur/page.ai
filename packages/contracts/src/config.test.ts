@@ -23,7 +23,7 @@ describe('orchestratorConfigSchema', () => {
     expect(config).toMatchObject({
       NODE_ENV: 'development',
       LOG_LEVEL: 'info',
-      PORT: 3000,
+      PORT: 4000,
       USE_FAKE_ADAPTERS: true,
     });
   });
@@ -57,7 +57,7 @@ describe('orchestratorConfigSchema', () => {
       PORT: '',
       LOG_LEVEL: ' ',
     });
-    expect(config).toMatchObject({ USE_FAKE_ADAPTERS: false, PORT: 3000, LOG_LEVEL: 'info' });
+    expect(config).toMatchObject({ USE_FAKE_ADAPTERS: false, PORT: 4000, LOG_LEVEL: 'info' });
   });
 
   it('needs no blank third-party secrets with fake adapters', () => {

@@ -32,6 +32,19 @@ describe('loadConfig', () => {
     expect(() => loadConfig({})).toThrow('invalid config: DATABASE_URL is required');
   });
 
+  it('treats blank vars as unset, like the node daemon', () => {
+    const blank = { PORT: '', HOST: ' ', PGBOSS_SCHEMA: '', LOG_LEVEL: '' };
+    expect(loadConfig({ DATABASE_URL, ...blank })).toMatchObject({
+      port: 4000,
+      host: '0.0.0.0',
+      pgbossSchema: 'pgboss',
+      logLevel: 'info',
+    });
+    expect(() => loadConfig({ DATABASE_URL: ' ', ...blank })).toThrow(
+      'invalid config: DATABASE_URL is required',
+    );
+  });
+
   it('lists every bad var in one error', () => {
     const env = { DATABASE_URL: 'mysql://x/y', PORT: '0', PGBOSS_SCHEMA: 'drop table;' };
     expect(() => loadConfig(env)).toThrow(
