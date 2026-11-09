@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { jobFixtures } from './__fixtures__/index.ts';
+import { escalationNoteFixture, jobFixtures } from './__fixtures__/index.ts';
 import { jobSchemas, type QueueName } from './jobs.ts';
 import { roundTrip } from './test-utils.ts';
 
@@ -31,6 +31,13 @@ describe('jobSchemas', () => {
 
   it('rejects a blank fix job report', () => {
     expect(() => jobSchemas.fix.parse({ ...jobFixtures.fix, report: '  ' })).toThrow();
+  });
+
+  it('carries the escalation note from the tier below, and rejects a bad one', () => {
+    const job = { ...jobFixtures.fix, tier: 2, escalationNote: escalationNoteFixture };
+    expect(roundTrip(jobSchemas.fix, job)).toEqual(job);
+    const bad = { ...job, escalationNote: { ...escalationNoteFixture, blocker: '' } };
+    expect(() => jobSchemas.fix.parse(bad)).toThrow();
   });
 
   it('rejects an unknown notify channel', () => {

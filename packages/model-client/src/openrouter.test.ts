@@ -176,6 +176,21 @@ describe('OpenRouterClient', () => {
     expect(result).toMatchObject({ ok: false, error: { kind: 'network', status: null } });
   });
 
+  it('cancels the request when the caller aborts, as an aborted error', async () => {
+    const hanging: FetchLike = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+    const c = new OpenRouterClient({ apiKey: 'k', model: 'm', fetch: hanging });
+    const controller = new AbortController();
+    const pending = c.complete(messages, { signal: controller.signal });
+    controller.abort();
+    expect(await pending).toEqual({
+      ok: false,
+      error: { kind: 'aborted', status: null, message: 'the call was cancelled' },
+    });
+  });
+
   it('aborts sooner when the call asks for a shorter timeout', async () => {
     const hanging: FetchLike = (_url, init) =>
       new Promise((_resolve, reject) => {

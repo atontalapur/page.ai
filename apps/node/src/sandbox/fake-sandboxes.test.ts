@@ -26,4 +26,16 @@ describe('FakeSandboxes', () => {
     await expect(sandboxes.start('a')).rejects.toThrow(/image not found/);
     await expect(sandboxes.start('a')).resolves.toMatchObject({ name: 'pageagents-a' });
   });
+
+  it('reaps strays and anything still running', async () => {
+    const sandboxes = new FakeSandboxes();
+    sandboxes.strays = ['pageagents-old'];
+    await sandboxes.start('a');
+    expect(await sandboxes.reap()).toEqual({
+      removed: ['pageagents-old', 'pageagents-a'],
+      failed: [],
+    });
+    expect(sandboxes.running).toEqual([]);
+    expect(await sandboxes.reap()).toEqual({ removed: [], failed: [] });
+  });
 });

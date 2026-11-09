@@ -50,6 +50,21 @@ describe('runAgent', () => {
     ]);
   });
 
+  it('passes a push to execute as a host tool call, and opens a Tier 2 run with the tools', async () => {
+    const push = '```page_push_branch\nfix: currency\n```';
+    const model = new ScriptedModel([push, submit()]);
+    const fake = fakeExecute((call) => okResult(call, 'pushed 1 file(s)'));
+    await runAgent({ ...task, tier: 2 }, { model, ...fake });
+
+    expect(fake.calls).toEqual([
+      { kind: 'host_tool', tool: 'git.pushBranch', message: 'fix: currency' },
+    ]);
+    const first = model.calls[0]!;
+    expect(first[0]!.content).toContain('page_open_pr');
+    expect(first[1]!.content).toContain('page_push_branch');
+    expect(model.calls[1]!.at(-1)?.content).toContain('pushed 1 file(s)');
+  });
+
   it('shows a failed command its exit code and output', async () => {
     const model = new ScriptedModel([bash('pnpm test'), submit()]);
     const fake = fakeExecute((call) => failedResult(call, 1, '1 failed'));
@@ -216,5 +231,51 @@ describe('runAgent', () => {
       auditError: 'sink down',
     });
     expect(fake.calls).toHaveLength(1);
+  });
+
+  it('ends as aborted without calling the model when the signal already fired', async () => {
+    const model = new ScriptedModel([submit()]);
+    const controller = new AbortController();
+    controller.abort();
+    const result = await runAgent(task, { model, ...fakeExecute(), signal: controller.signal });
+    expect(result).toMatchObject({ exitStatus: 'aborted', modelCalls: 0 });
+    expect(model.calls).toEqual([]);
+  });
+
+  it('passes the signal to the model call', async () => {
+    const model = new ScriptedModel([submit()]);
+    const { signal } = new AbortController();
+    await runAgent(task, { model, ...fakeExecute(), signal });
+    expect(model.options[0]?.signal).toBe(signal);
+  });
+
+  it('ends as aborted when the signal fires during a model call', async () => {
+    const controller = new AbortController();
+    const error = { kind: 'aborted', status: null, message: 'cancelled' } as const;
+    const model = new ScriptedModel([error]);
+    model.onCall = () => controller.abort();
+    const result = await runAgent(task, { model, ...fakeExecute(), signal: controller.signal });
+    expect(result).toMatchObject({ exitStatus: 'aborted' });
+  });
+
+  it('counts the cost of a call that succeeds after the signal fired', async () => {
+    const controller = new AbortController();
+    const model = new ScriptedModel([{ content: submit(), costUsd: 0.4 }]);
+    model.onCall = () => controller.abort();
+    const result = await runAgent(task, { model, ...fakeExecute(), signal: controller.signal });
+    expect(result).toMatchObject({ exitStatus: 'aborted', modelCalls: 1 });
+    expect(result.costUsd).toBeCloseTo(0.4);
+  });
+
+  it('ends as aborted, not with the failed command, when the signal fires during execute', async () => {
+    const controller = new AbortController();
+    const model = new ScriptedModel([bash('ls'), submit()]);
+    const fake = fakeExecute((call) => {
+      controller.abort();
+      return failedResult(call, 137, 'killed');
+    });
+    const result = await runAgent(task, { model, ...fake, signal: controller.signal });
+    expect(result).toMatchObject({ exitStatus: 'aborted', modelCalls: 1 });
+    expect(model.calls).toHaveLength(1);
   });
 });

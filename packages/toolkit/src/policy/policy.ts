@@ -1,5 +1,6 @@
 import { posix } from 'node:path';
 import type { Tier } from '@page/contracts';
+import type { HostToolName } from '../exec/types.ts';
 import { parse, type Redirect, type SimpleCommand } from '../shell/parse.ts';
 import { writePathRefusal } from './paths.ts';
 
@@ -101,8 +102,8 @@ const TIER_1: ReadonlyMap<string, ArgRule> = new Map([
   ['pnpm', pnpm],
 ]);
 
-// Tier 2 adds host tools (#10) and Tier 3 the ops surface (#13). Neither runs through the
-// shell, so every tier shares the Tier 1 command list for now.
+// Tier 2 adds host tools (#10, see HOST_TOOL_TIERS) and Tier 3 the ops surface (#13).
+// Neither runs through the shell, so every tier shares the Tier 1 command list for now.
 const ALLOWLISTS: Record<Tier, ReadonlyMap<string, ArgRule>> = {
   1: TIER_1,
   2: TIER_1,
@@ -168,6 +169,27 @@ export function checkCommand(input: string, tier: Tier): Verdict {
   for (const command of parsed.commands) {
     const reason = commandRefusal(command, tier);
     if (reason !== null) return { allowed: false, reason };
+  }
+  return { allowed: true };
+}
+
+/**
+ * The lowest tier that may call each host tool. Tiers include the ones below them, so a
+ * Tier 3 run may push and open PRs too.
+ */
+export const HOST_TOOL_TIERS: Readonly<Record<HostToolName, Tier>> = {
+  'git.pushBranch': 2,
+  'github.openPr': 2,
+};
+
+/** Whether `tool` may run at `tier`. An unknown tool name is refused. */
+export function checkHostTool(tool: string, tier: Tier): Verdict {
+  const lowest = Object.hasOwn(HOST_TOOL_TIERS, tool)
+    ? HOST_TOOL_TIERS[tool as HostToolName]
+    : undefined;
+  if (lowest === undefined) return { allowed: false, reason: `${tool} is not a host tool` };
+  if (tier < lowest) {
+    return { allowed: false, reason: `${tool} needs Tier ${lowest}; this run is Tier ${tier}` };
   }
   return { allowed: true };
 }

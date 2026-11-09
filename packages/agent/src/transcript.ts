@@ -1,5 +1,5 @@
 import type { ChatMessage, CompletionResult } from '@page/model-client';
-import type { ExecErr, ExecOk, Result, ToolCall } from '@page/toolkit';
+import { hostToolArgs, type ExecErr, type ExecOk, type Result, type ToolCall } from '@page/toolkit';
 import type { AgentConfig, AgentDeps, ExitStatus } from './agent.ts';
 import type { AgentTask } from './prompts.ts';
 
@@ -62,6 +62,7 @@ export function recordingDeps(deps: AgentDeps): Recording & { deps: AgentDeps } 
         clock.push(t);
         return t;
       },
+      ...(deps.signal === undefined ? {} : { signal: deps.signal }),
     },
   };
 }
@@ -76,9 +77,13 @@ export class ReplayDivergence extends Error {
 
 function sameCall(a: ToolCall, b: ToolCall): boolean {
   if (a.kind === 'exec') return b.kind === 'exec' && a.command === b.command;
-  return (
-    b.kind === 'edit' && a.path === b.path && a.oldText === b.oldText && a.newText === b.newText
-  );
+  if (a.kind === 'edit') {
+    return (
+      b.kind === 'edit' && a.path === b.path && a.oldText === b.oldText && a.newText === b.newText
+    );
+  }
+  if (b.kind !== 'host_tool') return false;
+  return JSON.stringify(hostToolArgs(a)) === JSON.stringify(hostToolArgs(b));
 }
 
 const describeTurn = (turn: Turn | undefined) =>

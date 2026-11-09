@@ -20,11 +20,51 @@ export interface EditCall {
   newText: string;
 }
 
-export type ToolCall = ExecCall | EditCall;
+/** Commits the agent's changes to the run's `pageagents/` branch on the demo repo. */
+export interface PushBranchCall {
+  kind: 'host_tool';
+  tool: 'git.pushBranch';
+  /** The commit message. */
+  message: string;
+}
+
+/** Opens a PR from the run's branch, once it has been pushed. */
+export interface OpenPrCall {
+  kind: 'host_tool';
+  tool: 'github.openPr';
+  title: string;
+  body: string;
+}
+
+/**
+ * A tool the daemon runs on the host, not in the sandbox, because it needs the network or a
+ * token. The tier policy decides which tiers may call each one.
+ */
+export type HostToolCall = PushBranchCall | OpenPrCall;
+
+export type HostToolName = HostToolCall['tool'];
+
+/** What a host tool did, in words the agent reads. */
+export interface HostToolOutcome {
+  ok: boolean;
+  output: string;
+}
+
+/**
+ * Runs host tools for one run. Resolves for anything the tool does, failures included;
+ * rejects only when something is actually broken, which execute() treats like a runner crash.
+ */
+export interface HostTools {
+  run(call: HostToolCall, timeoutMs: number): Promise<HostToolOutcome>;
+}
+
+export type ToolCall = ExecCall | EditCall | HostToolCall;
 
 export interface ExecContext {
   tier: Tier;
   runner: ExecRunner;
+  /** Tier 2 and up. Unset, every host tool call is refused. */
+  hostTools?: HostTools;
   /** The run's audit trail. Every call writes one step to it. */
   steps: StepLog;
   timeoutMs?: number;

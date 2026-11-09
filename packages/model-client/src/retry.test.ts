@@ -111,6 +111,55 @@ describe('withRetries', () => {
     expect(time.sleeps).toEqual([400]);
   });
 
+  it('does not retry once the caller aborts', async () => {
+    const { client, calls } = scripted([failure('network'), success]);
+    const controller = new AbortController();
+    controller.abort();
+    const result = await withRetries(client, { sleep: () => Promise.resolve() }).complete(
+      messages,
+      { signal: controller.signal },
+    );
+    expect(result).toEqual(failure('network'));
+    expect(calls).toEqual([{ signal: controller.signal }]);
+  });
+
+  it('stops waiting and does not retry when the caller aborts during the backoff', async () => {
+    const { client, calls } = scripted([failure('network'), success]);
+    const controller = new AbortController();
+    const waits: (AbortSignal | undefined)[] = [];
+    const sleep = (_ms: number, signal?: AbortSignal) => {
+      waits.push(signal);
+      controller.abort();
+      return Promise.resolve();
+    };
+    const result = await withRetries(client, { sleep }).complete(messages, {
+      signal: controller.signal,
+    });
+    expect(result).toEqual(failure('network'));
+    expect(calls).toHaveLength(1);
+    expect(waits).toEqual([controller.signal]);
+  });
+
+  it('cuts the real backoff short when the caller aborts', async () => {
+    const { client, calls } = scripted([failure('network'), success]);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 20);
+    const startedAt = Date.now();
+    const result = await withRetries(client, { baseDelayMs: 60_000 }).complete(messages, {
+      signal: controller.signal,
+    });
+    expect(result).toEqual(failure('network'));
+    expect(calls).toHaveLength(1);
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+  });
+
+  it('does not retry an aborted call', async () => {
+    const { client, calls } = scripted([failure('aborted'), success]);
+    const result = await withRetries(client, { sleep: () => Promise.resolve() }).complete(messages);
+    expect(result).toEqual(failure('aborted'));
+    expect(calls).toHaveLength(1);
+  });
+
   it('passes no timeout through when the caller gave none', async () => {
     const { client, calls } = scripted([failure('network'), success]);
     await withRetries(client, fakeTime()).complete(messages);

@@ -1,7 +1,11 @@
 import { once } from 'node:events';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { nodeToServerEventFixtures, stepFixture } from '@page/contracts/fixtures';
+import {
+  nodeToServerEventFixtures,
+  serverToNodeEventFixtures,
+  stepFixture,
+} from '@page/contracts/fixtures';
 import { pino } from 'pino';
 import { Server } from 'socket.io';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -10,6 +14,7 @@ import { NODE_NAMESPACE, SocketIoLink } from './socket-io-link.ts';
 
 const logger = pino({ enabled: false });
 const step = nodeToServerEventFixtures['node.step'];
+const kill = serverToNodeEventFixtures['run.kill'];
 
 describe('FakeLink', () => {
   it('records checked events by name', () => {
@@ -24,6 +29,25 @@ describe('FakeLink', () => {
     const link = new FakeLink();
     expect(() => link.send('node.step', { ...step, v: 2 as 1 })).toThrow();
     expect(link.sent).toEqual([]);
+  });
+
+  it('delivers server events to their handlers', () => {
+    const link = new FakeLink();
+    const kills: unknown[] = [];
+    link.on('run.kill', (payload) => kills.push(payload));
+    link.deliver('run.kill', kill);
+    link.deliver('run.chat', serverToNodeEventFixtures['run.chat']);
+    expect(kills).toEqual([kill]);
+  });
+
+  it('drops and logs a server event the contract rejects', () => {
+    const lines: string[] = [];
+    const link = new FakeLink(pino({}, { write: (line: string) => lines.push(line) }));
+    const kills: unknown[] = [];
+    link.on('run.kill', (payload) => kills.push(payload));
+    link.deliver('run.kill', { ...kill, runId: 'not-a-uuid' });
+    expect(kills).toEqual([]);
+    expect(JSON.parse(lines[0]!)).toMatchObject({ event: 'run.kill', level: 40 });
   });
 
   it('logs what it would send when given a logger', async () => {
@@ -83,6 +107,19 @@ describe('SocketIoLink', () => {
       );
     });
     expect(events).toEqual(['node.step', 'node.diff']);
+    await link.close();
+  });
+
+  it('passes server events that match the contract to their handlers', async () => {
+    const { url, nodes } = await orchestrator('s3cret');
+    nodes.on('connection', (socket) => {
+      socket.emit('run.kill', { ...kill, runId: 'not-a-uuid' });
+      socket.emit('run.kill', kill);
+    });
+    const link = new SocketIoLink({ url, secret: 's3cret', logger });
+    const kills: unknown[] = [];
+    link.on('run.kill', (payload) => kills.push(payload));
+    await expect.poll(() => kills).toEqual([kill]);
     await link.close();
   });
 

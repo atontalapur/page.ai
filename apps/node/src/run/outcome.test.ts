@@ -24,6 +24,14 @@ describe('finishedEvent', () => {
     expect(schema.parse(event)).toEqual(event);
   });
 
+  it('carries the PR the run opened', () => {
+    const prUrl = 'https://github.com/acme/shop/pull/4';
+    const event = finishedEvent(runId, 2, agent('submitted'), [], prUrl);
+    expect(event).toMatchObject({ status: 'succeeded', prUrl });
+    expect(schema.parse(event)).toEqual(event);
+    expect(finishedEvent(runId, 2, { kind: 'killed' }, [], prUrl)).toMatchObject({ prUrl });
+  });
+
   it.each(['step_limit', 'cost_limit', 'time_limit'] as const)(
     'escalates a %s to the next tier with what was tried',
     (status) => {
@@ -62,6 +70,20 @@ describe('finishedEvent', () => {
     expect(event.status).toBe('failed');
     expect(event.note?.blocker).toMatch(blocker);
     expect(schema.parse(event)).toEqual(event);
+  });
+
+  it('reports a killed run as killed, with what it tried', () => {
+    const event = finishedEvent(runId, 2, { kind: 'killed' }, ['ls']);
+    expect(event).toMatchObject({
+      status: 'killed',
+      note: { tried: ['ls'], blocker: /stopped the run/ },
+    });
+    expect(schema.parse(event)).toEqual(event);
+  });
+
+  it('describes an agent that stopped on its abort signal', () => {
+    const event = finishedEvent(runId, 1, agent('aborted'), []);
+    expect(event).toMatchObject({ status: 'failed', note: { blocker: /Stopped/ } });
   });
 
   it('keeps the note inside the contract limits', () => {

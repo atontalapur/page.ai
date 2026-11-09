@@ -33,13 +33,13 @@ pnpm --filter @page/node start
 | `SANDBOX_IMAGE`               | `page-sandbox` | Built from `infra/sandbox/Dockerfile`   |
 | `OPENROUTER_API_KEY`          |                | Required unless `USE_FAKE_ADAPTERS`     |
 | `OPENROUTER_MODEL`            |                | Required unless `USE_FAKE_ADAPTERS`     |
-| `GITHUB_TOKEN`, `GITHUB_REPO` |                | Required unless fakes; used by #10      |
+| `GITHUB_TOKEN`, `GITHUB_REPO` |                | Required unless fakes; Tier 2 tools     |
 | `USE_FAKE_ADAPTERS`           | `false`        | See below                               |
 | `LOG_LEVEL`                   | `info`         |                                         |
 
-With `USE_FAKE_ADAPTERS=true` there is no Docker, model or socket. Each run gets a fake
-sandbox whose commands exit 0, a scripted model that runs `git status` and submits, and a
-link that logs events instead of sending them. Postgres stays real, so steps still land in
+With `USE_FAKE_ADAPTERS=true` there is no Docker, model, GitHub or socket. Each run gets a
+fake sandbox whose commands exit 0, a scripted model that runs `git status` and submits, an
+in-memory GitHub, and a link that logs events instead of sending them. Postgres stays real, so steps still land in
 the `steps` table.
 
 Two things have to exist before a job will run:
@@ -51,6 +51,23 @@ Two things have to exist before a job will run:
 
 Fix jobs need a `report` (the triaged error report). A job without one fails at once with
 a note saying so, and no container starts.
+
+## Tier 2: pushing the fix and opening a PR
+
+From Tier 2 the agent can call two host tools, `git.pushBranch` (a `page_push_branch`
+block) and `github.openPr` (`page_open_pr`). They run in the daemon, not the sandbox,
+because the sandbox has no network and the token stays on the host. At Tier 1 both are
+refused, and the refusal is a `host_tool` step like any other.
+
+The push doesn't use git. The daemon reads the agent's changes out of the container
+(`git status`, then `stat` and `base64` for each file) and commits them through GitHub's
+API to `pageagents/<runId>` on `GITHUB_REPO`, over `main`. Each push builds the whole
+change over `main` again, so a second push fast-forwards the branch. The PR names the issue
+and run, and `node.run.finished` carries its URL as `prUrl`.
+
+The sandbox workspace has to match the demo repo's `main`, since paths and contents are
+copied across as they are. Setting up the repo and the token is in
+[`docs/demo-repo.md`](../../docs/demo-repo.md).
 
 ## Tests
 
