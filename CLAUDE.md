@@ -164,6 +164,9 @@ docker`, force pushes, writes outside `/workspace` or under `.github/`, `.git/`,
   and "Not done yet" / "Limits" for anything untested. Say plainly what wasn't run.
 - Stacked PRs list the merge order at the top of each body.
 - When a card is finished, add a line to `docs/contributions.md`: date, card, who, what.
+- When asked to resolve PR comments, read the reviewer's inline comments, patch each one,
+  verify the patch works, and resolve the thread on GitHub. Without permission to resolve,
+  tell the user which threads to resolve and show the proof that each is fixed.
 
 ## Reviews
 
