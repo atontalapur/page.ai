@@ -41,7 +41,12 @@ catalog:
 allowBuilds:
   core-js: false
 
-# GHSA-g3hv-75wg-m249 (minimatch ReDoS) is fixed only in 11.0.1+, but eslint, typescript-eslint
-# and ts-morph (via shadcn) still ask for ^10. Drop this once they depend on ^11.
+# GHSA-g3hv-75wg-m249 (minimatch ReDoS) is fixed only in 11.0.1+, but these four still ask for
+# ^10 in their latest releases. Scoped to them, so a new dependency that needs minimatch 10
+# (11 drops makeRe) isn't forced onto 11, and pinned to the version that was tested.
+# Drop each entry once its parent depends on ^11.
 overrides:
-  'minimatch@>=7.0.0 <11.0.1': ^11.0.5
+  'eslint>minimatch': 11.0.5
+  '@eslint/config-array>minimatch': 11.0.5
+  '@typescript-eslint/typescript-estree>minimatch': 11.0.5
+  '@ts-morph/common>minimatch': 11.0.5
