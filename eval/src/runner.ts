@@ -57,8 +57,8 @@ export function skipReason(scenario: Scenario): string | undefined {
  * Plays every scenario `runsPerScenario` times under one configuration and collects the
  * results. Each run climbs the configuration's tiers while the agent runs out of budget,
  * and stops at a submit or any other exit, as the daemon does; check.sh runs
- * after every attempt, so an escalated patch that already fixed the bug still counts, as
- * a false escalation.
+ * after every attempt, so a patch that already fixed the bug still counts: as a false
+ * escalation when a higher tier took over, or a false page when the run paged.
  */
 export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
   const now = options.now ?? (() => new Date());
@@ -138,7 +138,9 @@ export function scenarioRun(scenario: Scenario, run: number, attempts: Attempt[]
     paged: final === undefined,
     timeToFixMs: fixed ? elapsed(landed) : null,
     timeToPageMs: final === undefined ? elapsed(attempts.length - 1) : null,
-    falseEscalations: attempts.filter((a) => a.exitStatus !== 'submitted' && a.checkPassed).length,
+    // Only a tier that handed the run on escalated. The last one, when it gave up, paged.
+    falseEscalations: attempts.slice(0, -1).filter((a) => a.checkPassed).length,
+    falsePage: final === undefined && (attempts.at(-1)?.checkPassed ?? false),
     costUsd: attempts.reduce((usd, a) => usd + a.costUsd, 0),
   };
 }
@@ -156,6 +158,7 @@ export function summarize(runs: ScenarioRun[]): EvalSummary {
     costUsd,
     costPerFixUsd: fixed === 0 ? null : costUsd / fixed,
     falseEscalations: runs.reduce((n, r) => n + r.falseEscalations, 0),
+    falsePages: runs.filter((r) => r.falsePage).length,
     steps,
     blockedSteps,
     blockedPer100Steps: steps === 0 ? null : (blockedSteps / steps) * 100,

@@ -88,7 +88,15 @@ describe('runEval', () => {
       timeToFixMs: null,
       timeToPageMs: 3000,
       falseEscalations: 1,
+      falsePage: false,
     });
+  });
+
+  it('counts a passing patch the last tier gave up on as a false page, not an escalation', async () => {
+    const { fn } = scripted([{ exitStatus: 'step_limit', checkPassed: true }]);
+    const results = await runEval(base(fn, { config: 'tier1-only' }));
+    expect(results.runs[0]).toMatchObject({ paged: true, falseEscalations: 0, falsePage: true });
+    expect(results.summary).toMatchObject({ falseEscalations: 0, falsePages: 1 });
   });
 
   it('counts a submitted patch that fails check.sh as not fixed', async () => {

@@ -36,7 +36,8 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5
   including new files and its own commits) is then checked in a second fresh sandbox:
   `break.sh`, the diff, `check.sh`. The check never enters the agent's sandbox and isn't
   squeezed into the last seconds of its wall clock. It runs on every outcome, so a tier
-  that gave up on a patch that already passed is counted as a false escalation.
+  that escalated a patch that already passed counts as a false escalation, and a run
+  that paged with a passing patch as a false page.
 - From Tier 2 the agent's push and PR go to an in-memory GitHub, never the demo repo.
 - `--max-cost` is the total budget. Each attempt's agent limit is lowered to what is
   left, and no attempt starts with less than $0.05 left. A run the budget cut short, at

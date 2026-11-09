@@ -34,6 +34,7 @@
       "timeToFixMs": 123563,
       "timeToPageMs": null,
       "falseEscalations": 0,
+      "falsePage": false,
       "costUsd": 0
     },
     {
@@ -61,6 +62,7 @@
       "timeToFixMs": 109269,
       "timeToPageMs": null,
       "falseEscalations": 0,
+      "falsePage": false,
       "costUsd": 0
     },
     {
@@ -88,6 +90,7 @@
       "timeToFixMs": 162807,
       "timeToPageMs": null,
       "falseEscalations": 0,
+      "falsePage": false,
       "costUsd": 0
     }
   ],
@@ -99,6 +102,7 @@
     "costUsd": 0,
     "costPerFixUsd": 0,
     "falseEscalations": 0,
+    "falsePages": 0,
     "steps": 31,
     "blockedSteps": 1,
     "blockedPer100Steps": 3.225806451612903

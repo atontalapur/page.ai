@@ -66,8 +66,10 @@ export const scenarioRunSchema = z.strictObject({
   paged: z.boolean(),
   timeToFixMs: msSchema.nullable(),
   timeToPageMs: msSchema.nullable(),
-  /** Tiers that gave up although their patch already passed check.sh. */
+  /** Tiers that escalated although their patch already passed check.sh. */
   falseEscalations: z.int().nonnegative(),
+  /** The run paged although the last tier's patch already passed check.sh. */
+  falsePage: z.boolean(),
   costUsd: costSchema,
 });
 export type ScenarioRun = z.infer<typeof scenarioRunSchema>;
@@ -80,6 +82,7 @@ export const evalSummarySchema = z.strictObject({
   /** Null when nothing was fixed. */
   costPerFixUsd: costSchema.nullable(),
   falseEscalations: z.int().nonnegative(),
+  falsePages: z.int().nonnegative(),
   steps: z.int().nonnegative(),
   blockedSteps: z.int().nonnegative(),
   /** Null when no step ran. */

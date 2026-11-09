@@ -106,6 +106,6 @@ for (const skip of results.skipped) console.log(`  ${skip.scenario}: skipped, ${
 if (results.stoppedForBudget) console.log(`budget of $${maxCost} reached; later runs not played`);
 console.log(
   `fixed ${s.fixed}/${s.runs} (${(s.fixRate * 100).toFixed(0)}%), $${s.costUsd.toFixed(4)}, ` +
-    `${s.blockedSteps}/${s.steps} steps blocked, ${s.falseEscalations} false escalations`,
+    `${s.blockedSteps}/${s.steps} steps blocked, ${s.falseEscalations} false escalations, ${s.falsePages} false pages`,
 );
 console.log(`results: ${path}`);
