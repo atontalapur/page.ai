@@ -219,6 +219,15 @@ export function parseFrameLines(output: string): Record<string, string> {
   return JSON.parse(line.slice(FRAME_LINES_MARKER.length)) as Record<string, string>;
 }
 
+/** A script that applies `patch` in /workspace, for a sandbox shell. */
+export function applyPatchScript(patch: string): string {
+  // Quoted heredoc, so git apply gets the patch byte for byte. The delimiter can't
+  // appear in a patch line, which starts with a space, +, - or a header. A --binary data
+  // line is 1 + 5k characters long, so it can't be the 14-character delimiter either.
+  const body = patch.endsWith('\n') ? patch : `${patch}\n`;
+  return `git apply --whitespace=nowarn - <<'PAGE_PATCH_EOF'\n${body}PAGE_PATCH_EOF\n`;
+}
+
 /**
  * The #6 self-test: on a clean demo app check.sh passes, after break.sh it fails, and
  * after reference_fix.patch it passes again. Stops at the first step that goes wrong.
@@ -232,10 +241,7 @@ export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<Se
     read('check.sh'),
     read('reference_fix.patch'),
   ]);
-  // Quoted heredoc, so git apply gets the patch byte for byte. The delimiter can't
-  // appear in a patch line, which always starts with a space, +, - or a header.
-  const body = patch.endsWith('\n') ? patch : `${patch}\n`;
-  const apply = `git apply --whitespace=nowarn - <<'PAGE_PATCH_EOF'\n${body}PAGE_PATCH_EOF\n`;
+  const apply = applyPatchScript(patch);
   const { report } = scenario.meta;
   // Every cited line must be recorded, so a scenario without frameLines fails here.
   const frames = framesExistScript(
