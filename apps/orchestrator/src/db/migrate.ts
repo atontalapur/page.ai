@@ -1,22 +1,6 @@
-import { readdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import type { Migration } from '@page/db-migrations';
 import { sql } from 'kysely';
 import type { Db } from './database.ts';
-
-export interface Migration {
-  name: string;
-  sql: string;
-}
-
-export const migrationsDir = join(import.meta.dirname, '../../migrations');
-
-/** Reads `*.sql` files from `dir`, ordered by file name. */
-export async function loadMigrations(dir = migrationsDir): Promise<Migration[]> {
-  const names = (await readdir(dir)).filter((name) => name.endsWith('.sql')).sort();
-  return Promise.all(
-    names.map(async (name) => ({ name, sql: await readFile(join(dir, name), 'utf8') })),
-  );
-}
 
 /** Applies pending migrations in one transaction and returns the names it applied. */
 export async function migrate(db: Db, migrations: Migration[]): Promise<string[]> {
