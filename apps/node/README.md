@@ -46,8 +46,8 @@ Two things have to exist before a job will run:
 
 - The `fix` queue. The orchestrator creates it at boot; until it has, the daemon logs
   `Queue fix does not exist` and keeps polling.
-- The `steps` table. Until #25 adds it to the orchestrator migrations, create it from
-  `packages/toolkit/src/audit/__fixtures__/steps.sql`.
+- The `steps` table. The orchestrator creates it at boot too, from
+  `apps/orchestrator/migrations/002_runs.sql`.
 
 Fix jobs need a `report` (the triaged error report). A job without one fails at once with
 a note saying so, and no container starts.
