@@ -1,8 +1,27 @@
 import { readFile } from 'node:fs/promises';
+import type { ExitStatus } from '@page/agent';
+import { bugClassSchema, tierSchema } from '@page/contracts';
 import { z } from 'zod';
 
-// The tiers each configuration tries, in order. A run moves up when the agent stops
-// without submitting, the way the orchestrator escalates an issue.
+// Every way an agent run ends. The check below fails typecheck if @page/agent adds one.
+const EXIT_STATUSES = [
+  'submitted',
+  'step_limit',
+  'cost_limit',
+  'time_limit',
+  'format_errors',
+  'model_error',
+  'audit_failed',
+  'aborted',
+] as const satisfies readonly ExitStatus[];
+const everyExitStatus: Exclude<ExitStatus, (typeof EXIT_STATUSES)[number]> extends never
+  ? true
+  : false = true;
+void everyExitStatus;
+export const exitStatusSchema = z.enum(EXIT_STATUSES);
+
+// The tiers each configuration tries, in order. A run moves up when the agent runs out of
+// budget, the way the daemon escalates an issue.
 export const EVAL_CONFIGS = {
   'tier1-only': [1],
   'tier3-start': [3],
@@ -11,15 +30,14 @@ export const EVAL_CONFIGS = {
 export type EvalConfig = keyof typeof EVAL_CONFIGS;
 export const evalConfigSchema = z.enum(Object.keys(EVAL_CONFIGS) as [EvalConfig, ...EvalConfig[]]);
 
-const tierSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
 const costSchema = z.number().nonnegative();
 const msSchema = z.int().nonnegative();
 
 /** One agent run at one tier, in a fresh sandbox broken by the scenario's break.sh. */
 export const attemptSchema = z.strictObject({
   tier: tierSchema,
-  exitStatus: z.string(),
-  /** check.sh on the sandbox as the agent left it, whether or not it submitted. */
+  exitStatus: exitStatusSchema,
+  /** check.sh on the agent's diff, whether or not it submitted. */
   checkPassed: z.boolean(),
   /** Set when the agent opened a PR (Tier 2 and up). Eval runs use a fake GitHub. */
   prOpened: z.boolean(),
@@ -36,7 +54,7 @@ export type Attempt = z.infer<typeof attemptSchema>;
 /** One scenario played once under a configuration: one attempt per tier it reached. */
 export const scenarioRunSchema = z.strictObject({
   scenario: z.string(),
-  class: z.string(),
+  class: bugClassSchema,
   expectedTier: tierSchema,
   run: z.int().positive(),
   attempts: z.array(attemptSchema),
