@@ -108,6 +108,11 @@ for (const skip of results.skipped) console.log(`  ${skip.scenario}: skipped, ${
 for (const e of results.errors)
   console.log(`  ${e.scenario} #${e.run} T${e.tier}: error, ${e.message}`);
 if (results.stoppedForBudget) console.log(`budget of $${maxCost} reached; later runs not played`);
+if (results.stoppedForProvider) {
+  console.log(
+    'model provider failed (see the last error); later runs not played. Rerun them later.',
+  );
+}
 console.log(
   `fixed ${s.fixed}/${s.runs} (${(s.fixRate * 100).toFixed(0)}%), $${s.costUsd.toFixed(4)}, ` +
     `${s.blockedSteps}/${s.steps} steps blocked, ${s.falseEscalations} false escalations, ${s.falsePages} false pages`,

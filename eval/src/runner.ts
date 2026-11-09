@@ -38,6 +38,21 @@ export class AttemptError extends Error {
   }
 }
 
+/**
+ * The agent ended on a model error that `withRetries` couldn't get past: a rate limit or
+ * used-up quota, auth, credits, a provider outage or a malformed reply. It says nothing
+ * about the agent, so the run is dropped rather than counted as a page, and the eval stops,
+ * since the next attempt would hit the same wall.
+ */
+export class ProviderError extends AttemptError {
+  override name = 'ProviderError';
+  readonly kind: string;
+  constructor(kind: string, message: string, costUsd: number, options?: ErrorOptions) {
+    super(`model provider failed (${kind}): ${message}`, costUsd, options);
+    this.kind = kind;
+  }
+}
+
 /** The least budget an attempt starts with. Below it the run would only be cut short. */
 export const MIN_ATTEMPT_USD = 0.05;
 
@@ -82,6 +97,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
   const errors: EvalResults['errors'] = [];
   let spent = 0;
   let stoppedForBudget = false;
+  let stoppedForProvider = false;
 
   const playable = options.scenarios.filter((scenario) => {
     const reason = skipReason(scenario);
@@ -111,6 +127,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
           spent += error instanceof AttemptError ? error.costUsd : limit;
           errors.push({ scenario: scenario.id, run, tier, message: String(error) });
           crashed = true;
+          stoppedForProvider = error instanceof ProviderError;
           break;
         }
         spent += attempt.costUsd;
@@ -124,7 +141,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
       }
       // A run cut short by the budget, at any tier, says nothing about the agent, so it is
       // left out, and nothing after it runs.
-      if (stoppedForBudget) break outer;
+      if (stoppedForBudget || stoppedForProvider) break outer;
       if (crashed) continue;
       const result = scenarioRun(scenario, run, attempts);
       runs.push(result);
@@ -143,6 +160,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     maxCostUsd: options.maxCostUsd,
     spentUsd: spent,
     stoppedForBudget,
+    stoppedForProvider,
     runs,
     skipped,
     errors,

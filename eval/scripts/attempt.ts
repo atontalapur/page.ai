@@ -15,7 +15,7 @@ import {
   StepLog,
 } from '@page/toolkit';
 import type { Attempt } from '../src/results.ts';
-import { AttemptError, type AttemptFn } from '../src/runner.ts';
+import { AttemptError, ProviderError, type AttemptFn } from '../src/runner.ts';
 import type { Scenario } from '../src/scenario.ts';
 import {
   agentDiff,
@@ -96,6 +96,11 @@ export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
           },
         );
         agentCostUsd = run.costUsd;
+        // A provider failure isn't the agent paging anyone. The runner drops the run.
+        if (run.exitStatus === 'model_error') {
+          const kind = run.error?.kind ?? 'unknown';
+          throw new ProviderError(kind, run.error?.message ?? 'no detail', run.costUsd);
+        }
         agent = {
           tier,
           exitStatus: run.exitStatus,
@@ -120,7 +125,7 @@ export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
       );
       return { ...agent, checkPassed };
     } catch (error) {
-      if (agentCostUsd === undefined) throw error;
+      if (agentCostUsd === undefined || error instanceof AttemptError) throw error;
       const message = error instanceof Error ? error.message : String(error);
       throw new AttemptError(message, agentCostUsd, { cause: error });
     }

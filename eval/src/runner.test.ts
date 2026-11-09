@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { evalResultsSchema, loadResults, type Attempt } from './results.ts';
 import {
   AttemptError,
+  ProviderError,
   resultsFileName,
   runEval,
   type AttemptFn,
@@ -222,6 +223,42 @@ describe('runEval', () => {
     ]);
     expect(calls[1]!.costLimitUsd).toBeCloseTo(0.5);
     expect(results.spentUsd).toBeCloseTo(0.03);
+  });
+
+  it('stops the eval at a provider error, dropping the run instead of paging it', async () => {
+    const calls: string[] = [];
+    const fn: AttemptFn = (s, tier) => {
+      calls.push(s.id);
+      if (s.id === '002-b') {
+        return Promise.reject(new ProviderError('rate_limited', 'HTTP 429: quota', 0.01));
+      }
+      return Promise.resolve(attempt(tier));
+    };
+    const results = await runEval(
+      base(fn, { scenarios: [scenario('001-a'), scenario('002-b'), scenario('003-c')] }),
+    );
+    expect(calls).toEqual(['001-a', '002-b']);
+    expect(results.runs.map((r) => r.scenario)).toEqual(['001-a']);
+    expect(results.summary.falsePages).toBe(0);
+    expect(results.stoppedForProvider).toBe(true);
+    expect(results.stoppedForBudget).toBe(false);
+    expect(results.errors).toEqual([
+      {
+        scenario: '002-b',
+        run: 1,
+        tier: 1,
+        message: 'ProviderError: model provider failed (rate_limited): HTTP 429: quota',
+      },
+    ]);
+    expect(results.spentUsd).toBeCloseTo(0.02);
+    expect(evalResultsSchema.parse(results)).toEqual(results);
+  });
+
+  it('reads a results file written before stoppedForProvider existed', async () => {
+    const { fn } = scripted([]);
+    const old: Record<string, unknown> = { ...(await runEval(base(fn))) };
+    delete old.stoppedForProvider;
+    expect(evalResultsSchema.parse(old).stoppedForProvider).toBe(false);
   });
 
   it('starts no attempt with less than the minimum left', async () => {
