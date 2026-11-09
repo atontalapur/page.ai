@@ -14,7 +14,8 @@
     "@page/agent": "workspace:*",
     "@page/contracts": "workspace:*",
     "@page/model-client": "workspace:*",
-    "@page/toolkit": "workspace:*"
+    "@page/toolkit": "workspace:*",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@page/config": "workspace:*",
