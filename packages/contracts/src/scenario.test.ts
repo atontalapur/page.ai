@@ -32,6 +32,17 @@ describe('scenarioMetaSchema', () => {
     expect(() => scenarioMetaSchema.parse({ ...valid, report: 'x'.repeat(4_001) })).toThrow();
   });
 
+  it('accepts frameLines keyed path:line', () => {
+    const meta = { ...valid, frameLines: { 'apps/demo-app/a.ts:3': '  return f();' } };
+    expect(scenarioMetaSchema.parse(meta)).toEqual(meta);
+  });
+
+  it('rejects a frameLines key without a line', () => {
+    for (const key of ['apps/demo-app/a.ts', 'apps/demo-app/a.ts:0', 'a b.ts:1']) {
+      expect(() => scenarioMetaSchema.parse({ ...valid, frameLines: { [key]: 'x' } })).toThrow();
+    }
+  });
+
   it('rejects unknown keys', () => {
     expect(() => scenarioMetaSchema.parse({ ...valid, fix: 'x' })).toThrow();
   });

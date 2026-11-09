@@ -16,6 +16,10 @@ export const scenarioMetaSchema = z.strictObject({
   // build one: the request, the status and the error with its stack. It must not say why
   // the bug happens or how to fix it; `description` is for people, and names the cause.
   report: z.string().trim().min(1).max(4_000),
+  // The text of each repo line the report's stack cites, as break.sh leaves it, keyed
+  // `path:line`. If one changes, the report points at the wrong code, so the self-test fails
+  // (#79). `pnpm scenarios:frames` records it.
+  frameLines: z.record(z.string().regex(/^\S+:[1-9]\d*$/, 'path:line'), z.string()).optional(),
 });
 
 export type ScenarioMeta = z.infer<typeof scenarioMetaSchema>;

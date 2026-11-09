@@ -2,5 +2,8 @@
   "class": "backend-api",
   "expectedTier": 1,
   "description": "GET /api/products/[slug] decodes the already-decoded slug again, so a slug with a % throws URIError and returns 500 instead of 404",
-  "report": "GET /api/products/50%25-off returned 500\n\nURIError: URI malformed\n    at decodeURIComponent (<anonymous>)\n    at GET (apps/demo-app/src/app/api/products/[slug]/route.ts:7:16)"
+  "report": "GET /api/products/50%25-off returned 500\n\nURIError: URI malformed\n    at decodeURIComponent (<anonymous>)\n    at GET (apps/demo-app/src/app/api/products/[slug]/route.ts:7:16)",
+  "frameLines": {
+    "apps/demo-app/src/app/api/products/[slug]/route.ts:7": "  const slug = decodeURIComponent((await ctx.params).slug);"
+  }
 }

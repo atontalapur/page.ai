@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Scenario } from './scenario.ts';
 import {
+  frameLinesScript,
   framesExistScript,
   type HostShell,
   NO_CHECK_IN_SANDBOX,
@@ -70,7 +71,7 @@ describe('selfTest', () => {
       NO_CHECK_IN_SANDBOX,
       'CHECK',
       'BREAK',
-      framesExistScript([]),
+      framesExistScript([], [], {}),
       'CHECK',
       expect.stringContaining('+++ b/x\nPAGE_PATCH_EOF\n'),
       'CHECK',
@@ -126,13 +127,18 @@ describe('selfTest', () => {
     expect(detail.at(-1)).toBe('line 99');
   });
 
-  it('checks the report frames right after break.sh', async () => {
+  it('checks the report frames against meta.json frameLines right after break.sh', async () => {
     scenario.meta.report = 'GET / returned 500\n\nError: boom\n    at apps/demo-app/a.ts:3:7';
+    scenario.meta.frameLines = { 'apps/demo-app/a.ts:3': '  return f();' };
     const { sh, scripts } = fakeSandbox();
     const result = await selfTest(scenario, sh);
     expect(result.passed).toBe(true);
     expect(scripts[3]).toBe(
-      framesExistScript([{ path: 'apps/demo-app/a.ts', line: 3, column: 7 }]),
+      framesExistScript(
+        [{ path: 'apps/demo-app/a.ts', line: 3, column: 7 }],
+        [],
+        scenario.meta.frameLines,
+      ),
     );
     expect(scripts[2]).toBe('BREAK');
     expect(scripts[4]).toBe('CHECK');
@@ -260,16 +266,21 @@ describe('framesExistScript', { timeout: 20_000 }, () => {
     await writeFile(join(dir, path), text);
   }
 
-  function run(
-    frames: ReportFrame[],
-    unchecked: string[] = [],
-  ): { code: number | null; output: string } {
+  function sh(script: string): { code: number | null; output: string } {
     const { status, stdout, stderr } = spawnSync('sh', ['-s'], {
       cwd: dir,
-      input: framesExistScript(frames, unchecked),
+      input: script,
       encoding: 'utf8',
     });
     return { code: status, output: stdout + stderr };
+  }
+
+  function run(
+    frames: ReportFrame[],
+    unchecked: string[] = [],
+    lines?: Record<string, string>,
+  ): { code: number | null; output: string } {
+    return sh(framesExistScript(frames, unchecked, lines));
   }
 
   it('passes when every frame is inside its file', async () => {
@@ -363,6 +374,71 @@ describe('framesExistScript', { timeout: 20_000 }, () => {
     ]);
     expect(code).toBe(1);
     expect(output).toBe(`gone.ts:1:1: no such file\nit's$HOME.ts:9:1: past the end of the file\n`);
+  });
+
+  describe('with frameLines', () => {
+    const frame = { path: 'a.ts', line: 2, column: 3 };
+
+    it('passes when the cited line reads as recorded', async () => {
+      await write('a.ts', 'one\n  f();\r\n');
+      expect(run([frame], [], { 'a.ts:2': '  f();' })).toEqual({ code: 0, output: '' });
+    });
+
+    it('reports a cited line that moved inside its file', async () => {
+      // A line added at the top: line 2 is now what line 1 was, and column 3 is still the
+      // start of a token, so only the recorded text catches it.
+      await write('a.ts', '// new\none\n  f();\n');
+      expect(run([frame], [], { 'a.ts:2': '  f();' })).toEqual({
+        code: 1,
+        output: 'a.ts:2:3: the line changed since the report was captured, from "f();" to "one"\n',
+      });
+    });
+
+    it('reports a frame with no entry and an entry with no frame', async () => {
+      await write('a.ts', 'one\n  f();\n');
+      expect(run([frame], [], { 'a.ts:1': 'one' })).toEqual({
+        code: 1,
+        output:
+          'a.ts:2:3: not in meta.json frameLines; run pnpm scenarios:frames\n' +
+          'a.ts:1: in meta.json frameLines, but no frame cites it\n',
+      });
+    });
+
+    it('still reports a missing file before a missing entry', () => {
+      expect(run([{ path: 'gone.ts', line: 1, column: 1 }], [], {})).toEqual({
+        code: 1,
+        output: 'gone.ts:1:1: no such file\n',
+      });
+    });
+  });
+
+  describe('frameLinesScript', () => {
+    it('prints each cited line keyed path:line, once per line', async () => {
+      await write('a/[slug]/page.tsx', 'one\n  f(g());\r\n');
+      const frames = [
+        { path: 'a/[slug]/page.tsx', line: 2, column: 3 },
+        { path: 'a/[slug]/page.tsx', line: 2, column: 5 },
+        { path: 'a/[slug]/page.tsx', line: 1, column: 1 },
+      ];
+      const { code, output } = sh(frameLinesScript(frames));
+      expect(code).toBe(0);
+      expect(JSON.parse(output)).toEqual({
+        'a/[slug]/page.tsx:2': '  f(g());',
+        'a/[slug]/page.tsx:1': 'one',
+      });
+    });
+
+    it('exits 1 for a missing file or a line past the end', async () => {
+      await write('a.ts', 'one\n');
+      const frames = [
+        { path: 'gone.ts', line: 1, column: 1 },
+        { path: 'a.ts', line: 5, column: 1 },
+      ];
+      expect(sh(frameLinesScript(frames))).toEqual({
+        code: 1,
+        output: 'gone.ts:1:1: no such file\na.ts:5:1: past the end of the file\n',
+      });
+    });
   });
 });
 

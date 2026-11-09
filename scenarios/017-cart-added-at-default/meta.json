@@ -2,5 +2,12 @@
   "class": "database",
   "expectedTier": 1,
   "description": "Migration adds cart_items.added_at as not null and drops its default, so every add to cart violates the constraint",
-  "report": "POST /api/cart/items returned 500\n\nerror: null value in column \"added_at\" of relation \"cart_items\" violates not-null constraint\n    at async apps/demo-app/src/shop/cart.ts:98:5\n    at async Object.transaction (apps/demo-app/src/db/db.ts:32:24)\n    at async addItem (apps/demo-app/src/shop/cart.ts:78:3)\n    at async apps/demo-app/src/app/api/cart/items/route.ts:20:5\n    at async handle (apps/demo-app/src/app/api/respond.ts:22:12) {\n  length: 264,\n  severity: 'ERROR',\n  code: '23502',\n  detail: 'Failing row contains (0b8cbfe1-412b-47be-a274-65b6f1c5eb58, 1, 1, null).',\n  hint: undefined,\n  position: undefined,\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: undefined,\n  schema: 'public',\n  table: 'cart_items',\n  column: 'added_at',\n  dataType: undefined,\n  constraint: undefined,\n  file: 'execMain.c',\n  line: '2213',\n  routine: 'ReportNotNullViolationError'\n}"
+  "report": "POST /api/cart/items returned 500\n\nerror: null value in column \"added_at\" of relation \"cart_items\" violates not-null constraint\n    at async apps/demo-app/src/shop/cart.ts:98:5\n    at async Object.transaction (apps/demo-app/src/db/db.ts:32:24)\n    at async addItem (apps/demo-app/src/shop/cart.ts:78:3)\n    at async apps/demo-app/src/app/api/cart/items/route.ts:20:5\n    at async handle (apps/demo-app/src/app/api/respond.ts:22:12) {\n  length: 264,\n  severity: 'ERROR',\n  code: '23502',\n  detail: 'Failing row contains (0b8cbfe1-412b-47be-a274-65b6f1c5eb58, 1, 1, null).',\n  hint: undefined,\n  position: undefined,\n  internalPosition: undefined,\n  internalQuery: undefined,\n  where: undefined,\n  schema: 'public',\n  table: 'cart_items',\n  column: 'added_at',\n  dataType: undefined,\n  constraint: undefined,\n  file: 'execMain.c',\n  line: '2213',\n  routine: 'ReportNotNullViolationError'\n}",
+  "frameLines": {
+    "apps/demo-app/src/shop/cart.ts:98": "    await tx.query(",
+    "apps/demo-app/src/db/db.ts:32": "        const result = await fn(wrap(client));",
+    "apps/demo-app/src/shop/cart.ts:78": "  await db.transaction(async (tx) => {",
+    "apps/demo-app/src/app/api/cart/items/route.ts:20": "    await addItem(db, cartId, parsed.data.productId, parsed.data.quantity, settings);",
+    "apps/demo-app/src/app/api/respond.ts:22": "    return await work();"
+  }
 }

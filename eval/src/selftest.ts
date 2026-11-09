@@ -88,27 +88,44 @@ export function uncheckedFrames(report: string): string[] {
   );
 }
 
-// Runs as `node -` in the sandbox. Node counts columns in UTF-16 code units, as V8 does. A
-// frame must land on the start of a token, so most lines that moved but stayed inside the
-// file fail too (#79): an edit rarely leaves a token start at the same column.
-const FRAME_CHECK = String.raw`const { readFileSync } = require('node:fs');
-const problems = [];
-for (const { at, path, line, column } of input.frames) {
-  if (!Number.isSafeInteger(line) || !Number.isSafeInteger(column) || line < 1 || column < 1) {
-    problems.push(at + ': lines and columns are whole numbers from 1');
-    continue;
-  }
+// The scripts below run as `node -` in the sandbox. This reads one line the way V8 numbers
+// them, without its line ending: { source }, undefined past the end, or { error }.
+const READ_LINE = String.raw`const { readFileSync } = require('node:fs');
+function readLine(path, line) {
   let text;
   try {
     text = readFileSync(path, 'utf8');
   } catch (error) {
-    problems.push(at + (error.code === 'ENOENT' ? ': no such file' : ": can't read: " + error.code));
-    continue;
+    return { error: error.code === 'ENOENT' ? 'no such file' : "can't read: " + error.code };
   }
   const lines = text === '' ? [] : text.replace(/\n$/, '').split('\n');
-  const source = lines[line - 1]?.replace(/\r$/, '');
-  if (source === undefined) {
+  return { source: lines[line - 1]?.replace(/\r$/, '') };
+}
+`;
+
+// Node counts columns in UTF-16 code units, as V8 does. With input.lines (meta.json
+// frameLines), each cited line must read as it did when the report was captured, so a line
+// that moved inside its file fails (#79). A frame must also land on the start of a token.
+const FRAME_CHECK = String.raw`const problems = [];
+const cited = new Set();
+for (const { at, key, path, line, column } of input.frames) {
+  cited.add(key);
+  if (!Number.isSafeInteger(line) || !Number.isSafeInteger(column) || line < 1 || column < 1) {
+    problems.push(at + ': lines and columns are whole numbers from 1');
+    continue;
+  }
+  const { error, source } = readLine(path, line);
+  if (error) {
+    problems.push(at + ': ' + error);
+  } else if (source === undefined) {
     problems.push(at + ': past the end of the file');
+  } else if (input.lines && !Object.hasOwn(input.lines, key)) {
+    problems.push(at + ': not in meta.json frameLines; run pnpm scenarios:frames');
+  } else if (input.lines && input.lines[key] !== source) {
+    problems.push(
+      at + ': the line changed since the report was captured, from ' +
+        JSON.stringify(input.lines[key].trim()) + ' to ' + JSON.stringify(source.trim()),
+    );
   } else if (column > source.length) {
     problems.push(at + ': past the end of the line');
   } else {
@@ -117,6 +134,9 @@ for (const { at, path, line, column } of input.frames) {
       problems.push(at + ': not the start of a token in ' + JSON.stringify(source.trim()));
     }
   }
+}
+for (const key of Object.keys(input.lines ?? {})) {
+  if (!cited.has(key)) problems.push(key + ': in meta.json frameLines, but no frame cites it');
 }
 for (const line of input.unchecked) {
   problems.push(line + ': not a repo-relative path:line:column frame');
@@ -127,27 +147,65 @@ if (problems.length > 0) {
 }
 `;
 
-/**
- * A script that exits 1 if a frame's file is gone, its line or column is past the end, or its
- * column isn't the start of a token, and for any stack line in `unchecked`.
- */
-export function framesExistScript(frames: ReportFrame[], unchecked: string[] = []): string {
-  const input = {
-    frames: frames.map((frame) => ({
-      ...frame,
-      at: `${frame.path}:${frame.line}:${frame.column}`,
-    })),
-    unchecked,
-  };
+// Prints the cited lines as a JSON object keyed path:line, or exits 1 if one is missing.
+const FRAME_LINES = String.raw`const found = {};
+const problems = [];
+for (const { at, key, path, line } of input.frames) {
+  const { error, source } = readLine(path, line);
+  if (error) problems.push(at + ': ' + error);
+  else if (source === undefined) problems.push(at + ': past the end of the file');
+  else found[key] = source;
+}
+if (problems.length > 0) {
+  console.error(problems.join('\n'));
+  process.exitCode = 1;
+} else {
+  console.log(JSON.stringify(found));
+}
+`;
+
+/** The `meta.json` frameLines key for a frame. */
+export function frameLineKey(frame: ReportFrame): string {
+  return `${frame.path}:${frame.line}`;
+}
+
+function nodeScript(input: object, body: string): string {
   // Quoted heredoc, so nothing is expanded. The delimiter can't be a line of its own here:
   // the input is one line of JSON after `const input =`.
-  return `node - <<'PAGE_FRAMES_EOF'\nconst input = ${JSON.stringify(input)};\n${FRAME_CHECK}PAGE_FRAMES_EOF\n`;
+  return `node - <<'PAGE_FRAMES_EOF'\nconst input = ${JSON.stringify(input)};\n${READ_LINE}${body}PAGE_FRAMES_EOF\n`;
+}
+
+function frameInput(frames: ReportFrame[]) {
+  return frames.map((frame) => ({
+    ...frame,
+    at: `${frame.path}:${frame.line}:${frame.column}`,
+    key: frameLineKey(frame),
+  }));
+}
+
+/**
+ * A script that exits 1 if a frame's file is gone, its line or column is past the end, or its
+ * column isn't the start of a token, and for any stack line in `unchecked`. With `lines`
+ * (meta.json frameLines), it also exits 1 if a cited line has no entry or reads differently,
+ * or an entry has no frame.
+ */
+export function framesExistScript(
+  frames: ReportFrame[],
+  unchecked: string[] = [],
+  lines?: Record<string, string>,
+): string {
+  return nodeScript({ frames: frameInput(frames), unchecked, lines: lines ?? null }, FRAME_CHECK);
+}
+
+/** A script that prints each frame's line as a JSON object keyed by `frameLineKey`. */
+export function frameLinesScript(frames: ReportFrame[]): string {
+  return nodeScript({ frames: frameInput(frames) }, FRAME_LINES);
 }
 
 /**
  * The #6 self-test: on a clean demo app check.sh passes, after break.sh it fails, and
  * after reference_fix.patch it passes again. Stops at the first step that goes wrong.
- * The report's stack frames must also fit the code break.sh leaves behind (#74).
+ * The report's stack frames must also fit the code break.sh leaves behind (#74, #79).
  */
 export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<SelfTestResult> {
   if (scenario.kind !== 'code') throw new Error(`${scenario.id} is an ${scenario.kind} scenario`);
@@ -162,7 +220,12 @@ export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<Se
   const body = patch.endsWith('\n') ? patch : `${patch}\n`;
   const apply = `git apply --whitespace=nowarn - <<'PAGE_PATCH_EOF'\n${body}PAGE_PATCH_EOF\n`;
   const { report } = scenario.meta;
-  const frames = framesExistScript(reportFrames(report), uncheckedFrames(report));
+  // Every cited line must be recorded, so a scenario without frameLines fails here.
+  const frames = framesExistScript(
+    reportFrames(report),
+    uncheckedFrames(report),
+    scenario.meta.frameLines ?? {},
+  );
 
   const plan: PlanStep[] = [
     { step: 'check.sh is not in the sandbox', script: NO_CHECK_IN_SANDBOX, expect: 'pass' },
