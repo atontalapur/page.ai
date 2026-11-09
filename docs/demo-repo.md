@@ -31,9 +31,16 @@ Two rulesets, both with no bypass actors, so they apply to the token's owner as 
 `main`: no deletion, no force push, and every change goes through a PR. No approval is
 required: the token is the owner's, so agent PRs are authored by the owner, and GitHub never
 lets an author approve their own PR. The owner reviews the diff and merges. The agent has no
-merge tool, so it can't merge, but the token itself could, so keep it secret.
+merge tool, so it can't merge, but the token itself could. A leaked token is write access to
+`main`, so give it a short expiry (section 3) and revoke it at once if the daemon's host is
+ever in doubt. A bot account or a GitHub App with one required approval would close this
+gap; it was traded away so the owner can approve and merge with no second account.
 
-The repo is public because rulesets on a private repo need a paid plan.
+The repo is public because rulesets on a private repo need a paid plan. Everything a Tier 2
+run writes is published: commit messages, the PR title and body, and every pushed file. The
+model writes all of it from the fix job's `report`, so anything in a report (a request body,
+a header, a user's email) can end up in a public PR. Triage (#30) has to strip request
+bodies, headers and user fields before a report reaches the agent.
 
 ```sh
 gh api -X POST repos/<owner>/page-demo/rulesets --input - <<'JSON'
@@ -81,6 +88,11 @@ gh api -X POST repos/<owner>/page-demo/rulesets --input - <<'JSON'
 JSON
 ```
 
+The daemon refuses to push a path the edit tool refuses (`.github/`, `.git/`,
+`node_modules/`, `..`), so a test run can't add a workflow, a composite action,
+`CODEOWNERS` or `dependabot.yml`. The token's missing Workflows permission only covers
+`.github/workflows/`.
+
 ## 3. Token
 
 Create a fine-grained token at GitHub, Settings, Developer settings, Fine-grained tokens:
@@ -89,7 +101,7 @@ Create a fine-grained token at GitHub, Settings, Developer settings, Fine-graine
 - Permissions: Contents read and write, Pull requests read and write. Metadata read comes
   with them. Nothing else, in particular not Administration, so the token can't edit the
   rulesets.
-- An expiry date. Put a reminder in the tracking issue.
+- An expiry of days, not months: 7 to 14. Put a reminder in the tracking issue.
 
 Then, in the node daemon's `.env`:
 
