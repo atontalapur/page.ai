@@ -9,8 +9,9 @@ import {
 } from '@page/contracts';
 import { sql, type Selectable } from 'kysely';
 import type { Db, IssueEventsTable, IssuesTable } from '../db/database.ts';
+import { issueLogger, type Logger } from '../logger.ts';
 import type { FixJobQueue } from '../queue/fix-jobs.ts';
-import { DB, FIX_JOB_QUEUE } from '../tokens.ts';
+import { DB, FIX_JOB_QUEUE, LOGGER } from '../tokens.ts';
 import { isTerminal, transition } from './transitions.ts';
 
 export class IssueNotFoundError extends Error {
@@ -63,6 +64,7 @@ export class IssuesService {
   constructor(
     @Inject(DB) private readonly db: Db,
     @Inject(FIX_JOB_QUEUE) private readonly fixJobs: FixJobQueue,
+    @Inject(LOGGER) private readonly logger: Logger,
   ) {}
 
   /** Opens an issue, or counts another occurrence of the open one with this fingerprint. */
@@ -87,6 +89,7 @@ export class IssuesService {
       .returning(sql<boolean>`xmax = 0`.as('created'))
       .executeTakeFirstOrThrow();
     const { created, ...issue } = row;
+    if (created) issueLogger(this.logger, { issueId: issue.id }).info('issue opened');
     return { issue: toIssue(issue), created };
   }
 
@@ -124,7 +127,7 @@ export class IssuesService {
    * StaleRunError if a daemon event names a run other than the current one.
    */
   async apply(id: string, event: IssueEvent): Promise<Issue> {
-    return this.db.transaction().execute(async (trx) => {
+    const moved = await this.db.transaction().execute(async (trx) => {
       const current = await trx
         .selectFrom('issues')
         .selectAll()
@@ -150,8 +153,10 @@ export class IssuesService {
       const enteredTier =
         next.status === 'fixing' &&
         (current.status !== 'fixing' || current.current_tier !== next.currentTier);
+      let cancelledRunId: string | undefined;
       if ((enteredTier || isTerminal(next.status)) && current.current_run_id) {
         await this.fixJobs.cancel(current.current_run_id, trx);
+        cancelledRunId = current.current_run_id;
       }
       let runId = current.current_run_id;
       if (enteredTier && next.currentTier !== null) {
@@ -186,7 +191,15 @@ export class IssuesService {
           current_tier: next.currentTier,
         })
         .execute();
-      return toIssue(updated);
+      return { issue: toIssue(updated), from: current.status, runId, cancelledRunId };
     });
+
+    // Logged after the commit, so a rolled-back change never shows up.
+    const { issue, from, runId, cancelledRunId } = moved;
+    issueLogger(this.logger, { issueId: id, runId, tier: issue.currentTier }).info(
+      { event: event.type, from, to: issue.status, cancelledRunId },
+      'issue moved',
+    );
+    return issue;
   }
 }

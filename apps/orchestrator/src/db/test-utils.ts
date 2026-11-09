@@ -3,6 +3,8 @@ import { PGlite } from '@electric-sql/pglite';
 import { Kysely, PGliteDialect, PostgresDialect } from 'kysely';
 import pg from 'pg';
 import { fromPglite, PgBoss } from 'pg-boss';
+import { pino } from 'pino';
+import type { Logger } from '../logger.ts';
 import { createFixJobQueue, type FixJobQueue } from '../queue/fix-jobs.ts';
 import type { Database, Db } from './database.ts';
 import { loadMigrations } from '@page/db-migrations';
@@ -12,6 +14,8 @@ export interface TestDeps {
   db: Db;
   boss: PgBoss;
   fixJobs: FixJobQueue;
+  /** Silent, so test output stays clean. */
+  logger: Logger;
   close(): Promise<void>;
 }
 
@@ -46,6 +50,7 @@ async function start(db: Db, boss: PgBoss, close: () => Promise<void>): Promise<
       db,
       boss,
       fixJobs,
+      logger: pino({ enabled: false }),
       async close() {
         await close();
         if (errors.length) throw new AggregateError(errors, 'pg-boss reported errors');

@@ -32,7 +32,7 @@ function blankToUndefined(env: unknown) {
 }
 
 /** Wraps an app's env schema so blank vars count as unset. */
-function envSchema<T extends z.ZodType>(schema: T) {
+export function envSchema<T extends z.ZodType>(schema: T) {
   return z.preprocess(blankToUndefined, schema);
 }
 
@@ -59,7 +59,8 @@ function requireUnlessFake(keys: readonly string[]) {
 export const orchestratorConfigSchema = envSchema(
   baseConfigSchema
     .extend({
-      PORT: z.coerce.number().int().positive().default(3000),
+      // 4000 locally, so the demo app keeps 3000. Railway injects PORT.
+      PORT: z.coerce.number().int().positive().default(4000),
       POSTHOG_WEBHOOK_SECRET: secret,
       OPENROUTER_API_KEY: secret.optional(),
       TWILIO_ACCOUNT_SID: secret.optional(),

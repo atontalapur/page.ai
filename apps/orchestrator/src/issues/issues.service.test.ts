@@ -1,13 +1,14 @@
 import type { IssueEvent } from '@page/contracts';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestDeps } from '../db/test-utils.ts';
+import { createLogger } from '../logger.ts';
 import { FIX_QUEUE, type FixJob } from '../queue/fix-jobs.ts';
 import { IssueNotFoundError, IssuesService, StaleRunError } from './issues.service.ts';
 import { TransitionError } from './transitions.ts';
 
 const deps = await createTestDeps();
 afterAll(() => deps.close());
-const service = new IssuesService(deps.db, deps.fixJobs);
+const service = new IssuesService(deps.db, deps.fixJobs, deps.logger);
 
 const triage: IssueEvent = { type: 'triage', class: 'backend-api', severity: 'high' };
 const reason = 'tests still fail';
@@ -157,6 +158,35 @@ describe('IssuesService', () => {
     expect(triaged.map((i) => i.id)).toContain(issue.id);
     expect(triaged.every((i) => i.status === 'triaged')).toBe(true);
     expect((await service.list()).length).toBeGreaterThan(triaged.length);
+  });
+
+  it('logs each committed change with the issue, run and tier', async () => {
+    const lines: unknown[] = [];
+    const logger = createLogger('info', { write: (line: string) => lines.push(JSON.parse(line)) });
+    const logged = new IssuesService(deps.db, deps.fixJobs, logger);
+    const { issue } = await logged.report({ fingerprint: `fp-${++n}`, title: 'Boom' });
+    await logged.apply(issue.id, triage);
+    await logged.apply(issue.id, { type: 'start_fix' });
+    // A rejected event logs nothing.
+    await expect(logged.apply(issue.id, triage)).rejects.toThrow(TransitionError);
+    const { data } = await liveJob(issue.id);
+    expect(lines).toEqual([
+      expect.objectContaining({ msg: 'issue opened', issueId: issue.id }),
+      expect.objectContaining({
+        msg: 'issue moved',
+        issueId: issue.id,
+        from: 'new',
+        to: 'triaged',
+      }),
+      expect.objectContaining({
+        msg: 'issue moved',
+        issueId: issue.id,
+        runId: data.runId,
+        tier: 1,
+        event: 'start_fix',
+        to: 'fixing',
+      }),
+    ]);
   });
 
   it('reports missing issues', async () => {

@@ -4,6 +4,21 @@ NestJS (Fastify adapter) service that owns the issue lifecycle. It stores issues
 through Kysely, moves them through a state machine, and queues fix jobs on pg-boss for
 `apps/node` daemons to claim.
 
+## Modules
+
+`AppModule` serves `/health` and `/issues` and imports seven feature modules. Each one is
+still a stub: an empty service and a controller with no routes.
+
+| Module            | Will own                                                                 |
+| ----------------- | ------------------------------------------------------------------------ |
+| `IngestModule`    | PostHog webhook: secret check, upsert by fingerprint, queue triage (#29) |
+| `TriageModule`    | Class and severity by model with a rule fallback, then notify (#30)      |
+| `RunsModule`      | Steps, diffs and results the node daemon streams back per run (#8)       |
+| `TiersModule`     | Escalation after a run: up a tier, or to failed past Tier 3              |
+| `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions             |
+| `NotifyModule`    | Twilio call and SMS to on-call, once per issue (#31)                     |
+| `GatewayModule`   | Socket.IO events to and from the UI and node daemons (#34)               |
+
 ## Issue lifecycle
 
 ```
@@ -61,6 +76,49 @@ environment.
 
 Nest needs legacy decorators with emitted metadata, which Node's type stripping can't run,
 so the app is compiled with `tsc` to `dist/` rather than run from source.
+
+## Configuration
+
+`src/config.ts` reads these once at boot:
+
+| Variable            | Default   | Notes                                              |
+| ------------------- | --------- | -------------------------------------------------- |
+| `DATABASE_URL`      |           | Required; a `postgres://` or `postgresql://` URL   |
+| `PORT`              | `4000`    | Railway sets it                                    |
+| `HOST`              | `0.0.0.0` |                                                    |
+| `PGBOSS_SCHEMA`     | `pgboss`  | Must match the node daemon's                       |
+| `USE_FAKE_ADAPTERS` | `false`   | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`    |
+| `LOG_LEVEL`         | `info`    | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
+
+A missing or bad var stops startup with exit code 1 and one log line naming each, e.g.
+`invalid config: DATABASE_URL is required`. As in `apps/node`, a blank var counts as unset,
+so a copied `.env.example` gets the defaults. `USE_FAKE_ADAPTERS` and `LOG_LEVEL` use the
+daemon's parsers, but nothing in the orchestrator reads `USE_FAKE_ADAPTERS` yet.
+
+## Logs
+
+pino writes JSON lines to stdout, Nest's own logs included (under a `context` field). Lines
+about one issue carry `issueId`, and `runId` and `tier` once it has them; `issueLogger()` in
+`src/logger.ts` adds those fields to a child logger.
+
+## Deploy to Railway staging
+
+`Dockerfile` builds from the repo root (`docker build -f apps/orchestrator/Dockerfile .`)
+and `railway.json` gates each deploy on `/health`. Migrations run on boot, so there is no
+pre-deploy step. The compiled app imports `@page/contracts` and `@page/db-migrations` as
+`.ts` sources, and Node won't strip types under `node_modules`, so the image keeps the
+workspace layout instead of using `pnpm deploy`. One-time service setup:
+
+1. New service from this GitHub repo, root directory `/`.
+2. Settings, Config-as-code file path: `/apps/orchestrator/railway.json`.
+3. Set `DATABASE_URL=${{Postgres.DATABASE_URL}}` (the project's Postgres service). Railway
+   sets `PORT`; `HOST` and `PGBOSS_SCHEMA` keep their defaults.
+
+Don't generate a public domain yet. The API has no authentication, so anyone with the URL
+could read issues and approve, reject or kill them. Keep the service on Railway's private
+network until the API checks a token. The deploy health check still confirms `/health`
+returns 200. A config error exits 1, and Railway retries it up to 5 times
+(`ON_FAILURE`), then stops.
 
 ## Test
 
