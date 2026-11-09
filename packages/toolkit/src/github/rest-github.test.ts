@@ -7,6 +7,7 @@ interface Sent {
   method: string;
   headers: Record<string, string>;
   body: unknown;
+  signal: AbortSignal | undefined;
 }
 
 type Reply = { status?: number; body?: unknown } | Error;
@@ -19,6 +20,7 @@ function setup(...replies: Reply[]) {
       method: init.method ?? 'GET',
       headers: init.headers as Record<string, string>,
       body: init.body === undefined ? undefined : JSON.parse(init.body as string),
+      signal: init.signal ?? undefined,
     });
     const reply = replies.shift() ?? {};
     if (reply instanceof Error) return Promise.reject(reply);
@@ -153,6 +155,47 @@ describe('RestGitHub', () => {
       url: 'https://github.com/acme/shop/pull/3',
     });
     expect(sent[0]).toMatchObject({ method: 'POST', body: pr });
+  });
+
+  it('reads the merge base of a branch from the compare endpoint', async () => {
+    const { github, sent } = setup({
+      body: { merge_base_commit: { sha: 'c0', commit: { tree: { sha: 't0' } } }, extra: 1 },
+    });
+    expect(await github.mergeBase('main', 'pageagents/run-1')).toEqual({
+      commitSha: 'c0',
+      treeSha: 't0',
+    });
+    expect(sent[0]).toMatchObject({
+      method: 'GET',
+      url: `${GITHUB_API}/repos/acme/shop/compare/main...pageagents/run-1`,
+    });
+  });
+
+  it('comments on a PR, then closes it', async () => {
+    const { github, sent } = setup({ status: 201 }, { status: 200 });
+    await github.closePullRequest(5, 'superseded');
+    expect(sent.map(({ method, url, body }) => ({ method, url, body }))).toEqual([
+      {
+        method: 'POST',
+        url: `${GITHUB_API}/repos/acme/shop/issues/5/comments`,
+        body: { body: 'superseded' },
+      },
+      { method: 'PATCH', url: `${GITHUB_API}/repos/acme/shop/pulls/5`, body: { state: 'closed' } },
+    ]);
+  });
+
+  it("ties each request to the caller's signal as well as its own timeout", async () => {
+    const { github, sent } = setup(
+      { status: 201, body: { sha: 'b1' } },
+      { status: 201, body: { sha: 'b2' } },
+    );
+    const controller = new AbortController();
+    await github.createBlob('aGk=', controller.signal);
+    await github.createBlob('aGk=');
+    expect(sent[0]!.signal?.aborted).toBe(false);
+    controller.abort();
+    expect(sent[0]!.signal?.aborted).toBe(true);
+    expect(sent[1]!.signal?.aborted).toBe(false);
   });
 
   it('turns an error reply into a GitHubError with the status and message', async () => {

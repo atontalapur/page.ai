@@ -29,6 +29,12 @@ const branchReply = z.object({
   commit: z.object({ sha: z.string(), commit: z.object({ tree: z.object({ sha: z.string() }) }) }),
 });
 const pullReply = z.object({ number: z.int(), html_url: z.string() });
+const compareReply = z.object({
+  merge_base_commit: z.object({
+    sha: z.string(),
+    commit: z.object({ tree: z.object({ sha: z.string() }) }),
+  }),
+});
 const errorReply = z.object({ message: z.string() }).loose();
 
 // A branch name has slashes; GitHub takes them unencoded in these paths.
@@ -53,61 +59,105 @@ export class RestGitHub implements GitHub {
     this.owner = owner;
   }
 
-  async getBranch(name: string): Promise<BranchHead | null> {
-    const reply = await this.request('GET', `/branches/${refPath(name)}`, undefined, [404]);
+  async getBranch(name: string, signal?: AbortSignal): Promise<BranchHead | null> {
+    const reply = await this.request('GET', `/branches/${refPath(name)}`, {
+      missing: [404],
+      signal,
+    });
     if (reply === null) return null;
     const { commit } = branchReply.parse(reply);
     return { commitSha: commit.sha, treeSha: commit.commit.tree.sha };
   }
 
-  async createBlob(base64: string): Promise<string> {
-    const reply = await this.request('POST', '/git/blobs', { content: base64, encoding: 'base64' });
+  async mergeBase(base: string, head: string, signal?: AbortSignal): Promise<BranchHead> {
+    const reply = await this.request('GET', `/compare/${refPath(base)}...${refPath(head)}`, {
+      signal,
+    });
+    const { merge_base_commit: commit } = compareReply.parse(reply);
+    return { commitSha: commit.sha, treeSha: commit.commit.tree.sha };
+  }
+
+  async createBlob(base64: string, signal?: AbortSignal): Promise<string> {
+    const reply = await this.request('POST', '/git/blobs', {
+      body: { content: base64, encoding: 'base64' },
+      signal,
+    });
     return shaReply.parse(reply).sha;
   }
 
-  async createTree(baseTreeSha: string, entries: TreeEntry[]): Promise<string> {
+  async createTree(
+    baseTreeSha: string,
+    entries: TreeEntry[],
+    signal?: AbortSignal,
+  ): Promise<string> {
     const tree = entries.map(({ path, mode, sha }) => ({ path, mode, type: 'blob', sha }));
-    const reply = await this.request('POST', '/git/trees', { base_tree: baseTreeSha, tree });
+    const reply = await this.request('POST', '/git/trees', {
+      body: { base_tree: baseTreeSha, tree },
+      signal,
+    });
     return shaReply.parse(reply).sha;
   }
 
-  async createCommit({ message, treeSha, parents }: NewCommit): Promise<string> {
-    const reply = await this.request('POST', '/git/commits', { message, tree: treeSha, parents });
+  async createCommit(
+    { message, treeSha, parents }: NewCommit,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const reply = await this.request('POST', '/git/commits', {
+      body: { message, tree: treeSha, parents },
+      signal,
+    });
     return shaReply.parse(reply).sha;
   }
 
-  async createBranch(name: string, commitSha: string): Promise<void> {
+  async createBranch(name: string, commitSha: string, signal?: AbortSignal): Promise<void> {
     assertAgentBranch(name);
-    await this.request('POST', '/git/refs', { ref: `refs/heads/${name}`, sha: commitSha });
-  }
-
-  async updateBranch(name: string, commitSha: string): Promise<void> {
-    assertAgentBranch(name);
-    await this.request('PATCH', `/git/refs/heads/${refPath(name)}`, {
-      sha: commitSha,
-      force: false,
+    await this.request('POST', '/git/refs', {
+      body: { ref: `refs/heads/${name}`, sha: commitSha },
+      signal,
     });
   }
 
-  async findOpenPullRequest(head: string): Promise<PullRequest | null> {
+  async updateBranch(name: string, commitSha: string, signal?: AbortSignal): Promise<void> {
+    assertAgentBranch(name);
+    await this.request('PATCH', `/git/refs/heads/${refPath(name)}`, {
+      body: { sha: commitSha, force: false },
+      signal,
+    });
+  }
+
+  async findOpenPullRequest(head: string, signal?: AbortSignal): Promise<PullRequest | null> {
     const query = new URLSearchParams({ state: 'open', head: `${this.owner}:${head}` });
-    const reply = await this.request('GET', `/pulls?${query.toString()}&per_page=1`);
+    const reply = await this.request('GET', `/pulls?${query.toString()}&per_page=1`, { signal });
     const [pr] = z.array(pullReply).parse(reply);
     return pr === undefined ? null : toPull(pr);
   }
 
-  async createPullRequest({ title, body, head, base }: NewPullRequest): Promise<PullRequest> {
+  async createPullRequest(
+    { title, body, head, base }: NewPullRequest,
+    signal?: AbortSignal,
+  ): Promise<PullRequest> {
     assertAgentBranch(head);
-    const reply = await this.request('POST', '/pulls', { title, body, head, base });
+    const reply = await this.request('POST', '/pulls', {
+      body: { title, body, head, base },
+      signal,
+    });
     return toPull(pullReply.parse(reply));
+  }
+
+  async closePullRequest(number: number, comment: string, signal?: AbortSignal): Promise<void> {
+    await this.request('POST', `/issues/${number}/comments`, { body: { body: comment }, signal });
+    await this.request('PATCH', `/pulls/${number}`, { body: { state: 'closed' }, signal });
   }
 
   /** Resolves with the parsed body, or null for a status in `missing`. */
   private async request(
     method: string,
     path: string,
-    body?: unknown,
-    missing: number[] = [],
+    {
+      body,
+      missing = [],
+      signal,
+    }: { body?: unknown; missing?: number[]; signal?: AbortSignal } = {},
   ): Promise<unknown> {
     const {
       token,
@@ -116,6 +166,7 @@ export class RestGitHub implements GitHub {
       timeoutMs = GITHUB_TIMEOUT_MS,
       fetch: doFetch = fetch,
     } = this.options;
+    const timeout = AbortSignal.timeout(timeoutMs);
     let res: Response;
     try {
       res = await doFetch(`${endpoint}/repos/${repo}${path}`, {
@@ -127,7 +178,7 @@ export class RestGitHub implements GitHub {
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: signal === undefined ? timeout : AbortSignal.any([timeout, signal]),
       });
     } catch (error) {
       throw new GitHubError(`GitHub API ${method} ${path} failed: ${String(error)}`);

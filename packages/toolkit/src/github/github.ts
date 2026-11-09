@@ -46,21 +46,26 @@ export interface NewPullRequest {
 /**
  * One repository's git data and pull requests. Every method rejects when the request fails;
  * `getBranch` and `findOpenPullRequest` resolve null for something that isn't there.
- * Methods that write a branch reject for a name outside AGENT_BRANCH_PREFIX.
+ * Methods that write a branch reject for a name outside AGENT_BRANCH_PREFIX. `signal`
+ * cancels the request in flight, and a call made after it fired rejects at once.
  */
 export interface GitHub {
-  getBranch(name: string): Promise<BranchHead | null>;
+  getBranch(name: string, signal?: AbortSignal): Promise<BranchHead | null>;
+  /** The commit `head` forked from `base` at, which is where its PR diff starts. */
+  mergeBase(base: string, head: string, signal?: AbortSignal): Promise<BranchHead>;
   /** Stores file content, given as base64, and resolves with the blob's sha. */
-  createBlob(base64: string): Promise<string>;
+  createBlob(base64: string, signal?: AbortSignal): Promise<string>;
   /** `baseTreeSha`'s tree with `entries` written over it. Resolves with the new tree's sha. */
-  createTree(baseTreeSha: string, entries: TreeEntry[]): Promise<string>;
-  createCommit(commit: NewCommit): Promise<string>;
-  createBranch(name: string, commitSha: string): Promise<void>;
+  createTree(baseTreeSha: string, entries: TreeEntry[], signal?: AbortSignal): Promise<string>;
+  createCommit(commit: NewCommit, signal?: AbortSignal): Promise<string>;
+  createBranch(name: string, commitSha: string, signal?: AbortSignal): Promise<void>;
   /** Moves the branch to `commitSha`. Never forced, so it must be a fast-forward. */
-  updateBranch(name: string, commitSha: string): Promise<void>;
+  updateBranch(name: string, commitSha: string, signal?: AbortSignal): Promise<void>;
   /** The open PR from `head`, if there is one. */
-  findOpenPullRequest(head: string): Promise<PullRequest | null>;
-  createPullRequest(pr: NewPullRequest): Promise<PullRequest>;
+  findOpenPullRequest(head: string, signal?: AbortSignal): Promise<PullRequest | null>;
+  createPullRequest(pr: NewPullRequest, signal?: AbortSignal): Promise<PullRequest>;
+  /** Leaves `comment` on the PR, then closes it. The branch stays. */
+  closePullRequest(number: number, comment: string, signal?: AbortSignal): Promise<void>;
 }
 
 /** A request GitHub answered with an error, or one that broke on the way. */

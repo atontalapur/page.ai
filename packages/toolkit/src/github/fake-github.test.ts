@@ -97,4 +97,43 @@ describe('FakeGitHub', () => {
     github.failOn.clear();
     expect(await github.getBranch('main')).not.toBeNull();
   });
+
+  it('finds the merge base of a branch that main has moved past', async () => {
+    const github = new FakeGitHub({ 'a.ts': 'a' });
+    const fork = (await github.getBranch('main'))!;
+    const tree = await github.createTree(fork.treeSha, []);
+    const side = await github.createCommit({
+      message: 's',
+      treeSha: tree,
+      parents: [fork.commitSha],
+    });
+    await github.createBranch('pageagents/run', side);
+    github.advance('main', { 'b.ts': 'b' });
+    expect(await github.mergeBase('main', 'pageagents/run')).toEqual(fork);
+    await expect(github.mergeBase('main', 'pageagents/none')).rejects.toThrow(GitHubError);
+  });
+
+  it('closes a PR with a comment, after which the branch can open another', async () => {
+    const github = new FakeGitHub({ 'a.ts': 'a' });
+    const main = (await github.getBranch('main'))!;
+    await github.createBranch('pageagents/run', main.commitSha);
+    const pr = await github.createPullRequest({
+      title: 't',
+      body: 'b',
+      head: 'pageagents/run',
+      base: 'main',
+    });
+    await github.closePullRequest(pr.number, 'why');
+    expect(github.pullRequests[0]).toMatchObject({ state: 'closed', comments: ['why'] });
+    expect(await github.findOpenPullRequest('pageagents/run')).toBeNull();
+    await expect(github.closePullRequest(99, 'x')).rejects.toThrow(GitHubError);
+  });
+
+  it('rejects a call whose signal already fired', async () => {
+    const github = new FakeGitHub();
+    const controller = new AbortController();
+    controller.abort();
+    await expect(github.getBranch('main', controller.signal)).rejects.toThrow(/aborted/);
+    expect(github.calls).toEqual(['getBranch']);
+  });
 });

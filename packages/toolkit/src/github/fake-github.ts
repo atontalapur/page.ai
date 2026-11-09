@@ -35,7 +35,10 @@ const sha = (kind: string, content: string) =>
  */
 export class FakeGitHub implements GitHub {
   readonly repo: string;
-  readonly pullRequests: (NewPullRequest & PullRequest)[] = [];
+  readonly pullRequests: (NewPullRequest &
+    PullRequest & { state: 'open' | 'closed'; comments: string[] })[] = [];
+  /** Every call's method, in order, for asserting what ran. */
+  readonly calls: FakeGitHubMethod[] = [];
   readonly failOn = new Set<FakeGitHubMethod>();
   private readonly blobs = new Map<string, string>();
   private readonly trees = new Map<string, Map<string, FileEntry>>();
@@ -57,20 +60,38 @@ export class FakeGitHub implements GitHub {
     this.branches.set('main', commit);
   }
 
-  getBranch(name: string): Promise<BranchHead | null> {
-    return this.call('getBranch', () => {
+  getBranch(name: string, signal?: AbortSignal): Promise<BranchHead | null> {
+    return this.call('getBranch', signal, () => {
       const commitSha = this.branches.get(name);
       if (commitSha === undefined) return null;
       return { commitSha, treeSha: this.commit(commitSha).treeSha };
     });
   }
 
-  createBlob(base64: string): Promise<string> {
-    return this.call('createBlob', () => this.storeBlob(base64));
+  mergeBase(base: string, head: string, signal?: AbortSignal): Promise<BranchHead> {
+    return this.call('mergeBase', signal, () => {
+      const baseSha = this.branches.get(base);
+      const headSha = this.branches.get(head);
+      if (baseSha === undefined || headSha === undefined) {
+        throw new GitHubError('Not Found', 404);
+      }
+      const onBase = this.ancestors(baseSha);
+      // Nearest first, so the first shared commit is the fork point.
+      const queue = [headSha];
+      for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+        if (onBase.has(next)) return { commitSha: next, treeSha: this.commit(next).treeSha };
+        queue.push(...this.commit(next).parents);
+      }
+      throw new GitHubError('No common ancestor', 404);
+    });
   }
 
-  createTree(baseTreeSha: string, entries: TreeEntry[]): Promise<string> {
-    return this.call('createTree', () => {
+  createBlob(base64: string, signal?: AbortSignal): Promise<string> {
+    return this.call('createBlob', signal, () => this.storeBlob(base64));
+  }
+
+  createTree(baseTreeSha: string, entries: TreeEntry[], signal?: AbortSignal): Promise<string> {
+    return this.call('createTree', signal, () => {
       const base = this.trees.get(baseTreeSha);
       if (base === undefined) throw new GitHubError(`no tree ${baseTreeSha}`, 422);
       const tree = new Map(base);
@@ -86,16 +107,16 @@ export class FakeGitHub implements GitHub {
     });
   }
 
-  createCommit(commit: NewCommit): Promise<string> {
-    return this.call('createCommit', () => {
+  createCommit(commit: NewCommit, signal?: AbortSignal): Promise<string> {
+    return this.call('createCommit', signal, () => {
       if (!this.trees.has(commit.treeSha)) throw new GitHubError(`no tree ${commit.treeSha}`, 422);
       for (const parent of commit.parents) this.commit(parent);
       return this.storeCommit(commit);
     });
   }
 
-  createBranch(name: string, commitSha: string): Promise<void> {
-    return this.call('createBranch', () => {
+  createBranch(name: string, commitSha: string, signal?: AbortSignal): Promise<void> {
+    return this.call('createBranch', signal, () => {
       assertAgentBranch(name);
       if (this.branches.has(name)) throw new GitHubError('Reference already exists', 422);
       this.commit(commitSha);
@@ -103,8 +124,8 @@ export class FakeGitHub implements GitHub {
     });
   }
 
-  updateBranch(name: string, commitSha: string): Promise<void> {
-    return this.call('updateBranch', () => {
+  updateBranch(name: string, commitSha: string, signal?: AbortSignal): Promise<void> {
+    return this.call('updateBranch', signal, () => {
       assertAgentBranch(name);
       const current = this.branches.get(name);
       if (current === undefined) throw new GitHubError('Reference does not exist', 422);
@@ -115,27 +136,53 @@ export class FakeGitHub implements GitHub {
     });
   }
 
-  findOpenPullRequest(head: string): Promise<PullRequest | null> {
-    return this.call('findOpenPullRequest', () => {
-      const pr = this.pullRequests.find((p) => p.head === head);
+  findOpenPullRequest(head: string, signal?: AbortSignal): Promise<PullRequest | null> {
+    return this.call('findOpenPullRequest', signal, () => {
+      const pr = this.pullRequests.find((p) => p.head === head && p.state === 'open');
       return pr === undefined ? null : { number: pr.number, url: pr.url };
     });
   }
 
-  createPullRequest(pr: NewPullRequest): Promise<PullRequest> {
-    return this.call('createPullRequest', () => {
+  createPullRequest(pr: NewPullRequest, signal?: AbortSignal): Promise<PullRequest> {
+    return this.call('createPullRequest', signal, () => {
       assertAgentBranch(pr.head);
       if (!this.branches.has(pr.head) || !this.branches.has(pr.base)) {
         throw new GitHubError('Validation Failed: head or base does not exist', 422);
       }
-      if (this.pullRequests.some((p) => p.head === pr.head)) {
+      if (this.pullRequests.some((p) => p.head === pr.head && p.state === 'open')) {
         throw new GitHubError(`A pull request already exists for ${pr.head}`, 422);
       }
       const number = this.pullRequests.length + 1;
       const created = { number, url: `https://github.com/${this.repo}/pull/${number}` };
-      this.pullRequests.push({ ...pr, ...created });
+      this.pullRequests.push({ ...pr, ...created, state: 'open', comments: [] });
       return created;
     });
+  }
+
+  closePullRequest(number: number, comment: string, signal?: AbortSignal): Promise<void> {
+    return this.call('closePullRequest', signal, () => {
+      const pr = this.pullRequests.find((p) => p.number === number);
+      if (pr === undefined) throw new GitHubError('Not Found', 404);
+      pr.comments.push(comment);
+      pr.state = 'closed';
+    });
+  }
+
+  /** Commits `files` (path to UTF-8 text) onto `branch`, as someone merging to it would. */
+  advance(branch: string, files: Record<string, string>): string {
+    const head = this.branches.get(branch);
+    if (head === undefined) throw new Error(`no branch ${branch}`);
+    const tree = new Map(this.trees.get(this.commit(head).treeSha));
+    for (const [path, text] of Object.entries(files)) {
+      tree.set(path, { mode: '100644', blobSha: this.storeBlob(toBase64(text)) });
+    }
+    const commit = this.storeCommit({
+      message: 'advance',
+      treeSha: this.storeTree(tree),
+      parents: [head],
+    });
+    this.branches.set(branch, commit);
+    return commit;
   }
 
   /** The branch's head commit, for assertions. */
@@ -161,7 +208,15 @@ export class FakeGitHub implements GitHub {
     return out;
   }
 
-  private call<T>(method: FakeGitHubMethod, body: () => T): Promise<T> {
+  private call<T>(
+    method: FakeGitHubMethod,
+    signal: AbortSignal | undefined,
+    body: () => T,
+  ): Promise<T> {
+    this.calls.push(method);
+    if (signal?.aborted) {
+      return Promise.reject(new GitHubError(`GitHub API ${method} failed: aborted`));
+    }
     if (this.failOn.has(method)) {
       return Promise.reject(new GitHubError('GitHub API answered 503: unavailable', 503));
     }
@@ -178,17 +233,19 @@ export class FakeGitHub implements GitHub {
     return commit;
   }
 
-  private isAncestor(ancestor: string, of: string): boolean {
-    const queue = [of];
+  private ancestors(of: string): Set<string> {
     const seen = new Set<string>();
-    while (queue.length > 0) {
-      const next = queue.pop()!;
-      if (next === ancestor) return true;
+    const queue = [of];
+    for (let next = queue.pop(); next !== undefined; next = queue.pop()) {
       if (seen.has(next)) continue;
       seen.add(next);
       queue.push(...this.commit(next).parents);
     }
-    return false;
+    return seen;
+  }
+
+  private isAncestor(ancestor: string, of: string): boolean {
+    return this.ancestors(of).has(ancestor);
   }
 
   private storeBlob(base64: string): string {
