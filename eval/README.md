@@ -42,11 +42,14 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5
 - `--max-cost` is the total budget. Each attempt's agent limit is lowered to what is
   left, and no attempt starts with less than $0.05 left. A run the budget cut short, at
   any tier, is dropped and flagged with `stoppedForBudget`. The agent checks its limit
-  before each model call, so the total can go over by one call's cost.
+  before each model call, so the total can go over by one call's cost. `spentUsd` is
+  everything charged against the budget, dropped runs and errors included;
+  `summary.costUsd` counts only the runs kept.
 - Ops scenarios (Tier 3) are skipped with a reason for now: they need a live demo app.
 - An attempt that throws (a sandbox or `break.sh` failure) goes in `errors` and its run
-  is left out; the eval goes on. Its spend is unknown, so its whole limit counts against
-  the budget.
+  is left out; the eval goes on. If it failed after the agent ran (the diff or the check
+  sandbox), the agent's real cost counts against the budget; otherwise its spend is
+  unknown and its whole limit counts.
 - Results go to `eval/results/<start>-<config>.json` (`src/results.ts` has the schema):
   per run the tiers tried, tier landed, fixed, paged, time to fix or page, cost, steps
   and blocked steps, and the agent's diff; plus a summary.

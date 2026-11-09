@@ -25,6 +25,19 @@ export function escalates(exitStatus: Attempt['exitStatus']): boolean {
  */
 export type AttemptFn = (scenario: Scenario, tier: Tier, costLimitUsd: number) => Promise<Attempt>;
 
+/**
+ * An attempt that failed after the agent ran, such as a check sandbox that didn't start.
+ * It carries what the agent spent, so the budget is charged that and not the whole limit.
+ */
+export class AttemptError extends Error {
+  override name = 'AttemptError';
+  readonly costUsd: number;
+  constructor(message: string, costUsd: number, options?: ErrorOptions) {
+    super(message, options);
+    this.costUsd = costUsd;
+  }
+}
+
 /** The least budget an attempt starts with. Below it the run would only be cut short. */
 export const MIN_ATTEMPT_USD = 0.05;
 
@@ -94,8 +107,8 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
         } catch (error) {
           // A sandbox or script failure says nothing about the agent. Record it, drop the
           // run and go on, so the runs already paid for still reach the results file.
-          // What the attempt spent is unknown, so its whole limit counts as spent.
-          spent += limit;
+          // Unless the attempt says what the agent spent, its whole limit counts as spent.
+          spent += error instanceof AttemptError ? error.costUsd : limit;
           errors.push({ scenario: scenario.id, run, tier, message: String(error) });
           crashed = true;
           break;
@@ -128,6 +141,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     finishedAt: now().toISOString(),
     runsPerScenario: options.runsPerScenario,
     maxCostUsd: options.maxCostUsd,
+    spentUsd: spent,
     stoppedForBudget,
     runs,
     skipped,

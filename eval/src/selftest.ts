@@ -219,11 +219,6 @@ export function parseFrameLines(output: string): Record<string, string> {
   return JSON.parse(line.slice(FRAME_LINES_MARKER.length)) as Record<string, string>;
 }
 
-/**
- * The #6 self-test: on a clean demo app check.sh passes, after break.sh it fails, and
- * after reference_fix.patch it passes again. Stops at the first step that goes wrong.
- * The report's stack frames must also fit the code break.sh leaves behind (#74, #79).
- */
 /** A script that applies `patch` in /workspace, for a sandbox shell. */
 export function applyPatchScript(patch: string): string {
   // Quoted heredoc, so git apply gets the patch byte for byte. The delimiter can't
@@ -233,6 +228,11 @@ export function applyPatchScript(patch: string): string {
   return `git apply --whitespace=nowarn - <<'PAGE_PATCH_EOF'\n${body}PAGE_PATCH_EOF\n`;
 }
 
+/**
+ * The #6 self-test: on a clean demo app check.sh passes, after break.sh it fails, and
+ * after reference_fix.patch it passes again. Stops at the first step that goes wrong.
+ * The report's stack frames must also fit the code break.sh leaves behind (#74, #79).
+ */
 export async function selfTest(scenario: Scenario, sh: SandboxShell): Promise<SelfTestResult> {
   if (scenario.kind !== 'code') throw new Error(`${scenario.id} is an ${scenario.kind} scenario`);
   const read = (file: string) => readFile(join(scenario.dir, file), 'utf8');

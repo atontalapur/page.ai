@@ -7,6 +7,7 @@
   "finishedAt": "2026-11-09T02:55:57.643Z",
   "runsPerScenario": 1,
   "maxCostUsd": 1,
+  "spentUsd": 0,
   "stoppedForBudget": false,
   "runs": [
     {

@@ -99,6 +99,11 @@ export const evalResultsSchema = z.strictObject({
   finishedAt: z.iso.datetime(),
   runsPerScenario: z.int().positive(),
   maxCostUsd: costSchema,
+  /**
+   * Everything charged against maxCostUsd, including runs the budget cut short and
+   * attempts that threw. summary.costUsd counts only the runs in `runs`.
+   */
+  spentUsd: costSchema,
   /** The budget ran out before every planned run finished. */
   stoppedForBudget: z.boolean(),
   runs: z.array(scenarioRunSchema),

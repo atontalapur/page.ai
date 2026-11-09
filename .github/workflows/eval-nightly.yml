@@ -59,12 +59,24 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898283+github-actions[bot]@users.noreply.github.com'
-          if git fetch --depth 1 origin "$RESULTS_BRANCH"; then
-            git switch -c results FETCH_HEAD
-          else
-            # First night: start the branch from the commit that was evaluated.
-            git switch -c results
-          fi
+          # ls-remote exits 2 only when the branch is missing. Any other failure stops the
+          # step, since a new branch from HEAD couldn't be pushed over the existing one.
+          found=0
+          git ls-remote --exit-code --heads origin "$RESULTS_BRANCH" >/dev/null || found=$?
+          case "$found" in
+            0)
+              git fetch --depth 1 origin "$RESULTS_BRANCH"
+              git switch -c results FETCH_HEAD
+              ;;
+            2)
+              # First night: start the branch from the commit that was evaluated.
+              git switch -c results
+              ;;
+            *)
+              echo "::error::git ls-remote exited $found"
+              exit 1
+              ;;
+          esac
           mkdir -p eval/results
           cp "$RUNNER_TEMP"/results/*.json eval/results/
           git add eval/results

@@ -4,7 +4,13 @@ import { join } from 'node:path';
 import type { Tier } from '@page/contracts';
 import { describe, expect, it } from 'vitest';
 import { evalResultsSchema, loadResults, type Attempt } from './results.ts';
-import { resultsFileName, runEval, type AttemptFn, type RunEvalOptions } from './runner.ts';
+import {
+  AttemptError,
+  resultsFileName,
+  runEval,
+  type AttemptFn,
+  type RunEvalOptions,
+} from './runner.ts';
 import type { Scenario } from './scenario.ts';
 
 const scenario = (id: string, expectedTier: Tier = 1): Scenario => ({
@@ -157,6 +163,9 @@ describe('runEval', () => {
     expect(calls[1]!.costLimitUsd).toBeCloseTo(0.3);
     expect(results.stoppedForBudget).toBe(true);
     expect(results.runs.map((r) => r.scenario)).toEqual(['001-a']);
+    // The dropped run's spend is in spentUsd, not in the summary of kept runs.
+    expect(results.spentUsd).toBeCloseTo(1);
+    expect(results.summary.costUsd).toBeCloseTo(0.7);
   });
 
   it('drops a run whose last tier the budget cut short, not paging it', async () => {
@@ -194,7 +203,25 @@ describe('runEval', () => {
     expect(results.runs.map((r) => r.scenario)).toEqual(['002-b']);
     // The crashed attempt's whole limit counts as spent.
     expect(calls[1]!.costLimitUsd).toBeCloseTo(0.3);
+    expect(results.spentUsd).toBeCloseTo(0.51);
     expect(evalResultsSchema.parse(results)).toEqual(results);
+  });
+
+  it("charges an attempt that failed after the agent ran only the agent's cost", async () => {
+    const calls: { id: string; costLimitUsd: number }[] = [];
+    const fn: AttemptFn = (s, tier, costLimitUsd) => {
+      calls.push({ id: s.id, costLimitUsd });
+      if (s.id === '001-a') return Promise.reject(new AttemptError('check sandbox failed', 0.02));
+      return Promise.resolve(attempt(tier));
+    };
+    const results = await runEval(
+      base(fn, { scenarios: [scenario('001-a'), scenario('002-b')], maxCostUsd: 0.8 }),
+    );
+    expect(results.errors).toEqual([
+      { scenario: '001-a', run: 1, tier: 1, message: 'AttemptError: check sandbox failed' },
+    ]);
+    expect(calls[1]!.costLimitUsd).toBeCloseTo(0.5);
+    expect(results.spentUsd).toBeCloseTo(0.03);
   });
 
   it('starts no attempt with less than the minimum left', async () => {

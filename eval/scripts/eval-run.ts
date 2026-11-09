@@ -53,7 +53,9 @@ if (!model) fail('no model: pass --model or set OPENROUTER_MODEL');
 if (!config.success) fail(`unknown --config ${values.config}`);
 if (!Number.isInteger(runs) || runs < 1) fail('--runs must be a positive integer');
 if (!(maxCost > 0)) fail('--max-cost must be a positive number');
-if (!(limit > 0)) fail('--limit must be a positive integer');
+if (limit !== Infinity && !(Number.isInteger(limit) && limit > 0)) {
+  fail('--limit must be a positive integer');
+}
 if (values.set !== undefined && values.set !== 'dev' && values.set !== 'held-out') {
   fail('--set must be dev or held-out');
 }

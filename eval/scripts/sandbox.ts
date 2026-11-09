@@ -17,11 +17,15 @@ export function shellIn(name: string): SandboxShell {
       const child = spawn('docker', ['exec', '-i', '-w', '/workspace', name, 'sh', '-s'], {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
-      let output = '';
-      child.stdout.on('data', (chunk: Buffer) => (output += chunk.toString()));
-      child.stderr.on('data', (chunk: Buffer) => (output += chunk.toString()));
+      // Decoded once at the end: a chunk can end in the middle of a UTF-8 character, and
+      // agentDiff's output is a patch that has to come through byte for byte.
+      const chunks: Buffer[] = [];
+      child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+      child.stderr.on('data', (chunk: Buffer) => chunks.push(chunk));
       child.on('error', reject);
-      child.on('close', (code) => resolve({ code: code ?? 1, output }));
+      child.on('close', (code) =>
+        resolve({ code: code ?? 1, output: Buffer.concat(chunks).toString('utf8') }),
+      );
       // If docker exits before reading the whole script, the write gets EPIPE. Let
       // 'close' report the exit code instead of crashing on the stream error.
       child.stdin.on('error', () => {});
@@ -39,25 +43,33 @@ const RECOMMIT = [
   'git -c user.name=sandbox -c user.email=sandbox@page.invalid commit -qm baseline',
 ].join(' && ');
 
-/** Runs break.sh, then makes the broken code the sandbox repo's only commit. */
-export async function plantBug(sh: SandboxShell, breakScript: string): Promise<void> {
+/**
+ * Runs break.sh, then makes the broken code the sandbox repo's only commit. Resolves that
+ * commit's SHA.
+ */
+export async function plantBug(sh: SandboxShell, breakScript: string): Promise<string> {
   const broke = await sh(breakScript);
   if (broke.code !== 0) throw new Error(`break.sh exited ${broke.code}:\n${broke.output}`);
   const committed = await sh(RECOMMIT);
   if (committed.code !== 0)
     throw new Error(`recommitting after break.sh failed:\n${committed.output}`);
+  const head = await sh('git rev-parse HEAD');
+  const sha = head.output.trim();
+  if (head.code !== 0 || !/^[0-9a-f]{40}$/.test(sha))
+    throw new Error(`reading the baseline commit failed:\n${head.output}`);
+  return sha;
 }
 
 /**
- * Everything the agent changed since `plantBug`, including new files and commits it made
- * itself, as a patch `git apply` takes.
+ * Everything the agent changed since `baseline` (the SHA `plantBug` resolved), including
+ * new files and commits it made itself, as a patch `git apply` takes. The SHA is fixed up
+ * front because the agent can rewrite the root commit with an amend or a rebase.
  */
-export async function agentDiff(sh: SandboxShell): Promise<string> {
+export async function agentDiff(sh: SandboxShell, baseline: string): Promise<string> {
   // The shell merges stderr into the output, so git's warnings would corrupt the patch.
   const diff = await sh(
     'git add -A >/dev/null 2>&1 && ' +
-      'git diff --cached --binary --no-ext-diff --no-textconv ' +
-      '"$(git rev-list --max-parents=0 HEAD)" 2>/dev/null',
+      `git diff --cached --binary --no-ext-diff --no-textconv ${baseline} 2>/dev/null`,
   );
   if (diff.code !== 0) throw new Error(`git diff exited ${diff.code}`);
   return diff.output;
