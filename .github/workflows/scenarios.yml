@@ -69,9 +69,11 @@ jobs:
             ids="$all"
           else
             changed="$(git diff --name-only "$BASE"...HEAD)"
-            # Anything outside scenarios/ can break every scenario, so this needs no second
-            # copy of the trigger list.
-            if grep -qv '^scenarios/' <<<"$changed"; then
+            # Anything outside a scenario's own directory can break every scenario: the
+            # runner, the demo app, and the shared scripts at the top of scenarios/ (ops.sh,
+            # compose-deploy.sh) that ops scenarios source. So this needs no second copy of
+            # the trigger list.
+            if grep -qvE '^scenarios/[^/]+/' <<<"$changed"; then
               ids="$all"
             else
               # Directories the PR touched that still exist (a deleted scenario has nothing to test).
