@@ -10,7 +10,8 @@ format.
   (Tier 3).
 - `scripts/selftest.ts` is the CLI behind `pnpm scenarios:selftest`. Ops scenarios need
   `DEMO_APP_URL` and `OPS_SECRET`; without them they are skipped when no ids are named,
-  and fail when they are.
+  and fail when they are. `--concurrency N` (or `SELFTEST_CONCURRENCY`) runs up to N code
+  scenarios at once, each in its own sandbox; ops scenarios stay one at a time.
 - `split.json` is the dev / held-out split for the evaluation (#16): 20 dev, 10 held
   out, even by class. It was committed before any tuning. Tuning looks only at the dev
   set; the held-out bugs run once, after the escalation threshold is frozen.

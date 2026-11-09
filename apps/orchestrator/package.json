@@ -33,6 +33,7 @@
     "kysely": "^0.29.7",
     "pg": "catalog:",
     "pg-boss": "catalog:",
+    "pino": "catalog:",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "zod": "catalog:"

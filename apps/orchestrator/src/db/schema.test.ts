@@ -30,7 +30,7 @@ import { createTestDeps } from './test-utils.ts';
 const deps = await createTestDeps();
 afterAll(() => deps.close());
 const { db } = deps;
-const service = new IssuesService(db, deps.fixJobs);
+const service = new IssuesService(db, deps.fixJobs, deps.logger);
 
 /** A value of the wrong type for its column, for a test that expects the insert to fail. */
 const bad = (value: unknown) => value as never;

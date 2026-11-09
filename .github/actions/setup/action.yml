@@ -3,16 +3,21 @@ description: pnpm (version from packageManager), Node from .nvmrc, cached store,
 
 inputs:
   filter:
-    description: Install only this workspace project (pnpm --filter). Empty installs everything.
+    description: >-
+      Install only this workspace project (pnpm --filter), without the store cache. Empty
+      installs everything.
     default: ''
 
 runs:
   using: composite
   steps:
-    - uses: pnpm/action-setup@v6
+    # The store cache is keyed on the lockfile alone. A filtered install would restore the
+    # full store (~230 MB) to use a fraction of it, and on a lockfile change it could save
+    # its partial store under the key first, so full installs miss and can't re-save.
+    - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       with:
-        cache: true
-    - uses: actions/setup-node@v7
+        cache: ${{ inputs.filter == '' }}
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version-file: .nvmrc
     - run: pnpm install --frozen-lockfile ${FILTER:+--filter "$FILTER"}
