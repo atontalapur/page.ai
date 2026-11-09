@@ -106,9 +106,14 @@ export const evalResultsSchema = z.strictObject({
   spentUsd: costSchema,
   /** The budget ran out before every planned run finished. */
   stoppedForBudget: z.boolean(),
+  /**
+   * A model provider error (rate limit, quota, outage) stopped the eval. The run it hit is
+   * in `errors`, not counted as a page. Files from before this field read as false.
+   */
+  stoppedForProvider: z.boolean().default(false),
   runs: z.array(scenarioRunSchema),
   skipped: z.array(z.strictObject({ scenario: z.string(), reason: z.string() })),
-  /** Attempts that threw (sandbox or script failure). Their runs are left out. */
+  /** Attempts that threw (sandbox, script or model provider failure). Their runs are left out. */
   errors: z.array(
     z.strictObject({
       scenario: z.string(),

@@ -46,6 +46,10 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5
   before each model call, so the total can go over by one call's cost. `spentUsd` is
   everything charged against the budget, dropped runs and errors included;
   `summary.costUsd` counts only the runs kept.
+- A run whose agent ends on a model error (a rate limit or used-up quota, auth, credits, a
+  provider outage or a malformed reply, after `withRetries` gave up) is not a page. The
+  attempt goes in `errors`, its run is left out, and the eval stops with
+  `stoppedForProvider`, since the next attempt would hit the same wall. Rerun the rest later.
 - Ops scenarios (Tier 3) are skipped with a reason for now: they need a live demo app.
 - An attempt that throws (a sandbox or `break.sh` failure) goes in `errors` and its run
   is left out; the eval goes on. If it failed after the agent ran (the diff or the check
