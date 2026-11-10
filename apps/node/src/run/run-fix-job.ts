@@ -1,4 +1,10 @@
-import { DEFAULT_AGENT_CONFIG, runAgent, type AgentConfig, type ExecuteFn } from '@page/agent';
+import {
+  budgetFor,
+  DEFAULT_AGENT_CONFIG,
+  runAgent,
+  type AgentConfig,
+  type ExecuteFn,
+} from '@page/agent';
 import type { Tier } from '@page/contracts';
 import type { ModelClient } from '@page/model-client';
 import {
@@ -141,9 +147,9 @@ export async function runFixJob(
         ...(hostTools === undefined ? {} : { hostTools }),
       });
 
-    // The container's wall clock started with it, so the agent's budget starts there too.
-    // At least 1 ms: the agent reads 0 as no limit.
-    const config = { ...DEFAULT_AGENT_CONFIG, ...deps.agentConfig };
+    // The tier's escalation threshold. The container's wall clock started with it, so the
+    // agent's budget starts there too. At least 1 ms: the agent reads 0 as no limit.
+    const config = { ...DEFAULT_AGENT_CONFIG, ...budgetFor(tier), ...deps.agentConfig };
     if (config.wallTimeLimitMs > 0) {
       config.wallTimeLimitMs = Math.max(1, config.wallTimeLimitMs - (now() - startedAt));
     }

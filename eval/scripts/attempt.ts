@@ -3,7 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { DEFAULT_AGENT_CONFIG, runAgent } from '@page/agent';
+import { budgetFor, runAgent } from '@page/agent';
 import type { ModelClient } from '@page/model-client';
 import {
   DEFAULT_TIMEOUT_MS,
@@ -102,7 +102,7 @@ export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
             // The container's wall clock started with it; at least 1 ms, since 0 is no limit.
             wallTimeLimitMs: Math.max(
               1,
-              DEFAULT_AGENT_CONFIG.wallTimeLimitMs - (Date.now() - startedAt),
+              budgetFor(tier).wallTimeLimitMs - (Date.now() - startedAt),
             ),
           },
         );

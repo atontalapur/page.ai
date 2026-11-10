@@ -6,15 +6,13 @@ import { renameSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { budgetFor } from '@page/agent';
 import { OpenRouterClient, withRetries } from '@page/model-client';
 import { evalConfigSchema, EVAL_CONFIGS, loadResults, type EvalResults } from '../src/results.ts';
 import { resultsFileName, runEval } from '../src/runner.ts';
 import { listScenarioIds, loadScenario, ScenarioError, type Scenario } from '../src/scenario.ts';
 import { loadSplit, splitIds } from '../src/split.ts';
 import { dockerAttempt } from './attempt.ts';
-
-/** The most one attempt may spend; every attempt in flight holds this much of the budget. */
-const ATTEMPT_COST_LIMIT_USD = 0.5;
 
 const USAGE = `usage: OPENROUTER_API_KEY=... node eval/scripts/eval-run.ts <image> --config <${Object.keys(EVAL_CONFIGS).join('|')}>
   [--model <id>] [--runs <n>] [--max-cost <usd>] [--concurrency <n>] [--set dev|held-out]
@@ -138,6 +136,11 @@ console.log(
   `${config.data}: ${scenarios.length} scenarios x ${runs} runs, ${model}, budget $${maxCost}, ` +
     `up to ${concurrency} at a time`,
 );
+// Every attempt in flight holds its tier's cost limit (the escalation threshold's). The
+// warnings below assume the dearest tier this config plays.
+const ATTEMPT_COST_LIMIT_USD = Math.max(
+  ...EVAL_CONFIGS[config.data].map((tier) => budgetFor(tier).costLimitUsd),
+);
 const funded = Math.floor(maxCost / ATTEMPT_COST_LIMIT_USD);
 if (concurrency > 1 && funded < concurrency) {
   console.warn(
@@ -186,7 +189,7 @@ const results = await runEval({
   scenarios,
   runsPerScenario: runs,
   maxCostUsd: maxCost,
-  attemptCostLimitUsd: ATTEMPT_COST_LIMIT_USD,
+  attemptCostLimitUsd: (tier) => budgetFor(tier).costLimitUsd,
   concurrency,
   model,
   gitSha,

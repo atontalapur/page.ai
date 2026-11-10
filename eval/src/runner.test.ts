@@ -230,6 +230,26 @@ describe('runEval', () => {
     expect(results.runs.map((r) => r.scenario)).toEqual(['001-a']);
   });
 
+  it("gives each tier its own cost limit, and counts a tier's own limit as its own", async () => {
+    const { fn, calls } = scripted([
+      { exitStatus: 'cost_limit', checkPassed: false, costUsd: 0.1 },
+      { exitStatus: 'step_limit', checkPassed: false, costUsd: 0.3 },
+      {},
+    ]);
+    const limits = { 1: 0.1, 2: 0.3, 3: 0.5 } as const;
+    const results = await runEval(
+      base(fn, { maxCostUsd: 5, attemptCostLimitUsd: (tier) => limits[tier] }),
+    );
+    expect(calls.map((c) => [c.tier, c.costLimitUsd])).toEqual([
+      [1, 0.1],
+      [2, 0.3],
+      [3, 0.5],
+    ]);
+    // Tier 1 spent its whole $0.10 limit: an escalation, not a budget stop.
+    expect(results.stoppedForBudget).toBe(false);
+    expect(results.runs[0]).toMatchObject({ tierLanded: 3 });
+  });
+
   it('keeps a run that hit its own cost limit, with the full limit to spend', async () => {
     const { fn } = scripted([{ exitStatus: 'cost_limit', checkPassed: false, costUsd: 0.5 }]);
     const results = await runEval(base(fn, { config: 'tier1-only', maxCostUsd: 5 }));

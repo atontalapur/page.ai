@@ -1,6 +1,7 @@
 import type { ChatMessage, ModelClient, ModelError } from '@page/model-client';
 import type { ExecErr, ExecOk, Result, ToolCall } from '@page/toolkit';
 import { parseAction } from './actions.ts';
+import { budgetFor } from './threshold.ts';
 import {
   formatErrorPrompt,
   instancePrompt,
@@ -43,12 +44,11 @@ export interface AgentConfig {
   maxConsecutiveFormatErrors: number;
 }
 
-// Upstream defaults to no step limit and $3. A Tier 1 fix should be cheap, and the sandbox
-// kills the container at 15 minutes, so stop a little before that.
+// Upstream defaults to no step limit and $3. The step, cost and time limits are the
+// escalation threshold (threshold.ts); runAgent uses the task's tier's, and this holds
+// Tier 1's for callers that need a config without one.
 export const DEFAULT_AGENT_CONFIG: AgentConfig = {
-  stepLimit: 40,
-  costLimitUsd: 0.5,
-  wallTimeLimitMs: 14 * 60 * 1000,
+  ...budgetFor(1),
   maxConsecutiveFormatErrors: 3,
 };
 
@@ -90,7 +90,8 @@ export async function runAgent(
   deps: AgentDeps,
   overrides: Partial<AgentConfig> = {},
 ): Promise<AgentRun> {
-  const config = { ...DEFAULT_AGENT_CONFIG, ...overrides };
+  // The tier's escalation threshold, unless the caller narrows it (a shorter wall clock).
+  const config = { ...DEFAULT_AGENT_CONFIG, ...budgetFor(task.tier ?? 1), ...overrides };
   const now = deps.now ?? Date.now;
   const startedAt = now();
   const messages: ChatMessage[] = [
