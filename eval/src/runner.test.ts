@@ -647,6 +647,100 @@ describe('runEval', () => {
     expect(summary.blockedPer100Steps).toBe(25);
   });
 
+  it('resumes a stopped eval: keeps its runs and spend, plays only the rest', async () => {
+    const scenarios = [scenario('001-a'), scenario('002-b')];
+    const first = scripted([]);
+    const pause = new AbortController();
+    const earlier = await runEval(
+      base(first.fn, {
+        config: 'tier1-only',
+        scenarios,
+        runsPerScenario: 2,
+        // Pause once the first run is kept.
+        onRun: () => pause.abort(),
+        signal: pause.signal,
+      }),
+    );
+    expect(earlier.runs.map((r) => `${r.scenario}#${r.run}`)).toEqual(['001-a#1']);
+    expect(earlier.notPlayed).toEqual([
+      { scenario: '002-b', run: 1 },
+      { scenario: '001-a', run: 2 },
+      { scenario: '002-b', run: 2 },
+    ]);
+    expect(earlier.stoppedForBudget).toBe(false);
+    expect(earlier.stoppedForProvider).toBe(false);
+
+    const second = scripted([]);
+    const results = await runEval(
+      base(second.fn, { config: 'tier1-only', scenarios, runsPerScenario: 2, resume: earlier }),
+    );
+    expect(second.calls.map((c) => c.id)).toEqual(['002-b', '001-a', '002-b']);
+    expect(results.runs.map((r) => `${r.scenario}#${r.run}`)).toEqual([
+      '001-a#1',
+      '002-b#1',
+      '001-a#2',
+      '002-b#2',
+    ]);
+    expect(results.notPlayed).toEqual([]);
+    expect(results.startedAt).toBe(earlier.startedAt);
+    expect(results.spentUsd).toBeCloseTo(0.04);
+    expect(results.summary.runs).toBe(4);
+    expect(evalResultsSchema.parse(results)).toEqual(results);
+  });
+
+  it('counts a resumed spend against the budget', async () => {
+    const { fn, calls } = scripted([]);
+    const done = await runEval(base(scripted([]).fn, { config: 'tier1-only' }));
+    const results = await runEval(
+      base(fn, {
+        config: 'tier1-only',
+        scenarios: [scenario('001-a'), scenario('002-b')],
+        maxCostUsd: 0.5,
+        resume: { ...done, spentUsd: 0.3 },
+      }),
+    );
+    expect(calls.map((c) => c.id)).toEqual(['002-b']);
+    expect(calls[0]!.costLimitUsd).toBeCloseTo(0.2);
+    expect(results.spentUsd).toBeCloseTo(0.31);
+  });
+
+  it('pauses mid-attempt: stops the attempt and leaves its run to play later', async () => {
+    const { fn, started, settle } = manual();
+    const pause = new AbortController();
+    const running = runEval(base(fn, { config: 'tier1-only', signal: pause.signal }));
+    await flush();
+    expect(started).toHaveLength(1);
+    pause.abort();
+    expect(started[0]!.signal.aborted).toBe(true);
+    settle(0, { exitStatus: 'aborted', costUsd: 0.02 });
+    const results = await running;
+    expect(results.runs).toEqual([]);
+    expect(results.errors).toEqual([]);
+    expect(results.notPlayed).toEqual([{ scenario: '001-a', run: 1 }]);
+    expect(results.spentUsd).toBeCloseTo(0.02);
+  });
+
+  it('starts nothing when the signal is already aborted', async () => {
+    const { fn, calls } = scripted([]);
+    const results = await runEval(base(fn, { signal: AbortSignal.abort() }));
+    expect(calls).toEqual([]);
+    expect(results.notPlayed).toEqual([{ scenario: '001-a', run: 1 }]);
+  });
+
+  it('checkpoints the results so far after each planned run', async () => {
+    const { fn } = scripted([]);
+    const seen: string[][] = [];
+    const final = await runEval(
+      base(fn, {
+        config: 'tier1-only',
+        scenarios: [scenario('001-a'), scenario('002-b')],
+        onCheckpoint: (r) => seen.push(r.runs.map((run) => run.scenario)),
+      }),
+    );
+    expect(seen).toEqual([['001-a'], ['001-a', '002-b']]);
+    expect(final.runs).toHaveLength(2);
+  });
+
   it('hands each finished run to onRun', async () => {
     const { fn } = scripted([]);
     const seen: string[] = [];

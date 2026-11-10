@@ -41,6 +41,24 @@ describe('runInOrder', () => {
     ]);
   });
 
+  it('calls reportedUpTo once done has caught up, not for an item it must wait behind', async () => {
+    const gates = new Map(['a', 'b'].map((x) => [x, deferred<string>()]));
+    const log: string[] = [];
+    const running = runInOrder(
+      ['a', 'b'],
+      2,
+      (x) => gates.get(x)!.promise,
+      (r) => log.push(`done ${r}`),
+      () => log.push('caught up'),
+    );
+    gates.get('b')!.resolve('B');
+    await tick();
+    expect(log).toEqual([]);
+    gates.get('a')!.resolve('A');
+    await running;
+    expect(log).toEqual(['done A', 'done B', 'caught up']);
+  });
+
   it('keeps at most `limit` in flight and reports in list order', async () => {
     const gates = new Map(['a', 'b', 'c', 'd'].map((x) => [x, deferred<string>()]));
     const started: string[] = [];

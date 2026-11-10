@@ -106,6 +106,20 @@ export interface RunEvalOptions {
   now?: () => Date;
   /** Each kept run, in the order the runs were planned. */
   onRun?: (run: ScenarioRun) => void;
+  /**
+   * An earlier results file for the same configuration, model and runs per scenario,
+   * whose eval stopped before every run finished. Its runs are kept and not played again,
+   * its spend counts against maxCostUsd, and its start time stays. Runs it lists in
+   * `errors` or `notPlayed` are played.
+   */
+  resume?: EvalResults;
+  /**
+   * Stops the eval, as a pause: no attempt starts after it, attempts and checks in flight
+   * stop, and their runs go in `notPlayed` to play on a resume.
+   */
+  signal?: AbortSignal;
+  /** The results so far, after each planned run is kept or left out. */
+  onCheckpoint?: (results: EvalResults) => void;
 }
 
 /**
@@ -201,13 +215,15 @@ export function skipReason(scenario: Scenario): string | undefined {
  */
 export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
   const now = options.now ?? (() => new Date());
-  const startedAt = now().toISOString();
+  const startedAt = options.resume?.startedAt ?? now().toISOString();
   const tiers = EVAL_CONFIGS[options.config];
-  const runs: ScenarioRun[] = [];
+  const runs: ScenarioRun[] = [...(options.resume?.runs ?? [])];
+  const kept = new Set(runs.map((r) => `${r.scenario}#${r.run}`));
   const skipped: EvalResults['skipped'] = [];
   const errors: EvalResults['errors'] = [];
   const notPlayed: EvalResults['notPlayed'] = [];
   const budget = new Budget(options.maxCostUsd, options.attemptCostLimitUsd);
+  budget.spent = options.resume?.spentUsd ?? 0;
   let stoppedForBudget = false;
   let stoppedForProvider = false;
 
@@ -219,23 +235,32 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
 
   const planned: { scenario: Scenario; run: number }[] = [];
   for (let run = 1; run <= options.runsPerScenario; run++) {
-    for (const scenario of playable) planned.push({ scenario, run });
+    for (const scenario of playable) {
+      if (!kept.has(`${scenario.id}#${run}`)) planned.push({ scenario, run });
+    }
   }
 
-  // Aborted when a provider error stops the eval: every attempt and check in flight ends.
-  const providerStop = new AbortController();
+  // Aborted when a provider error or the caller stops the eval: every attempt and check in
+  // flight ends.
+  const stopAll = new AbortController();
   const stopForProvider = () => {
     stoppedForProvider = true;
     budget.stop();
-    providerStop.abort();
+    stopAll.abort();
   };
+  const pause = () => {
+    budget.stop();
+    stopAll.abort();
+  };
+  if (options.signal?.aborted) pause();
+  else options.signal?.addEventListener('abort', pause, { once: true });
 
   const play = async (scenario: Scenario, run: number): Promise<RunOutcome> => {
     const played: { agent: Omit<Attempt, 'checkPassed'>; check: Promise<boolean> }[] = [];
     let crash: EvalResults['errors'][number] | undefined;
     // Aborted once the run is dropped: its attempt and checks in flight stop early.
     const dropped = new AbortController();
-    const signal = AbortSignal.any([dropped.signal, providerStop.signal]);
+    const signal = AbortSignal.any([dropped.signal, stopAll.signal]);
     // A run cut short by the budget, at any tier, says nothing about the agent, so it is
     // left out, and no attempt starts after it, in this run or any other. A run that
     // another run's stop cuts off is left out too.
@@ -318,6 +343,28 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     return { result: scenarioRun(scenario, run, attempts), errors };
   };
 
+  // Kept runs in the planned order (run by run, scenario by scenario), resumed ones included.
+  const position = new Map(playable.map((s, i) => [s.id, i]));
+  const order = (r: ScenarioRun) => (r.run - 1) * playable.length + (position.get(r.scenario) ?? 0);
+  const results = (): EvalResults => ({
+    v: 1,
+    config: options.config,
+    model: options.model,
+    gitSha: options.gitSha,
+    startedAt,
+    finishedAt: now().toISOString(),
+    runsPerScenario: options.runsPerScenario,
+    maxCostUsd: options.maxCostUsd,
+    spentUsd: budget.spent,
+    stoppedForBudget,
+    stoppedForProvider,
+    runs: [...runs].sort((a, b) => order(a) - order(b)),
+    skipped: [...skipped],
+    errors: [...errors],
+    notPlayed: [...notPlayed],
+    summary: summarize(runs),
+  });
+
   await runInOrder(
     planned,
     options.concurrency ?? 1,
@@ -334,26 +381,10 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
       runs.push(outcome.result);
       options.onRun?.(outcome.result);
     },
+    () => options.onCheckpoint?.(results()),
   );
-
-  return {
-    v: 1,
-    config: options.config,
-    model: options.model,
-    gitSha: options.gitSha,
-    startedAt,
-    finishedAt: now().toISOString(),
-    runsPerScenario: options.runsPerScenario,
-    maxCostUsd: options.maxCostUsd,
-    spentUsd: budget.spent,
-    stoppedForBudget,
-    stoppedForProvider,
-    runs,
-    skipped,
-    errors,
-    notPlayed,
-    summary: summarize(runs),
-  };
+  options.signal?.removeEventListener('abort', pause);
+  return results();
 }
 
 export function scenarioRun(scenario: Scenario, run: number, attempts: Attempt[]): ScenarioRun {

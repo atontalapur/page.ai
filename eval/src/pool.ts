@@ -12,6 +12,8 @@ export async function runInOrder<T, R>(
   limit: number,
   run: (item: T) => Promise<R>,
   done: (result: R, item: T) => void,
+  /** Called once `done` has caught up, after each item that let it report more. */
+  reportedUpTo?: () => void,
 ): Promise<void> {
   if (!Number.isInteger(limit) || limit < 1) {
     throw new RangeError(`limit must be a positive integer, got ${limit}`);
@@ -26,10 +28,12 @@ export async function runInOrder<T, R>(
       const i = next++;
       try {
         results[i] = { value: await run(items[i]!) };
+        const before = reported;
         while (results[reported]) {
           done(results[reported]!.value, items[reported]!);
           reported++;
         }
+        if (reported > before) reportedUpTo?.();
       } catch (err) {
         rejected = true;
         throw err;
