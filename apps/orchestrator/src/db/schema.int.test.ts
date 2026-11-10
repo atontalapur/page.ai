@@ -1,6 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { approvalSchema, escalationSchema, runSchema, stepSchema } from '@page/contracts';
+import {
+  approvalSchema,
+  escalationSchema,
+  issueEventRecordSchema,
+  issueSchema,
+  runSchema,
+  stepSchema,
+  type IssueEvent,
+} from '@page/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
+import { toEventRecord, toIssue } from '../issues/issues.service.ts';
 import { createSchemaDeps } from './test-utils.ts';
 
 // Writes a row to every table on real Postgres, reads it back and parses it with the
@@ -27,6 +36,74 @@ async function newRun(tier: 1 | 2 | 3 = 1): Promise<string> {
 }
 
 describe('orchestrator tables on real Postgres', () => {
+  it('stores an issue that parses as a contracts Issue', async () => {
+    const { id } = await db
+      .insertInto('issues')
+      .values({
+        fingerprint: `int-${randomUUID()}`,
+        title: 'TypeError: boom',
+        status: 'fixing',
+        class: 'backend-api',
+        severity: 'high',
+        current_tier: 2,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+
+    const row = await db
+      .selectFrom('issues')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirstOrThrow();
+    expect(issueSchema.parse(toIssue(row))).toMatchObject({
+      id,
+      status: 'fixing',
+      class: 'backend-api',
+      severity: 'high',
+      occurrences: 1,
+      currentTier: 2,
+    });
+  });
+
+  it('stores issue events that parse as contracts IssueEventRecords, in order', async () => {
+    const { id: issueId } = await db
+      .insertInto('issues')
+      .values({ fingerprint: `int-${randomUUID()}`, title: 'TypeError: boom' })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const events: { event: IssueEvent; from: 'new' | 'triaged'; to: 'triaged' | 'fixing' }[] = [
+      { event: { type: 'triage', class: 'frontend', severity: 'low' }, from: 'new', to: 'triaged' },
+      { event: { type: 'start_fix' }, from: 'triaged', to: 'fixing' },
+    ];
+    for (const [i, { event, from, to }] of events.entries()) {
+      await db
+        .insertInto('issue_events')
+        .values({
+          issue_id: issueId,
+          event: JSON.stringify(event),
+          from_status: from,
+          to_status: to,
+          current_tier: i === 0 ? null : 1,
+        })
+        .execute();
+    }
+
+    const rows = await db
+      .selectFrom('issue_events')
+      .selectAll()
+      .where('issue_id', '=', issueId)
+      .orderBy('id')
+      .execute();
+    // node-postgres returns the bigint id as a string; PGlite, in the unit tests, as a number.
+    const records = rows.map((row) => issueEventRecordSchema.parse(toEventRecord(row)));
+    expect(records.map((r) => r.event)).toEqual(events.map((e) => e.event));
+    expect(records.map((r) => [r.fromStatus, r.toStatus, r.currentTier])).toEqual([
+      ['new', 'triaged', null],
+      ['triaged', 'fixing', 1],
+    ]);
+    expect(BigInt(records[1]!.id)).toBeGreaterThan(BigInt(records[0]!.id));
+  });
+
   it('stores a run that parses as a contracts Run', async () => {
     const id = await newRun(2);
     const confidence = { score: 0.8, reproduced: true, testsPass: true, selfAssessed: 0.7 };

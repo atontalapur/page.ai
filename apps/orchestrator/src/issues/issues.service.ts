@@ -32,7 +32,8 @@ export class StaleRunError extends Error {
   }
 }
 
-function toIssue(row: Selectable<IssuesTable>): Issue {
+/** An issues row as the contracts Issue. */
+export function toIssue(row: Selectable<IssuesTable>): Issue {
   return {
     id: row.id,
     fingerprint: row.fingerprint,
@@ -47,7 +48,8 @@ function toIssue(row: Selectable<IssuesTable>): Issue {
   };
 }
 
-function toEventRecord(row: Selectable<IssueEventsTable>): IssueEventRecord {
+/** An issue_events row as the contracts IssueEventRecord. */
+export function toEventRecord(row: Selectable<IssueEventsTable>): IssueEventRecord {
   return {
     id: String(row.id),
     issueId: row.issue_id,
