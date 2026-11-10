@@ -161,6 +161,7 @@ tried.
 
 TODO(#16): no results exist yet. Held-out numbers come from the frozen-threshold runs
 written to `eval/results/`.
+The tables below come from `pnpm eval:report` on one results file per config.
 
 ### Fix rate
 

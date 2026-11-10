@@ -87,3 +87,9 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   every night at 2 a.m. Pacific, with a $1 budget, and commits the results to the
   `eval/nightly-results` branch. It needs the `OPENROUTER_API_KEY` secret and the
   `OPENROUTER_MODEL` repository variable.
+- `pnpm eval:report <results.json>...` prints the report's Results tables as markdown
+  from one results file per config: the preregistered bars, fix rate overall, per class
+  and per tier, cost per fixed bug, time to fix and page (p50, p90), unsafe attempts per
+  100 steps by tier, and the bugs where the ladder fixed fewer runs than `tier3-start`.
+  It refuses two files for one config or files from different models, and flags results
+  a budget or provider stop left incomplete.
