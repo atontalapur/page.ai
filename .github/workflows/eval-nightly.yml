@@ -1,7 +1,6 @@
 # Nightly eval (#15): plays the first 10 dev scenarios from eval/split.json under the full
-# ladder with a real model, two runs at a time on a $1 budget, and commits the results
-# JSON to the eval/nightly-results branch (main is protected). Held-out scenarios never
-# run here.
+# ladder with a real model, on a $1 budget, and commits the results JSON to the
+# eval/nightly-results branch (main is protected). Held-out scenarios never run here.
 # Needs the OPENROUTER_API_KEY secret and the OPENROUTER_MODEL variable.
 # Not a required check.
 name: Eval nightly
@@ -26,10 +25,7 @@ env:
 jobs:
   eval:
     runs-on: ubuntu-latest
-    # Ten scenarios, up to three tiers each, two runs at a time. Most attempts take a few
-    # minutes. Two, not more: OpenRouter caps free models at 20 requests a minute, and one
-    # agent makes about 3 to 7. Two attempts in flight hold 2 x $0.50, which a free model
-    # never spends, so $1 keeps both running.
+    # Ten scenarios, up to three tiers each. Most attempts take a few minutes.
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -58,7 +54,7 @@ jobs:
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
         run: >
           pnpm eval:run "$IMAGE" --config ladder --set dev --limit 10 --max-cost 1
-          --concurrency 2 --out "$RUNNER_TEMP/results"
+          --out "$RUNNER_TEMP/results"
       - name: Commit the results
         run: |
           git config user.name 'github-actions[bot]'
