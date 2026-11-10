@@ -3,6 +3,13 @@
 Frozen when committed, before the pilot. A bar, arm, decoy or stop rule changed after the
 pilot starts means a new preregistration.
 
+Amendment 1 (2026-11-09), committed before any run on the new model: the arms move from
+`nvidia/nemotron-3-ultra-550b-a55b:free` to `openai/gpt-oss-20b`. The free model's quota
+(about 1,000 requests a day) put the dev run at about 4 days, from the nemotron pilot's 22
+calls per run. Bars, decoys and the held-out reservation are unchanged. The stop rules
+change from quota to spend. The nemotron pilot (9 runs, 9 fixed, $0) is kept as a record and
+is not part of the results. The pilot reruns on the new model before the full run.
+
 ## Bars
 
 lesson: how close the full ladder gets to the Tier 3 from-start fix rate while granting
@@ -21,14 +28,16 @@ Tier 2 and Tier 3 only to runs that need them.
 
 ## Arms
 
-All arms use `nvidia/nemotron-3-ultra-550b-a55b:free` on OpenRouter, with the agent's
-default limits (40 steps, $0.50, 15 min per attempt). Per item cost: $0 (free model,
-OpenRouter `/models` price 0/0). The gstack price table has no row for it, so arms are
-priced from OpenRouter, and the runner records `usage.cost` for every call.
+All arms use `openai/gpt-oss-20b` on OpenRouter, with the agent's default limits (40
+steps, $0.50, 15 min per attempt). Price: $0.03 per million input tokens and $0.13 per
+million output tokens (OpenRouter `/models`, 2026-11-09). Per run cost is estimated at well
+under a cent before the pilot and measured by it. The gstack price table has no row for
+this model, so arms are priced from OpenRouter, and the runner records `usage.cost` for
+every call.
 
-- `nemotron-3-ultra:free#tier1-only`: starts and stays at Tier 1.
-- `nemotron-3-ultra:free#tier3-start`: starts at Tier 3.
-- `nemotron-3-ultra:free#ladder`: Tier 1, then 2, then 3 on step, cost or time limit.
+- `gpt-oss-20b#tier1-only`: starts and stays at Tier 1.
+- `gpt-oss-20b#tier3-start`: starts at Tier 3.
+- `gpt-oss-20b#ladder`: Tier 1, then 2, then 3 on step, cost or time limit.
 
 ## Comparison
 
@@ -45,21 +54,21 @@ its check is repaired.
 
 ## Stop rules
 
-- Any run with `costUsd > 0`: a paid model slipped in. Stop. `--max-cost 1` caps the
-  damage.
-- The first provider failure (`stoppedForProvider`, for example OpenRouter's 429 once the
-  free quota of about 1,000 requests a day is used up): the runner stops on its own. The
-  affected run is in `errors`; rerun it and everything after it the next day. Never retry
-  in a loop.
+- Spend cap: $4 for the whole dev run, split as `--max-cost` per config, under the key's
+  $5 limit. The runner stops a config when its share runs out (`stoppedForBudget`). The
+  pilot gets $0.50.
+- Pilot projects more than $4 for the dev run: stop and cut tier3-start to 1 run per bug,
+  as the method doc allows.
+- The first provider failure (`stoppedForProvider`: a 429, used-up credits, an outage): the
+  runner stops on its own. The affected run is in `errors`; rerun it and everything after
+  it once the provider is back. Never retry in a loop.
 - Any other entry in `errors` (sandbox or `break.sh` failure) during the pilot: stop and
   fix the harness before the full run.
 - Pilot misses the `model_error` bar: stop and fix the runner before the full run.
-- Pilot projects more than 5 days of request quota for the dev run: stop and cut
-  tier3-start to 1 run per bug, as the method doc allows.
 
 ## Held-out exposure
 
-| set                                 | prior exposure                                                                     | reservation                                                                                            |
-| ----------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| held-out (10 bugs, eval/split.json) | none. No agent run has used them, and no prompt or limit was tuned on them.        | Not read, run or summarized until Arjun freezes the escalation threshold. Then 1 run per config, once. |
-| dev (20 bugs)                       | 001, 003, 004 ran once under tier1-only with this model on 2026-11-09 (3/3 fixed). | All runs and tuning happen here.                                                                       |
+| set                                 | prior exposure                                                                                                                                     | reservation                                                                                            |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| held-out (10 bugs, eval/split.json) | none. No agent run has used them, and no prompt or limit was tuned on them.                                                                        | Not read, run or summarized until Arjun freezes the escalation threshold. Then 1 run per config, once. |
+| dev (20 bugs)                       | Free nemotron only: 001, 003, 004 under tier1-only, and the 9-run pilot (009, 015, 022 under each config), all 2026-11-09. No gpt-oss-20b run yet. | All runs and tuning happen here.                                                                       |
