@@ -6,18 +6,20 @@ import {
   issueSchema,
   runSchema,
   stepSchema,
-  type IssueEvent,
 } from '@page/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
-import { toEventRecord, toIssue } from '../issues/issues.service.ts';
+import { IssuesService } from '../issues/issues.service.ts';
 import { createSchemaDeps } from './test-utils.ts';
 
 // Writes a row to every table on real Postgres, reads it back and parses it with the
 // @page/contracts row schema, so a column type or name that drifts from the contracts fails.
+// Issues and their events go through IssuesService, the code the API runs. The other
+// tables have no service yet, so their rows are mapped here.
 
 const deps = await createSchemaDeps();
 afterAll(() => deps.close());
 const { db } = deps;
+const service = new IssuesService(db, deps.fixJobs, deps.logger);
 
 const iso = (date: Date | null) => date?.toISOString() ?? null;
 
@@ -36,72 +38,52 @@ async function newRun(tier: 1 | 2 | 3 = 1): Promise<string> {
 }
 
 describe('orchestrator tables on real Postgres', () => {
-  it('stores an issue that parses as a contracts Issue', async () => {
-    const { id } = await db
-      .insertInto('issues')
-      .values({
-        fingerprint: `int-${randomUUID()}`,
-        title: 'TypeError: boom',
-        status: 'fixing',
-        class: 'backend-api',
-        severity: 'high',
-        current_tier: 2,
-      })
-      .returning('id')
-      .executeTakeFirstOrThrow();
+  it('stores an issue and its events through IssuesService, as contracts records', async () => {
+    const fingerprint = `int-${randomUUID()}`;
+    const { issue: reported, created } = await service.report({
+      fingerprint,
+      title: 'TypeError: boom',
+    });
+    expect(created).toBe(true);
+    await service.apply(reported.id, { type: 'triage', class: 'backend-api', severity: 'high' });
+    const fixing = await service.apply(reported.id, { type: 'start_fix' });
 
-    const row = await db
-      .selectFrom('issues')
-      .selectAll()
-      .where('id', '=', id)
-      .executeTakeFirstOrThrow();
-    expect(issueSchema.parse(toIssue(row))).toMatchObject({
-      id,
+    const issue = issueSchema.parse(await service.get(reported.id));
+    expect(issue).toEqual(fixing);
+    expect(issue).toMatchObject({
+      id: reported.id,
+      fingerprint,
+      title: 'TypeError: boom',
       status: 'fixing',
       class: 'backend-api',
       severity: 'high',
       occurrences: 1,
-      currentTier: 2,
+      currentTier: 1,
+      createdAt: reported.createdAt,
     });
-  });
-
-  it('stores issue events that parse as contracts IssueEventRecords, in order', async () => {
-    const { id: issueId } = await db
-      .insertInto('issues')
-      .values({ fingerprint: `int-${randomUUID()}`, title: 'TypeError: boom' })
-      .returning('id')
+    expect(Date.parse(issue.updatedAt)).toBeGreaterThanOrEqual(Date.parse(issue.createdAt));
+    // Entering a tier queued a fix job, so the row names its run.
+    const row = await db
+      .selectFrom('issues')
+      .select('current_run_id')
+      .where('id', '=', reported.id)
       .executeTakeFirstOrThrow();
-    const events: { event: IssueEvent; from: 'new' | 'triaged'; to: 'triaged' | 'fixing' }[] = [
-      { event: { type: 'triage', class: 'frontend', severity: 'low' }, from: 'new', to: 'triaged' },
-      { event: { type: 'start_fix' }, from: 'triaged', to: 'fixing' },
-    ];
-    for (const [i, { event, from, to }] of events.entries()) {
-      await db
-        .insertInto('issue_events')
-        .values({
-          issue_id: issueId,
-          event: JSON.stringify(event),
-          from_status: from,
-          to_status: to,
-          current_tier: i === 0 ? null : 1,
-        })
-        .execute();
-    }
+    expect(row.current_run_id).not.toBeNull();
 
-    const rows = await db
-      .selectFrom('issue_events')
-      .selectAll()
-      .where('issue_id', '=', issueId)
-      .orderBy('id')
-      .execute();
-    // node-postgres returns the bigint id as a string; PGlite, in the unit tests, as a number.
-    const records = rows.map((row) => issueEventRecordSchema.parse(toEventRecord(row)));
-    expect(records.map((r) => r.event)).toEqual(events.map((e) => e.event));
-    expect(records.map((r) => [r.fromStatus, r.toStatus, r.currentTier])).toEqual([
-      ['new', 'triaged', null],
-      ['triaged', 'fixing', 1],
+    const events = (await service.events(reported.id)).map((e) => issueEventRecordSchema.parse(e));
+    // A double-encoded jsonb event would come back as a string and fail the toEqual.
+    expect(events.map((e) => [e.event, e.fromStatus, e.toStatus, e.currentTier])).toEqual([
+      [{ type: 'triage', class: 'backend-api', severity: 'high' }, 'new', 'triaged', null],
+      [{ type: 'start_fix' }, 'triaged', 'fixing', 1],
     ]);
-    expect(BigInt(records[1]!.id)).toBeGreaterThan(BigInt(records[0]!.id));
+    // node-postgres returns bigint as a string, so ids past 2^53 keep their precision.
+    // toEventRecord's String() would hide a type parser that turned them into numbers.
+    const ids = await db
+      .selectFrom('issue_events')
+      .select('id')
+      .where('issue_id', '=', reported.id)
+      .execute();
+    expect(ids.map((r) => typeof r.id)).toEqual(['string', 'string']);
   });
 
   it('stores a run that parses as a contracts Run', async () => {
@@ -275,5 +257,6 @@ describe('orchestrator tables on real Postgres', () => {
       .where('run_id', '=', runId)
       .execute();
     expect([runs.length, escalations.length]).toEqual([1, 1]);
+
   });
 });
