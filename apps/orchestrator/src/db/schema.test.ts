@@ -15,6 +15,7 @@ import { isTerminal } from '../issues/transitions.ts';
 import type {
   ApprovalsTable,
   EscalationsTable,
+  IssueEventsTable,
   IssuesTable,
   RunsTable,
   StepsTable,
@@ -66,6 +67,44 @@ describe('issues table matches @page/contracts', () => {
     const { fingerprint } = await insertIssue({ status });
     const again = await service.report({ fingerprint, title: 'x' });
     expect(again.created).toBe(isTerminal(status));
+  });
+});
+
+const insertEvent = async (values: Partial<Insertable<IssueEventsTable>> = {}) => {
+  const issue = await insertIssue();
+  await db
+    .insertInto('issue_events')
+    .values({
+      issue_id: issue.id,
+      event: JSON.stringify({ type: 'start_fix' }),
+      from_status: 'triaged',
+      to_status: 'fixing',
+      current_tier: 1,
+      ...values,
+    })
+    .execute();
+  return issue;
+};
+
+describe('issue_events table matches @page/contracts', () => {
+  it.each(ISSUE_STATUSES)('accepts status %s as from_status and to_status', async (status) => {
+    await expect(insertEvent({ from_status: status, to_status: status })).resolves.toBeDefined();
+  });
+
+  it('rejects a status outside the contracts and a tier outside 1-3', async () => {
+    await expect(insertEvent({ from_status: bad('bogus') })).rejects.toThrow();
+    await expect(insertEvent({ to_status: bad('bogus') })).rejects.toThrow();
+    await expect(insertEvent({ current_tier: bad(7) })).rejects.toThrow();
+    await expect(insertEvent({ current_tier: null })).resolves.toBeDefined();
+  });
+
+  it("won't delete an issue that has events, but will one with none", async () => {
+    const { id } = await insertEvent();
+    await expect(db.deleteFrom('issues').where('id', '=', id).execute()).rejects.toThrow();
+    const bare = await insertIssue();
+    await expect(
+      db.deleteFrom('issues').where('fingerprint', '=', bare.fingerprint).execute(),
+    ).resolves.toBeDefined();
   });
 });
 

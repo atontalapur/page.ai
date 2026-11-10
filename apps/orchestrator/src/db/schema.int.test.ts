@@ -258,5 +258,12 @@ describe('orchestrator tables on real Postgres', () => {
       .execute();
     expect([runs.length, escalations.length]).toEqual([1, 1]);
 
+    // An issue's event log holds it too, even with no runs.
+    const { issue } = await service.report({ fingerprint: `int-${randomUUID()}`, title: 'x' });
+    await service.apply(issue.id, { type: 'triage', class: 'frontend', severity: 'low' });
+    await expect(
+      db.deleteFrom('issues').where('id', '=', issue.id).execute(),
+    ).rejects.toMatchObject({ code: '23001' });
+    expect(await service.events(issue.id)).toHaveLength(1);
   });
 });
