@@ -99,8 +99,8 @@ export interface RunEvalOptions {
   /**
    * Scenario runs played at once, each climbing its tiers in order (default 1). A run's
    * checks overlap its later tiers whatever this is. Each attempt in flight holds its
-   * tier's full attemptCostLimitUsd, so more than maxCostUsd / attemptCostLimitUsd runs
-   * never play at once.
+   * tier's full attemptCostLimitUsd, so runs play together only while the budget left
+   * covers all their limits.
    */
   concurrency?: number;
   model: string;

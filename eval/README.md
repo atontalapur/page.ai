@@ -44,10 +44,11 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   is stopped (charged what it spent so far) and no tier starts after it. A dropped run's
   other checks are stopped too.
 - `--concurrency N` plays up to N scenario runs at once (default 1), each climbing its
-  tiers in order. Results stay in the planned order. Every attempt in flight holds a
-  full $0.50 of the budget, so `--max-cost` has to be at least N x $0.50 for N agents
-  to run together; on less, runs wait for money. Once a paid model has spent more than
-  `--max-cost` minus N x $0.50, fewer than N play at once. `eval:run` warns at startup
+  tiers in order. Results stay in the planned order. Every attempt in flight holds its
+  tier's full cost limit (`ESCALATION_THRESHOLD` in `packages/agent/src/threshold.ts`,
+  $0.50 at every tier today), so `--max-cost` has to cover N of those for N agents to
+  run together; on less, runs wait for money. Once a paid model has spent past that
+  margin, fewer than N play at once. `eval:run` warns at startup
   in both cases. Sandboxes share the host's CPUs, so
   durations and `time_limit` exits at different concurrency aren't strictly comparable.
   OpenRouter caps `:free` models at 20 requests a minute per key, and `withRetries`
@@ -55,7 +56,7 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   nemotron-3-ultra makes about 3 to 7 calls a minute, so keep N at 2 or less on a free
   model.
 - From Tier 2 the agent's push and PR go to an in-memory GitHub, never the demo repo.
-- `--max-cost` is the total budget. Each attempt reserves its limit ($0.50) before it
+- `--max-cost` is the total budget. Each attempt reserves its tier's cost limit before it
   starts and gives back what it didn't spend, so the attempts in flight never hold more
   than is left. Less than the full limit goes out only when no other attempt is in
   flight, and no attempt starts with less than $0.05. A run the budget cut short, at any
@@ -120,5 +121,11 @@ pnpm eval:tune eval/results/<dev-run>-*.json
   `skipped`. The error names the file and the scenario.
 - Runs were cut at the current limits, so the data can't say what a higher limit would
   do. The what-if tables list only candidates at or below the current value. A fix counts
-  as cut when it used more than the candidate: exact for model calls, an upper bound for
-  cost and time, since the agent checks its limits before each call.
+  as cut when it used more than the candidate: exact for model calls and time, an upper
+  bound for cost, since the agent checks spend before each call and the last call can
+  cross the limit.
+- Results files don't record the limits they ran under, so `eval:tune` filters against
+  the current `ESCALATION_THRESHOLD`. It warns when `threshold.ts` changed between a
+  file's `gitSha` and `HEAD`; tune on results played at the threshold in your checkout.
+  It refuses the same file passed twice, but pools two files of one config (say a rerun
+  after a provider stop).

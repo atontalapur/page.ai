@@ -88,7 +88,6 @@ try {
   // The task has no tier, so the agent plays Tier 1 and gets Tier 1's threshold.
   const config = {
     ...DEFAULT_AGENT_CONFIG,
-    ...budgetFor(1),
     wallTimeLimitMs: Math.max(1, budgetFor(1).wallTimeLimitMs - (Date.now() - containerStartedAt)),
   };
   const run = await runAgent(task, recording.deps, config);

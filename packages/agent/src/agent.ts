@@ -90,7 +90,8 @@ export async function runAgent(
   deps: AgentDeps,
   overrides: Partial<AgentConfig> = {},
 ): Promise<AgentRun> {
-  // The tier's escalation threshold, unless the caller narrows it (a shorter wall clock).
+  // The tier's escalation threshold. A caller's overrides win either way; the daemon and
+  // the eval use them to shorten the wall clock by the time the sandbox took to start.
   const config = { ...DEFAULT_AGENT_CONFIG, ...budgetFor(task.tier ?? 1), ...overrides };
   const now = deps.now ?? Date.now;
   const startedAt = now();

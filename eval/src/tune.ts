@@ -64,8 +64,10 @@ const dollars = (n: number) => `$${n.toFixed(2)}`;
 
 /**
  * Fixes a lower limit would have cut: those that used more than `candidate`. Exact for
- * model calls. For cost and time it's an upper bound, since the agent checks the limit
- * before each call and a fix whose last call crossed it would still have landed.
+ * model calls, which the agent checks before each call. Exact for time too: every model
+ * call and command runs with the time left as its timeout, and `durationMs` runs on the
+ * same clock as the wall budget. For cost it's an upper bound: the agent checks spend
+ * before each call, so a fix whose last call crossed the candidate would still have landed.
  */
 export function cutCount(fixes: readonly number[], candidate: number): number {
   return fixes.filter((v) => v > candidate).length;
@@ -182,8 +184,8 @@ export function renderTune(
   out.push(
     '\nRuns were cut at the current limits, so this data can only show what a lower limit ' +
       'would do, not a higher one. Candidates above the current limit are left out. A fix ' +
-      'is cut when it used more than the candidate: exact for model calls, an upper bound ' +
-      'for cost and time, since the agent checks before each call. False escalations are ' +
+      'is cut when it used more than the candidate: exact for model calls and time, an ' +
+      'upper bound for cost, since the agent checks spend before each call. False escalations are ' +
       'limit hits whose patch still passed check.sh; at the last tier of a run they page instead.\n',
   );
 

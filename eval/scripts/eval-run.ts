@@ -22,7 +22,7 @@ const USAGE = `usage: OPENROUTER_API_KEY=... node eval/scripts/eval-run.ts <imag
   --runs      runs per scenario (default 1)
   --max-cost  total budget in USD; no attempt starts past it (default 1)
   --concurrency  scenario runs played at once (default 1); each attempt in flight holds
-              $0.50 of the budget, and a run can have a sandbox up per tier
+              its tier's cost limit (ESCALATION_THRESHOLD) of the budget, and a run can have a sandbox up per tier
   --set       only the dev or held-out scenarios from eval/split.json
   --limit     only the first n scenarios
   --out       results directory (default eval/results)
