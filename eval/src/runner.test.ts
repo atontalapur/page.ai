@@ -71,11 +71,12 @@ function manual() {
     id: string;
     tier: Tier;
     costLimitUsd: number;
+    signal: AbortSignal;
     agent: ReturnType<typeof deferred<AgentAttempt>>;
   }[] = [];
-  const fn: AttemptFn = (s, tier, costLimitUsd) => {
+  const fn: AttemptFn = (s, tier, costLimitUsd, signal) => {
     const agent = deferred<AgentAttempt>();
-    started.push({ id: s.id, tier, costLimitUsd, agent });
+    started.push({ id: s.id, tier, costLimitUsd, signal, agent });
     return agent.promise;
   };
   const settle = (i: number, over: Partial<Attempt> = {}) => {
@@ -307,11 +308,11 @@ describe('runEval', () => {
 
   it('stops runs in flight from climbing at a provider error, not as a budget stop', async () => {
     const { fn: other, started, settle } = manual();
-    const fn: AttemptFn = (s, tier, limit) => {
+    const fn: AttemptFn = (s, tier, limit, signal) => {
       if (s.id === '002-b') {
         return Promise.reject(new ProviderError('rate_limited', 'HTTP 429', 0));
       }
-      return other(s, tier, limit);
+      return other(s, tier, limit, signal);
     };
     const running = runEval(
       base(fn, {
@@ -321,15 +322,18 @@ describe('runEval', () => {
       }),
     );
     await flush();
-    // 002-b failed at once; 003-c never starts, and 001-a doesn't climb past Tier 1.
+    // 002-b failed at once: 001-a's attempt is told to stop, 003-c never starts, and
+    // 001-a doesn't climb past Tier 1.
     expect(started.map((c) => c.id)).toEqual(['001-a']);
-    settle(0, { exitStatus: 'step_limit' });
+    expect(started[0]!.signal.aborted).toBe(true);
+    settle(0, { exitStatus: 'aborted', costUsd: 0.02 });
     const results = await running;
     expect(started).toHaveLength(1);
     expect(results.stoppedForProvider).toBe(true);
     expect(results.stoppedForBudget).toBe(false);
     expect(results.runs).toEqual([]);
     expect(results.errors.map((e) => e.scenario)).toEqual(['002-b']);
+    expect(results.spentUsd).toBeCloseTo(0.02);
     // 001-a was cut off mid-climb and 003-c never started. 001-a comes before 002-b in
     // the plan, so the list isn't just the tail.
     expect(results.notPlayed).toEqual([
@@ -417,11 +421,11 @@ describe('runEval', () => {
     expect(results.runs).toEqual([]);
   });
 
-  it('stops climbing once an earlier check has failed', async () => {
-    const tiers: Tier[] = [];
+  it('stops the tier playing and climbs no further once an earlier check has failed', async () => {
+    const signals: AbortSignal[] = [];
     // The agent takes longer than the check takes to fail, as a real one does.
-    const fn: AttemptFn = async (_s, tier) => {
-      tiers.push(tier);
+    const fn: AttemptFn = async (_s, tier, _limit, signal) => {
+      signals.push(signal);
       await flush();
       return {
         agent: played(attempt(tier, { exitStatus: 'step_limit', costUsd: 0.02 })).agent,
@@ -429,17 +433,42 @@ describe('runEval', () => {
       };
     };
     const results = await runEval(base(fn));
-    // Tier 2 had started before Tier 1's check failed; Tier 3 never starts.
-    expect(tiers).toEqual([1, 2]);
-    expect(results.errors.map((e) => e.tier)).toEqual([1, 2]);
+    // Tier 2 had started before Tier 1's check failed, and was told to stop. Its check
+    // never runs, and Tier 3 never starts.
+    expect(signals).toHaveLength(2);
+    expect(signals[1]!.aborted).toBe(true);
+    expect(results.errors.map((e) => e.tier)).toEqual([1]);
+    expect(results.notPlayed).toEqual([]);
     expect(results.spentUsd).toBeCloseTo(0.04);
+  });
+
+  it("stops a dropped run's checks and records only the one that failed", async () => {
+    const checkSignals: AbortSignal[] = [];
+    const t1 = deferred<boolean>();
+    const fn: AttemptFn = (_s, tier) => {
+      if (tier === 2) return Promise.reject(new Error('break.sh exited 1'));
+      return Promise.resolve({
+        agent: played(attempt(tier, { exitStatus: 'step_limit' })).agent,
+        check: (signal) => {
+          checkSignals.push(signal);
+          signal.addEventListener('abort', () => t1.reject(signal.reason));
+          return t1.promise;
+        },
+      });
+    };
+    const results = await runEval(base(fn));
+    // Tier 2 crashed while Tier 1's check ran: the check is stopped, not recorded.
+    expect(checkSignals[0]!.aborted).toBe(true);
+    expect(results.errors.map((e) => [e.tier, e.message])).toEqual([
+      [2, 'Error: break.sh exited 1'],
+    ]);
   });
 
   it('gives back the money a run got while its check failed', async () => {
     const check = deferred<boolean>();
     const { fn: other, started, settle } = manual();
-    const fn: AttemptFn = (s, tier, limit) => {
-      if (s.id === '002-b') return other(s, tier, limit);
+    const fn: AttemptFn = (s, tier, limit, signal) => {
+      if (s.id === '002-b') return other(s, tier, limit, signal);
       return Promise.resolve({
         agent: played(attempt(tier, { exitStatus: 'step_limit', costUsd: 0.1 })).agent,
         check: () => check.promise,

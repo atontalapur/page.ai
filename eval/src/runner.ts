@@ -25,21 +25,27 @@ export interface AgentAttempt {
   /**
    * Runs check.sh on the agent's diff in a sandbox of its own and resolves whether it
    * passed. The runner starts it as soon as the agent is done and plays the next tier
-   * while it runs. A rejection drops the run, and no tier starts after it; the agent's
-   * cost is already charged.
+   * while it runs. A rejection drops the run and stops the tier playing after it; the
+   * agent's cost is already charged. `signal` aborts once the run is dropped, and the
+   * check should then stop its sandbox and reject with the signal's reason (an
+   * AbortError), which isn't recorded as a failure.
    */
-  check: () => Promise<boolean>;
+  check: (signal: AbortSignal) => Promise<boolean>;
 }
 
 /**
  * Plays one tier of one scenario: a fresh sandbox, break.sh, then the agent at `tier`
- * with at most `costLimitUsd` to spend. Resolves once the agent stops. The Docker-backed
+ * with at most `costLimitUsd` to spend. Resolves once the agent stops. `signal` aborts
+ * once the run is dropped (an earlier tier's check failed) or a provider error stops the
+ * eval; the attempt should then stop the agent and its sandbox. The runner drops the run
+ * whatever an aborted attempt resolves, charging what it reports spent. The Docker-backed
  * one is in `scripts/attempt.ts`; tests pass a fake.
  */
 export type AttemptFn = (
   scenario: Scenario,
   tier: Tier,
   costLimitUsd: number,
+  signal: AbortSignal,
 ) => Promise<AgentAttempt>;
 
 /**
@@ -170,19 +176,11 @@ class Budget {
   }
 }
 
-type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
-
-/** Starts `fn` and never rejects, even when `fn` throws before returning a promise. */
-function settled<T>(fn: () => Promise<T>): Promise<Settled<T>> {
-  return new Promise<T>((resolve) => resolve(fn())).then(
-    (value) => ({ ok: true, value }),
-    (error: unknown) => ({ ok: false, error }),
-  );
-}
+const isAbort = (error: unknown) => error instanceof Error && error.name === 'AbortError';
 
 /** How one planned run ended. */
 interface RunOutcome {
-  /** Set when the run counts; left out when it crashed or the eval's stop cut it short. */
+  /** Set when the run counts; left out when it crashed or the eval stopped it. */
   result?: ScenarioRun;
   errors: EvalResults['errors'];
 }
@@ -224,18 +222,26 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     for (const scenario of playable) planned.push({ scenario, run });
   }
 
+  // Aborted when a provider error stops the eval: every attempt and check in flight ends.
+  const providerStop = new AbortController();
+  const stopForProvider = () => {
+    stoppedForProvider = true;
+    budget.stop();
+    providerStop.abort();
+  };
+
   const play = async (scenario: Scenario, run: number): Promise<RunOutcome> => {
-    const played: { agent: Omit<Attempt, 'checkPassed'>; check: Promise<Settled<boolean>> }[] = [];
+    const played: { agent: Omit<Attempt, 'checkPassed'>; check: Promise<boolean> }[] = [];
     let crash: EvalResults['errors'][number] | undefined;
-    // Set when a check this run started has failed. The run is dropped either way, so it
-    // stops climbing as soon as that is known.
-    let checkFailed = false;
+    // Aborted once the run is dropped: its attempt and checks in flight stop early.
+    const dropped = new AbortController();
+    const signal = AbortSignal.any([dropped.signal, providerStop.signal]);
     // A run cut short by the budget, at any tier, says nothing about the agent, so it is
     // left out, and no attempt starts after it, in this run or any other. A run that
     // another run's stop cuts off is left out too.
     let cutShort = false;
     for (const tier of tiers) {
-      if (checkFailed) break;
+      if (signal.aborted) break;
       const limit = await budget.reserve();
       if (limit === undefined) {
         cutShort = true;
@@ -246,26 +252,32 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
         break;
       }
       // A check may have failed while this run waited for money.
-      if (checkFailed) {
+      if (signal.aborted) {
         budget.settle(limit, 0);
         break;
       }
       let attempt: AgentAttempt;
       try {
-        attempt = await options.attempt(scenario, tier, limit);
+        attempt = await options.attempt(scenario, tier, limit, signal);
       } catch (error) {
-        // A sandbox or script failure says nothing about the agent. Record it, drop the
-        // run and go on, so the runs already paid for still reach the results file.
         // Unless the attempt says what the agent spent, its whole limit counts as spent.
         budget.settle(limit, error instanceof AttemptError ? error.costUsd : limit);
-        crash = { scenario: scenario.id, run, tier, message: String(error) };
-        if (error instanceof ProviderError) {
-          stoppedForProvider = true;
-          budget.stop();
+        if (error instanceof ProviderError) stopForProvider();
+        else if (signal.aborted) {
+          // Stopped because the run was dropped; that cause is already recorded.
+          cutShort = true;
+          break;
         }
+        // A sandbox or script failure says nothing about the agent. Record it, drop the
+        // run and go on, so the runs already paid for still reach the results file.
+        crash = { scenario: scenario.id, run, tier, message: String(error) };
         break;
       }
       budget.settle(limit, attempt.agent.costUsd);
+      if (signal.aborted) {
+        cutShort = true;
+        break;
+      }
       // Out of money because the budget lowered the limit, not the agent's own limit.
       if (attempt.agent.exitStatus === 'cost_limit' && limit < options.attemptCostLimitUsd) {
         cutShort = true;
@@ -274,28 +286,34 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
         break;
       }
       // The check runs alongside the next tier: whether to climb depends only on how
-      // the agent stopped.
-      const check = settled(() => attempt.check()).then((result) => {
-        if (!result.ok) checkFailed = true;
-        return result;
+      // the agent stopped. A check that fails drops the run and stops that tier.
+      const check = new Promise<boolean>((resolve) => resolve(attempt.check(signal)));
+      check.catch((error: unknown) => {
+        if (!isAbort(error)) dropped.abort();
       });
       played.push({ agent: attempt.agent, check });
       if (!escalates(attempt.agent.exitStatus)) break;
     }
+    // Nothing a dropped run's checks find is used, so they stop early.
+    if (cutShort || crash !== undefined) dropped.abort();
     // Every check started is waited for, so no sandbox outlives the eval.
-    const checks = await Promise.all(played.map((p) => p.check));
+    const checks = await Promise.allSettled(played.map((p) => p.check));
     const errors: EvalResults['errors'] = [];
     checks.forEach((check, i) => {
-      if (!check.ok) {
+      // A check stopped because the run was dropped found nothing.
+      if (check.status === 'rejected' && !isAbort(check.reason)) {
         const { tier } = played[i]!.agent;
-        errors.push({ scenario: scenario.id, run, tier, message: String(check.error) });
+        errors.push({ scenario: scenario.id, run, tier, message: String(check.reason) });
       }
     });
     if (crash !== undefined) errors.push(crash);
-    if (cutShort || errors.length > 0) return { errors };
+    // A run with no errors is left out only when a stop cut it off (notPlayed).
+    if (cutShort || errors.length > 0 || checks.some((c) => c.status === 'rejected')) {
+      return { errors };
+    }
     const attempts = played.map((p, i) => {
       const check = checks[i]!;
-      return { ...p.agent, checkPassed: check.ok && check.value };
+      return { ...p.agent, checkPassed: check.status === 'fulfilled' && check.value };
     });
     return { result: scenarioRun(scenario, run, attempts), errors };
   };

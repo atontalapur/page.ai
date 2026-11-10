@@ -26,6 +26,9 @@ import {
   stopSandboxAsync,
 } from './sandbox.ts';
 
+/** The runner dropped the run while this attempt played. */
+const dropped = (costUsd: number) => new AttemptError('stopped: the run was dropped', costUsd);
+
 interface Scripts {
   breakScript: string;
   checkScript: string;
@@ -50,16 +53,21 @@ export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
 
   // Async start and stop: several attempts and checks run at once, and a blocking docker
   // call would stall them all.
-  return async (scenario, tier, costLimitUsd): Promise<AgentAttempt> => {
+  return async (scenario, tier, costLimitUsd, signal): Promise<AgentAttempt> => {
     const { breakScript, checkScript } = await scriptsFor(scenario);
     // Set once the agent has run. Anything that fails after that reports it, so the
     // runner charges the budget what was really spent.
     let agentCostUsd: number | undefined;
     try {
+      if (signal.aborted) throw dropped(0);
       const startedAt = Date.now();
       const name = await startSandboxAsync(image);
+      // Removing the container ends a running command; the signal ends the model call.
+      const stop = () => void stopSandboxAsync(name);
+      signal.addEventListener('abort', stop, { once: true });
       let agent: Omit<Attempt, 'checkPassed'>;
       try {
+        if (signal.aborted) throw dropped(0);
         const sh = shellIn(name);
         const baseline = await plantBug(sh, breakScript);
 
@@ -79,6 +87,7 @@ export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
           { task: scenario.meta.report, tier },
           {
             model,
+            signal,
             execute: (call, { timeoutMs = Infinity }) =>
               execute(call, {
                 tier,
@@ -98,6 +107,8 @@ export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
           },
         );
         agentCostUsd = run.costUsd;
+        // The runner dropped the run; the sandbox may already be gone.
+        if (signal.aborted) throw dropped(run.costUsd);
         // A provider failure isn't the agent paging anyone. The runner drops the run.
         if (run.exitStatus === 'model_error') {
           const kind = run.error?.kind ?? 'unknown';
@@ -115,6 +126,7 @@ export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
           diff: await agentDiff(sh, baseline),
         };
       } finally {
+        signal.removeEventListener('abort', stop);
         await stopSandboxAsync(name);
       }
 
@@ -122,7 +134,8 @@ export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
       // escalated patch that already works is counted.
       return {
         agent,
-        check: () => checkInFreshSandbox(image, { breakScript, checkScript }, agent.diff),
+        check: (checkSignal) =>
+          checkInFreshSandbox(image, { breakScript, checkScript }, agent.diff, checkSignal),
       };
     } catch (error) {
       if (agentCostUsd === undefined || error instanceof AttemptError) throw error;

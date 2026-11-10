@@ -102,6 +102,16 @@ if (concurrency > 1 && funded < concurrency) {
       `together. Pass --max-cost ${concurrency * ATTEMPT_COST_LIMIT_USD} or more for that.`,
   );
 }
+// Each attempt in flight holds its full limit, so once a paid model spends past the slack,
+// a run waits for money. A model that spends nothing keeps the concurrency.
+const slack = maxCost - concurrency * ATTEMPT_COST_LIMIT_USD;
+if (concurrency > 1 && funded >= concurrency && slack < ATTEMPT_COST_LIMIT_USD) {
+  console.warn(
+    `warning: --max-cost $${maxCost} leaves $${slack.toFixed(2)} beyond ${concurrency} attempts of ` +
+      `$${ATTEMPT_COST_LIMIT_USD.toFixed(2)}; once more than that is spent, fewer than ` +
+      `${concurrency} agents run together.`,
+  );
+}
 
 const results = await runEval({
   config: config.data,

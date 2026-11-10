@@ -40,12 +40,15 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   that escalated a patch that already passed counts as a false escalation, and a run
   that paged with a passing patch as a false page. Whether to climb depends only on how
   the agent stopped, so the check runs alongside the later tiers, and a ladder run can
-  have three sandboxes up at once. A check that fails drops the run, and no tier starts
-  after that is known; a tier already playing finishes and is charged.
+  have three sandboxes up at once. A check that fails drops the run: the tier playing
+  is stopped (charged what it spent so far) and no tier starts after it. A dropped run's
+  other checks are stopped too.
 - `--concurrency N` plays up to N scenario runs at once (default 1), each climbing its
   tiers in order. Results stay in the planned order. Every attempt in flight holds a
   full $0.50 of the budget, so `--max-cost` has to be at least N x $0.50 for N agents
-  to run together; on less, runs wait for money. Sandboxes share the host's CPUs, so
+  to run together; on less, runs wait for money. Once a paid model has spent more than
+  `--max-cost` minus N x $0.50, fewer than N play at once. `eval:run` warns at startup
+  in both cases. Sandboxes share the host's CPUs, so
   durations and `time_limit` exits at different concurrency aren't strictly comparable.
   OpenRouter caps `:free` models at 20 requests a minute per key, and `withRetries`
   gives up on a 429 after about 3 seconds, which stops the eval. One agent on
@@ -68,12 +71,10 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   provider outage or a malformed reply, after `withRetries` gave up) is not a page. The
   attempt goes in `errors`, its run is left out, and the eval stops with
   `stoppedForProvider`, since the next attempt would hit the same wall: no attempt starts
-  after it, in that run or any other.
+  after it, in that run or any other, and attempts and checks in flight are stopped.
 - After a budget or provider stop, `notPlayed` lists the planned runs it left out with
   no error: never started, or cut short mid-climb. Those and the runs in `errors` are
   what to rerun; at `--concurrency` above 1 they needn't be the last ones planned.
-- `eval:run` warns at startup when `--max-cost` can't hold `--concurrency` attempts of
-  $0.50 at once, since runs would then wait for money instead of running together.
 - Ops scenarios (Tier 3) are skipped with a reason for now: they need a live demo app.
 - An attempt that throws (a sandbox or `break.sh` failure) goes in `errors` and its run
   is left out; the eval goes on. If it failed after the agent ran (the diff or the check

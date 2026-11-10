@@ -94,31 +94,53 @@ export async function checkInFreshSandbox(
   image: string,
   scripts: { breakScript: string; checkScript: string },
   diff: string,
+  signal?: AbortSignal,
 ): Promise<boolean> {
-  return withSandbox(image, async (sh) => {
-    await plantBug(sh, scripts.breakScript);
-    if (diff !== '') {
-      const applied = await sh(applyPatchScript(diff));
-      if (applied.code !== 0) throw new Error(`the agent's diff didn't apply:\n${applied.output}`);
-    }
-    return (await sh(scripts.checkScript)).code === 0;
-  });
+  return withSandbox(
+    image,
+    async (sh) => {
+      await plantBug(sh, scripts.breakScript);
+      if (diff !== '') {
+        const applied = await sh(applyPatchScript(diff));
+        if (applied.code !== 0)
+          throw new Error(`the agent's diff didn't apply:\n${applied.output}`);
+      }
+      return (await sh(scripts.checkScript)).code === 0;
+    },
+    signal,
+  );
 }
 
 /**
  * Runs `fn` with a shell into a fresh sandbox, and stops the sandbox however `fn` ends.
  * Safe to run several at once: start and stop don't block, and each sandbox has its own
- * random name, its own /tmp and no ports or host mounts (sandboxRunArgs).
+ * random name, its own /tmp and no ports or host mounts (sandboxRunArgs). Aborting
+ * `signal` stops the sandbox at once, which ends the command running in it, and rejects
+ * with the signal's reason.
  */
 export async function withSandbox<T>(
   image: string,
   fn: (sh: SandboxShell) => Promise<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
+  signal?.throwIfAborted();
   let name: string | undefined;
+  const stop = () => {
+    if (name) void stopSandboxAsync(name);
+  };
   try {
     name = await startSandboxAsync(image);
-    return await fn(shellIn(name));
+    signal?.throwIfAborted();
+    signal?.addEventListener('abort', stop, { once: true });
+    const result = await fn(shellIn(name));
+    signal?.throwIfAborted();
+    return result;
+  } catch (error) {
+    // A command the stop cut off fails in its own way; report the abort instead.
+    signal?.throwIfAborted();
+    throw error;
   } finally {
+    signal?.removeEventListener('abort', stop);
     if (name) await stopSandboxAsync(name);
   }
 }
