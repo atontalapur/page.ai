@@ -207,6 +207,11 @@ describe('runEval', () => {
     expect(calls[1]!.costLimitUsd).toBeCloseTo(0.3);
     expect(results.stoppedForBudget).toBe(true);
     expect(results.runs.map((r) => r.scenario)).toEqual(['001-a']);
+    // The cut-short run and the one never started are what to rerun.
+    expect(results.notPlayed).toEqual([
+      { scenario: '002-b', run: 1 },
+      { scenario: '003-c', run: 1 },
+    ]);
     // The dropped run's spend is in spentUsd, not in the summary of kept runs.
     expect(results.spentUsd).toBeCloseTo(1);
     expect(results.summary.costUsd).toBeCloseTo(0.7);
@@ -245,6 +250,8 @@ describe('runEval', () => {
       { scenario: '001-a', run: 1, tier: 1, message: 'Error: break.sh exited 1' },
     ]);
     expect(results.runs.map((r) => r.scenario)).toEqual(['002-b']);
+    // A crash without a stop is in errors only.
+    expect(results.notPlayed).toEqual([]);
     // The crashed attempt's whole limit counts as spent.
     expect(calls[1]!.costLimitUsd).toBeCloseTo(0.3);
     expect(results.spentUsd).toBeCloseTo(0.51);
@@ -285,6 +292,7 @@ describe('runEval', () => {
     expect(results.summary.falsePages).toBe(0);
     expect(results.stoppedForProvider).toBe(true);
     expect(results.stoppedForBudget).toBe(false);
+    expect(results.notPlayed).toEqual([{ scenario: '003-c', run: 1 }]);
     expect(results.errors).toEqual([
       {
         scenario: '002-b',
@@ -322,6 +330,13 @@ describe('runEval', () => {
     expect(results.stoppedForBudget).toBe(false);
     expect(results.runs).toEqual([]);
     expect(results.errors.map((e) => e.scenario)).toEqual(['002-b']);
+    // 001-a was cut off mid-climb and 003-c never started. 001-a comes before 002-b in
+    // the plan, so the list isn't just the tail.
+    expect(results.notPlayed).toEqual([
+      { scenario: '001-a', run: 1 },
+      { scenario: '003-c', run: 1 },
+    ]);
+    expect(evalResultsSchema.parse(results)).toEqual(results);
   });
 
   it('reads a results file written before stoppedForProvider existed', async () => {
@@ -329,6 +344,13 @@ describe('runEval', () => {
     const old: Record<string, unknown> = { ...(await runEval(base(fn))) };
     delete old.stoppedForProvider;
     expect(evalResultsSchema.parse(old).stoppedForProvider).toBe(false);
+  });
+
+  it('reads a results file written before notPlayed existed', async () => {
+    const { fn } = scripted([]);
+    const old: Record<string, unknown> = { ...(await runEval(base(fn))) };
+    delete old.notPlayed;
+    expect(evalResultsSchema.parse(old).notPlayed).toEqual([]);
   });
 
   it('starts no attempt with less than the minimum left', async () => {

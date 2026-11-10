@@ -182,7 +182,7 @@ function settled<T>(fn: () => Promise<T>): Promise<Settled<T>> {
 
 /** How one planned run ended. */
 interface RunOutcome {
-  /** Set when the run counts; left out when it crashed or the budget cut it short. */
+  /** Set when the run counts; left out when it crashed or the eval's stop cut it short. */
   result?: ScenarioRun;
   errors: EvalResults['errors'];
 }
@@ -208,6 +208,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
   const runs: ScenarioRun[] = [];
   const skipped: EvalResults['skipped'] = [];
   const errors: EvalResults['errors'] = [];
+  const notPlayed: EvalResults['notPlayed'] = [];
   const budget = new Budget(options.maxCostUsd, options.attemptCostLimitUsd);
   let stoppedForBudget = false;
   let stoppedForProvider = false;
@@ -305,9 +306,13 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     // A run planned after the eval stopped isn't played.
     ({ scenario, run }) =>
       budget.stopped ? Promise.resolve<RunOutcome>({ errors: [] }) : play(scenario, run),
-    (outcome) => {
+    (outcome, { scenario, run }) => {
       errors.push(...outcome.errors);
-      if (outcome.result === undefined) return;
+      if (outcome.result === undefined) {
+        // Only a stop leaves a run out with nothing in `errors`.
+        if (outcome.errors.length === 0) notPlayed.push({ scenario: scenario.id, run });
+        return;
+      }
       runs.push(outcome.result);
       options.onRun?.(outcome.result);
     },
@@ -328,6 +333,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     runs,
     skipped,
     errors,
+    notPlayed,
     summary: summarize(runs),
   };
 }

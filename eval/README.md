@@ -68,7 +68,12 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   provider outage or a malformed reply, after `withRetries` gave up) is not a page. The
   attempt goes in `errors`, its run is left out, and the eval stops with
   `stoppedForProvider`, since the next attempt would hit the same wall: no attempt starts
-  after it, in that run or any other. Rerun the runs missing from the results later.
+  after it, in that run or any other.
+- After a budget or provider stop, `notPlayed` lists the planned runs it left out with
+  no error: never started, or cut short mid-climb. Those and the runs in `errors` are
+  what to rerun; at `--concurrency` above 1 they needn't be the last ones planned.
+- `eval:run` warns at startup when `--max-cost` can't hold `--concurrency` attempts of
+  $0.50 at once, since runs would then wait for money instead of running together.
 - Ops scenarios (Tier 3) are skipped with a reason for now: they need a live demo app.
 - An attempt that throws (a sandbox or `break.sh` failure) goes in `errors` and its run
   is left out; the eval goes on. If it failed after the agent ran (the diff or the check

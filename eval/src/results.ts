@@ -122,6 +122,13 @@ export const evalResultsSchema = z.strictObject({
       message: z.string(),
     }),
   ),
+  /**
+   * Planned runs the eval's stop left out with no error to show for it: never started, or
+   * cut short by the budget or by another run's stop. With the runs in `errors`, these are
+   * what to rerun. At concurrency above 1 they needn't be the last ones planned. Files
+   * from before this field read as empty.
+   */
+  notPlayed: z.array(z.strictObject({ scenario: z.string(), run: z.int().positive() })).default([]),
   summary: evalSummarySchema,
 });
 export type EvalResults = z.infer<typeof evalResultsSchema>;
