@@ -33,4 +33,18 @@ describe('fix job queue', () => {
     expect(jobs.map((j) => j.data)).toEqual([sent]);
     expect(jobs[0]?.singletonKey).toBe(fingerprint);
   });
+
+  it('creates one fix job when ten are sent for the same fingerprint', async () => {
+    const fingerprint = 'fp-ten';
+    const sent = [];
+    for (let i = 0; i < 10; i++) {
+      const job = await deps.db
+        .transaction()
+        .execute((trx) => deps.fixJobs.send({ issueId, fingerprint, tier: 1 }, trx));
+      if (job) sent.push(job);
+    }
+    expect(sent).toHaveLength(1);
+    const jobs = await deps.boss.findJobs<FixJob>(FIX_QUEUE, { data: { fingerprint } });
+    expect(jobs.filter((job) => job.state !== 'cancelled')).toHaveLength(1);
+  });
 });

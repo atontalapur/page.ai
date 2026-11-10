@@ -16,7 +16,7 @@ export interface FixJobQueue {
   send(
     issue: { issueId: string; fingerprint: string; tier: Tier },
     trx: Transaction<Database>,
-  ): Promise<FixJob>;
+  ): Promise<FixJob | null>;
 
   /**
    * Cancels the job for `runId` inside `trx` if it is still queued, retrying or active, so
@@ -27,19 +27,20 @@ export interface FixJobQueue {
 
 /** Creates the queue if needed and returns a sender bound to it. */
 export async function createFixJobQueue(boss: PgBoss): Promise<FixJobQueue> {
-  // One active job per fingerprint (see `fingerprintSchema`). The run a new tier replaces
-  // is cancelled in the same transaction, so the new job is claimable straight away.
-  await boss.createQueue(FIX_QUEUE, { policy: 'singleton' });
+  // One created or active job per fingerprint (see `fingerprintSchema`). No retries:
+  // a failure escalates. The run a new tier replaces is cancelled in the same transaction,
+  // which frees the key so the next job can be queued.
+  await boss.createQueue(FIX_QUEUE, { policy: 'exclusive', retryLimit: 0 });
   return {
     async send(issue, trx) {
       // The node daemon reports the run under this id.
       const job = fixJobSchema.parse({ v: 1, runId: randomUUID(), ...issue });
-      await boss.send(FIX_QUEUE, job, {
+      const id = await boss.send(FIX_QUEUE, job, {
         id: job.runId,
         db: fromKysely(trx),
         singletonKey: job.fingerprint,
       });
-      return job;
+      return id ? job : null;
     },
     async cancel(runId, trx) {
       await boss.cancel(FIX_QUEUE, runId, { db: fromKysely(trx) });

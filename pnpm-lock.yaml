@@ -411,6 +411,9 @@ importers:
       '@page/db-migrations':
         specifier: workspace:*
         version: link:../../packages/db-migrations
+      '@page/model-client':
+        specifier: workspace:*
+        version: link:../../packages/model-client
       kysely:
         specifier: ^0.29.8
         version: 0.29.8

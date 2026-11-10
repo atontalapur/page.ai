@@ -6,7 +6,13 @@ import { ConfigError, loadConfig, type Config } from './config.ts';
 import { createDb } from './db/database.ts';
 import { migrate } from './db/migrate.ts';
 import { createLogger, NestPinoLogger } from './logger.ts';
+import { buildPager } from './notify/pager.ts';
+import { NotifyService } from './notify/notify.service.ts';
 import { createFixJobQueue } from './queue/fix-jobs.ts';
+import { createJobQueues } from './queue/queues.ts';
+import { startWorkers } from './queue/workers.ts';
+import { buildClassifier } from './triage/classify.ts';
+import { TriageService } from './triage/triage.service.ts';
 
 let config: Config;
 try {
@@ -50,11 +56,30 @@ try {
   const applied = await migrate(db, await loadMigrations());
   logger.info(applied.length ? `applied ${applied.join(', ')}` : 'migrations up to date');
   await boss.start();
-  app = await createApp(
-    { db, fixJobs: await createFixJobQueue(boss), logger },
+  if (!config.useFakeAdapters && !config.openRouterApiKey) {
+    logger.warn('OPENROUTER_API_KEY is unset; triage uses the rule fallback');
+  }
+  if (!config.useFakeAdapters && (!config.twilio || config.notifyTo.length === 0)) {
+    logger.warn('twilio is not configured; pages are recorded and not sent');
+  }
+  const application = await createApp(
+    {
+      db,
+      fixJobs: await createFixJobQueue(boss),
+      jobs: await createJobQueues(boss),
+      logger,
+      config,
+      pager: buildPager(config),
+      classifier: buildClassifier(config),
+    },
     new NestPinoLogger(logger),
   );
-  await app.listen({ port: config.port, host: config.host });
+  app = application;
+  await startWorkers(boss, {
+    triage: (job) => application.get(TriageService).handle(job),
+    notify: (job, attempt) => application.get(NotifyService).deliver(job, attempt),
+  });
+  await application.listen({ port: config.port, host: config.host });
 } catch (err) {
   logger.fatal({ err }, 'startup failed');
   await close();

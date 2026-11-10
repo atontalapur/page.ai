@@ -5,5 +5,6 @@ import { NotifyService } from './notify.service.ts';
 @Module({
   controllers: [NotifyController],
   providers: [NotifyService],
+  exports: [NotifyService],
 })
 export class NotifyModule {}

@@ -2,7 +2,8 @@ import 'reflect-metadata';
 import { StandardSchemaValidationPipe, type LoggerService, type LogLevel } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { AppModule, type AppDeps } from './app.module.ts';
+import { AppModule } from './app.module.ts';
+import type { AppDeps } from './deps.ts';
 
 export async function createApp(
   deps: AppDeps,

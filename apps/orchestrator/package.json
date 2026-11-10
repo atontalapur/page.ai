@@ -30,6 +30,7 @@
     "@nestjs/platform-fastify": "^12.3.3",
     "@page/contracts": "workspace:*",
     "@page/db-migrations": "workspace:*",
+    "@page/model-client": "workspace:*",
     "kysely": "^0.29.8",
     "pg": "catalog:",
     "pg-boss": "catalog:",
