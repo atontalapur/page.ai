@@ -8,6 +8,7 @@ WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/db-migrations/package.json packages/db-migrations/
+COPY packages/model-client/package.json packages/model-client/
 COPY apps/orchestrator/package.json apps/orchestrator/
 
 FROM base AS build
@@ -16,6 +17,7 @@ RUN pnpm install --frozen-lockfile --filter @page/orchestrator... --ignore-scrip
 COPY packages/config packages/config
 COPY packages/contracts packages/contracts
 COPY packages/db-migrations packages/db-migrations
+COPY packages/model-client packages/model-client
 COPY apps/orchestrator apps/orchestrator
 RUN pnpm --filter @page/orchestrator build
 
@@ -24,8 +26,11 @@ RUN pnpm --filter @page/orchestrator build
 # workspace layout, where they are symlinks to packages/.
 FROM base AS prod
 RUN pnpm install --prod --frozen-lockfile --ignore-scripts \
-  --filter @page/orchestrator --filter @page/contracts --filter @page/db-migrations
+  --filter @page/orchestrator --filter @page/contracts --filter @page/db-migrations \
+  --filter @page/model-client
 COPY packages/contracts/src packages/contracts/src
+# Triage imports the client as .ts source, the same way it imports contracts.
+COPY packages/model-client/src packages/model-client/src
 # loadMigrations reads these .sql files at boot.
 COPY packages/db-migrations/src packages/db-migrations/src
 COPY packages/db-migrations/migrations packages/db-migrations/migrations

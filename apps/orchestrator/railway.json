@@ -8,6 +8,7 @@
       "packages/config/**",
       "packages/contracts/**",
       "packages/db-migrations/**",
+      "packages/model-client/**",
       "pnpm-lock.yaml",
       "pnpm-workspace.yaml",
       "/package.json",
