@@ -2,11 +2,12 @@
 // Plays scenarios under one configuration with a real model and writes the results JSON
 // to eval/results/. Run from the repo root, after building the sandbox image.
 import { execFileSync } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { renameSync, writeFileSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { OpenRouterClient, withRetries } from '@page/model-client';
-import { evalConfigSchema, EVAL_CONFIGS } from '../src/results.ts';
+import { evalConfigSchema, EVAL_CONFIGS, loadResults, type EvalResults } from '../src/results.ts';
 import { resultsFileName, runEval } from '../src/runner.ts';
 import { listScenarioIds, loadScenario, ScenarioError, type Scenario } from '../src/scenario.ts';
 import { loadSplit, splitIds } from '../src/split.ts';
@@ -17,7 +18,7 @@ const ATTEMPT_COST_LIMIT_USD = 0.5;
 
 const USAGE = `usage: OPENROUTER_API_KEY=... node eval/scripts/eval-run.ts <image> --config <${Object.keys(EVAL_CONFIGS).join('|')}>
   [--model <id>] [--runs <n>] [--max-cost <usd>] [--concurrency <n>] [--set dev|held-out]
-  [--limit <n>] [--out <dir>] [id...]
+  [--limit <n>] [--out <dir>] [--resume <results.json>] [id...]
 
   --model     OpenRouter model id (default: $OPENROUTER_MODEL)
   --runs      runs per scenario (default 1)
@@ -26,19 +27,27 @@ const USAGE = `usage: OPENROUTER_API_KEY=... node eval/scripts/eval-run.ts <imag
               $0.50 of the budget, and a run can have a sandbox up per tier
   --set       only the dev or held-out scenarios from eval/split.json
   --limit     only the first n scenarios
-  --out       results directory (default eval/results)`;
+  --out       results directory (default eval/results)
+  --resume    an unfinished results file: keeps its runs and spend, plays the rest, and
+              rewrites that file. --config, --model and --runs default to its values and
+              must match them; the commit must match too. --max-cost is the total,
+              its spend included.
+
+The results file is rewritten after every run. Ctrl-C pauses: attempts in flight stop,
+the file is written, and --resume <file> picks up later. A second Ctrl-C quits at once.`;
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     config: { type: 'string' },
     model: { type: 'string' },
-    runs: { type: 'string', default: '1' },
+    runs: { type: 'string' },
     'max-cost': { type: 'string', default: '1' },
     concurrency: { type: 'string', default: '1' },
     set: { type: 'string' },
     limit: { type: 'string' },
     out: { type: 'string', default: 'eval/results' },
+    resume: { type: 'string' },
   },
 });
 
@@ -48,10 +57,18 @@ function fail(message: string): never {
 }
 
 const [image, ...named] = positionals;
+let resume: EvalResults | undefined;
+if (values.resume !== undefined) {
+  try {
+    resume = await loadResults(values.resume);
+  } catch (err) {
+    fail(`--resume ${values.resume}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
 const apiKey = process.env.OPENROUTER_API_KEY;
-const model = values.model ?? process.env.OPENROUTER_MODEL;
-const config = evalConfigSchema.safeParse(values.config);
-const runs = Number(values.runs);
+const model = values.model ?? resume?.model ?? process.env.OPENROUTER_MODEL;
+const config = evalConfigSchema.safeParse(values.config ?? resume?.config);
+const runs = Number(values.runs ?? resume?.runsPerScenario ?? 1);
 const maxCost = Number(values['max-cost']);
 const concurrency = Number(values.concurrency);
 const limit = values.limit === undefined ? Infinity : Number(values.limit);
@@ -89,6 +106,33 @@ for (const id of ids) {
 }
 
 const gitSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+if (resume !== undefined) {
+  const mismatch = (
+    [
+      ['--config', resume.config, config.data],
+      ['--model', resume.model, model],
+      ['--runs', resume.runsPerScenario, runs],
+      ['commit', resume.gitSha, gitSha],
+    ] as const
+  ).filter(([, was, now]) => was !== now);
+  if (mismatch.length > 0) {
+    const what = mismatch.map(([name, was, now]) => `${name} was ${was}, now ${now}`).join('; ');
+    const hint = mismatch.some(([name]) => name === 'commit')
+      ? ` Check out ${resume.gitSha} to resume it.`
+      : '';
+    fail(`--resume ${values.resume} doesn't match this run: ${what}.${hint}`);
+  }
+  const ids = new Set(scenarios.map((sc) => sc.id));
+  const missing = [...new Set(resume.runs.map((r) => r.scenario))].filter((id) => !ids.has(id));
+  if (missing.length > 0) {
+    fail(`--resume ${values.resume} has runs for scenarios not picked now: ${missing.join(', ')}`);
+  }
+  if (resume.spentUsd >= maxCost) {
+    fail(
+      `--resume ${values.resume} already spent $${resume.spentUsd.toFixed(4)}; raise --max-cost`,
+    );
+  }
+}
 const client = withRetries(new OpenRouterClient({ apiKey, model }));
 console.log(
   `${config.data}: ${scenarios.length} scenarios x ${runs} runs, ${model}, budget $${maxCost}, ` +
@@ -113,6 +157,30 @@ if (concurrency > 1 && funded >= concurrency && slack < ATTEMPT_COST_LIMIT_USD) 
   );
 }
 
+await mkdir(values.out, { recursive: true });
+const path = values.resume ?? '';
+let out = path;
+// Written whole, then renamed over the file, so a kill mid-write can't leave half a file.
+const save = (r: EvalResults) => {
+  out ||= join(values.out, resultsFileName(r));
+  writeFileSync(`${out}.tmp`, `${JSON.stringify(r, null, 2)}\n`);
+  renameSync(`${out}.tmp`, out);
+};
+
+const pause = new AbortController();
+process.on('SIGINT', () => {
+  if (pause.signal.aborted) process.exit(130);
+  console.log('pausing: stopping the attempts in flight (Ctrl-C again to quit at once)');
+  pause.abort();
+});
+
+if (resume !== undefined) {
+  console.log(
+    `resuming ${values.resume}: ${resume.runs.length} runs kept, ` +
+      `$${resume.spentUsd.toFixed(4)} spent; playing the rest`,
+  );
+}
+
 const results = await runEval({
   config: config.data,
   scenarios,
@@ -123,6 +191,9 @@ const results = await runEval({
   model,
   gitSha,
   attempt: dockerAttempt(image, client),
+  ...(resume === undefined ? {} : { resume }),
+  signal: pause.signal,
+  onCheckpoint: save,
   onRun: (r) => {
     const tiers = r.attempts.map((a) => `T${a.tier} ${a.exitStatus}`).join(' -> ');
     const verdict = r.fixed ? 'fixed' : r.paged ? 'paged' : 'not fixed';
@@ -130,9 +201,7 @@ const results = await runEval({
   },
 });
 
-await mkdir(values.out, { recursive: true });
-const path = join(values.out, resultsFileName(results));
-await writeFile(path, `${JSON.stringify(results, null, 2)}\n`);
+save(results);
 
 const s = results.summary;
 for (const skip of results.skipped) console.log(`  ${skip.scenario}: skipped, ${skip.reason}`);
@@ -155,4 +224,7 @@ console.log(
   `fixed ${s.fixed}/${s.runs} (${(s.fixRate * 100).toFixed(0)}%), $${s.costUsd.toFixed(4)}, ` +
     `${s.blockedSteps}/${s.steps} steps blocked, ${s.falseEscalations} false escalations, ${s.falsePages} false pages`,
 );
-console.log(`results: ${path}`);
+if (pause.signal.aborted) {
+  console.log(`paused; resume with: pnpm eval:run ${image} --resume ${out} [same --set or ids]`);
+}
+console.log(`results: ${out}`);

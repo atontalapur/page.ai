@@ -75,6 +75,13 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
 - After a budget or provider stop, `notPlayed` lists the planned runs it left out with
   no error: never started, or cut short mid-climb. Those and the runs in `errors` are
   what to rerun; at `--concurrency` above 1 they needn't be the last ones planned.
+- The results file is rewritten after every run, so a long eval can pause. Ctrl-C stops
+  the attempts in flight and writes the file; their runs go in `notPlayed`. Later,
+  `pnpm eval:run page-sandbox --resume <file> --set dev` keeps the file's runs and spend,
+  plays the rest (runs in `errors` and `notPlayed` included) and rewrites the same file.
+  `--config`, `--model` and `--runs` default to the file's, and the commit has to match,
+  so check out the file's `gitSha` first if `main` moved. `--max-cost` is the total, the
+  earlier spend included. Don't let the laptop sleep mid-run: pause first.
 - Ops scenarios (Tier 3) are skipped with a reason for now: they need a live demo app.
 - An attempt that throws (a sandbox or `break.sh` failure) goes in `errors` and its run
   is left out; the eval goes on. If it failed after the agent ran (the diff or the check
