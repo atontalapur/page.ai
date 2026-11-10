@@ -33,6 +33,13 @@ export const evalConfigSchema = z.enum(Object.keys(EVAL_CONFIGS) as [EvalConfig,
 const costSchema = z.number().nonnegative();
 const msSchema = z.int().nonnegative();
 
+/** One tier's agent limits, as TierBudget in @page/agent. */
+const tierLimitsSchema = z.strictObject({
+  stepLimit: z.int().nonnegative(),
+  costLimitUsd: costSchema,
+  wallTimeLimitMs: msSchema,
+});
+
 /** One agent run at one tier, in a fresh sandbox broken by the scenario's break.sh. */
 export const attemptSchema = z.strictObject({
   tier: tierSchema,
@@ -104,6 +111,13 @@ export const evalResultsSchema = z.strictObject({
    * attempts that threw. summary.costUsd counts only the runs in `runs`.
    */
   spentUsd: costSchema,
+  /**
+   * The per-tier agent limits the run played at (ESCALATION_THRESHOLD in
+   * packages/agent/src/threshold.ts, #114). Missing in files from before it.
+   */
+  limits: z
+    .strictObject({ 1: tierLimitsSchema, 2: tierLimitsSchema, 3: tierLimitsSchema })
+    .optional(),
   /** The budget ran out before every planned run finished. */
   stoppedForBudget: z.boolean(),
   /**
@@ -132,6 +146,18 @@ export const evalResultsSchema = z.strictObject({
   summary: evalSummarySchema,
 });
 export type EvalResults = z.infer<typeof evalResultsSchema>;
+
+export type Limits = NonNullable<EvalResults['limits']>;
+
+/** Whether two sets of per-tier limits are the same, whatever their key order. */
+export function sameLimits(a: Limits, b: Limits): boolean {
+  return ([1, 2, 3] as const).every(
+    (tier) =>
+      a[tier].stepLimit === b[tier].stepLimit &&
+      a[tier].costLimitUsd === b[tier].costLimitUsd &&
+      a[tier].wallTimeLimitMs === b[tier].wallTimeLimitMs,
+  );
+}
 
 export async function loadResults(path: string): Promise<EvalResults> {
   return evalResultsSchema.parse(JSON.parse(await readFile(path, 'utf8')));

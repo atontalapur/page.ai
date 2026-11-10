@@ -33,8 +33,16 @@ export async function loadResultsFile(path: string): Promise<EvalResults> {
 }
 
 /** Every scenario a file planned: played, skipped, errored or not played. */
+/** Every list in a results file that names scenarios. */
+export const SCENARIO_LISTS = [
+  'runs',
+  'skipped',
+  'errors',
+  'notPlayed',
+] as const satisfies readonly (keyof EvalResults)[];
+
 export function plannedIds(f: EvalResults): string[] {
-  const ids = [...f.runs, ...f.skipped, ...f.errors, ...f.notPlayed].map((r) => r.scenario);
+  const ids = SCENARIO_LISTS.flatMap((field) => f[field].map((r) => r.scenario));
   return [...new Set(ids)].sort();
 }
 

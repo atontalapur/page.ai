@@ -4,7 +4,17 @@
 // results unread until the threshold is frozen.
 import { ESCALATION_THRESHOLD, type TierBudget } from '@page/agent';
 import type { Tier } from '@page/contracts';
-import { incomplete, percentile, percentileSec, ReportError, sec, table, usd } from './report.ts';
+import {
+  incomplete,
+  percentile,
+  percentileSec,
+  ReportError,
+  SCENARIO_LISTS,
+  sec,
+  table,
+  usd,
+} from './report.ts';
+import { escalates } from './runner.ts';
 import type { Attempt, EvalResults } from './results.ts';
 
 /** A loaded results file and the path it came from. */
@@ -30,14 +40,8 @@ export class NotDevError extends ReportError {
 export function assertDevOnly(files: readonly TuneFile[], dev: Iterable<string>): void {
   const devIds = new Set(dev);
   for (const { path, results } of files) {
-    const lists = {
-      runs: results.runs,
-      errors: results.errors,
-      notPlayed: results.notPlayed,
-      skipped: results.skipped,
-    };
-    for (const [field, entries] of Object.entries(lists)) {
-      const bad = entries.find((e) => !devIds.has(e.scenario));
+    for (const field of SCENARIO_LISTS) {
+      const bad = results[field].find((e) => !devIds.has(e.scenario));
       if (bad) throw new NotDevError(path, bad.scenario, field);
     }
   }
@@ -52,9 +56,8 @@ export const CANDIDATES = {
 
 const TIERS = [1, 2, 3] as const satisfies readonly Tier[];
 
-const LIMIT_EXITS = ['step_limit', 'cost_limit', 'time_limit'] as const;
-
-const isLimitHit = (a: Attempt) => (LIMIT_EXITS as readonly string[]).includes(a.exitStatus);
+/** The exits that escalate a run: the agent reached a limit. */
+const isLimitHit = (a: Attempt) => escalates(a.exitStatus);
 
 /** Submitted, and the patch passed check.sh. */
 export const isFix = (a: Attempt) => a.exitStatus === 'submitted' && a.checkPassed;

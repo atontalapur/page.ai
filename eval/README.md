@@ -124,8 +124,10 @@ pnpm eval:tune eval/results/<dev-run>-*.json
   as cut when it used more than the candidate: exact for model calls and time, an upper
   bound for cost, since the agent checks spend before each call and the last call can
   cross the limit.
-- Results files don't record the limits they ran under, so `eval:tune` filters against
-  the current `ESCALATION_THRESHOLD`. It warns when `threshold.ts` changed between a
-  file's `gitSha` and `HEAD`; tune on results played at the threshold in your checkout.
-  It refuses the same file passed twice, but pools two files of one config (say a rerun
-  after a provider stop).
+- `eval:run` records the per-tier limits a run played at in the results (`limits`), and
+  `--resume` refuses a file played at other limits, uncommitted `threshold.ts` edits
+  included. `eval:tune` filters against the checkout's `ESCALATION_THRESHOLD` and warns
+  when a file's recorded limits differ from it. For a file from before #114, which records
+  none, it compares `threshold.ts` at the file's `gitSha` with the working tree. It
+  refuses the same run passed twice (a copy, a symlink, or a checkpoint next to its
+  resume), but pools two runs of one config (say a rerun after a provider stop).

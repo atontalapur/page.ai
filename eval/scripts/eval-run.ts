@@ -6,9 +6,15 @@ import { renameSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { budgetFor } from '@page/agent';
+import { budgetFor, ESCALATION_THRESHOLD } from '@page/agent';
 import { OpenRouterClient, withRetries } from '@page/model-client';
-import { evalConfigSchema, EVAL_CONFIGS, loadResults, type EvalResults } from '../src/results.ts';
+import {
+  evalConfigSchema,
+  EVAL_CONFIGS,
+  loadResults,
+  sameLimits,
+  type EvalResults,
+} from '../src/results.ts';
 import { resultsFileName, runEval } from '../src/runner.ts';
 import { listScenarioIds, loadScenario, ScenarioError, type Scenario } from '../src/scenario.ts';
 import { loadSplit, splitIds } from '../src/split.ts';
@@ -113,6 +119,14 @@ if (resume !== undefined) {
       ['commit', resume.gitSha, gitSha],
     ] as const
   ).filter(([, was, now]) => was !== now);
+  // Catches an uncommitted threshold.ts edit, which the commit can't show. Files from
+  // before #114 don't record limits; their commit check covers it.
+  if (resume.limits !== undefined && !sameLimits(resume.limits, ESCALATION_THRESHOLD)) {
+    fail(
+      `--resume ${values.resume} played at other limits than threshold.ts has now: ` +
+        `${JSON.stringify(resume.limits)}. Restore those limits to resume it.`,
+    );
+  }
   if (mismatch.length > 0) {
     const what = mismatch.map(([name, was, now]) => `${name} was ${was}, now ${now}`).join('; ');
     const hint = mismatch.some(([name]) => name === 'commit')
@@ -193,6 +207,7 @@ const results = await runEval({
   concurrency,
   model,
   gitSha,
+  limits: ESCALATION_THRESHOLD,
   attempt: dockerAttempt(image, client),
   ...(resume === undefined ? {} : { resume }),
   signal: pause.signal,

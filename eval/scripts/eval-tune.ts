@@ -2,10 +2,10 @@
 // Prints per-tier tables for tuning the escalation threshold (#114) as markdown. Refuses,
 // printing nothing, if any file names a scenario outside the dev set in eval/split.json.
 import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESCALATION_THRESHOLD, type TierBudget } from '@page/agent';
 import { loadResultsFile, ReportError } from '../src/report.ts';
+import { sameLimits, type EvalResults } from '../src/results.ts';
 import { loadSplit, splitIds } from '../src/split.ts';
 import { assertDevOnly, renderTune } from '../src/tune.ts';
 
@@ -16,6 +16,9 @@ if (paths.length === 0) {
 }
 
 const THRESHOLD_FILE = 'packages/agent/src/threshold.ts';
+// git runs at the repo root: a pathspec resolves from the cwd, so from eval/ the diff below
+// would match nothing and always look unchanged.
+const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 // Before threshold.ts (#114), every tier ran on DEFAULT_AGENT_CONFIG's limits, unchanged
 // since the agent landed in #57.
@@ -27,7 +30,7 @@ const BEFORE_THRESHOLD: TierBudget = {
 
 const git = (args: string[]) => {
   try {
-    execFileSync('git', args, { stdio: 'ignore' });
+    execFileSync('git', ['-C', ROOT, ...args], { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -35,10 +38,16 @@ const git = (args: string[]) => {
 };
 
 /**
- * Why runs played at `sha` may have had other limits than this checkout's, uncommitted
- * edits included, or undefined if they had the same.
+ * Why a file's runs may have had other limits than this checkout's, uncommitted edits
+ * included, or undefined if they had the same. Files from eval:run since #114 record the
+ * limits they played at; older ones are judged by their commit.
  */
-function limitsDiffer(sha: string): string | undefined {
+function limitsDiffer({ limits, gitSha: sha }: EvalResults): string | undefined {
+  if (limits !== undefined) {
+    return sameLimits(limits, ESCALATION_THRESHOLD)
+      ? undefined
+      : `recorded limits ${JSON.stringify(limits)}`;
+  }
   if (!git(['cat-file', '-e', `${sha}^{commit}`])) return 'is not a commit in this checkout';
   if (git(['cat-file', '-e', `${sha}:${THRESHOLD_FILE}`])) {
     return git(['diff', '--quiet', sha, '--', THRESHOLD_FILE])
@@ -54,22 +63,27 @@ function limitsDiffer(sha: string): string | undefined {
 }
 
 try {
-  const resolved = paths.map((p) => resolve(p));
-  const twice = resolved.find((p, i) => resolved.indexOf(p) !== i);
-  if (twice !== undefined) throw new ReportError(`${twice}: passed more than once`);
   const split = await loadSplit(fileURLToPath(new URL('../split.json', import.meta.url)));
   const files = await Promise.all(
     paths.map(async (path) => ({ path, results: await loadResultsFile(path) })),
   );
+  // The same run passed twice (a copy, a symlink, a checkpoint and its resume) would count
+  // every attempt twice. A run is its config, model and start time.
+  const seen = new Map<string, string>();
+  for (const { path, results } of files) {
+    const run = `${results.config}|${results.model}|${results.startedAt}`;
+    const first = seen.get(run);
+    if (first !== undefined) throw new ReportError(`${path}: the same run as ${first}`);
+    seen.set(run, path);
+  }
   assertDevOnly(files, splitIds(split, 'dev'));
   // The what-if tables trust that the runs were cut at today's limits.
-  const shas = [...new Set(files.map((f) => f.results.gitSha))];
-  for (const sha of shas) {
-    const why = limitsDiffer(sha);
+  for (const { path, results } of files) {
+    const why = limitsDiffer(results);
     if (why === undefined) continue;
     console.warn(
-      `warning: ${sha.slice(0, 7)}, where results were played, ${why}; the tables compare ` +
-        "against today's limits, which those runs may not have used.",
+      `warning: ${path} (${results.gitSha.slice(0, 7)}) ${why}; the tables compare against ` +
+        "today's limits, which those runs may not have used.",
     );
   }
   process.stdout.write(renderTune(files.map((f) => f.results)));
