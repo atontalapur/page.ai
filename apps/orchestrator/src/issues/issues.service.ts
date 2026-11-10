@@ -12,7 +12,7 @@ import type { Db, IssueEventsTable, IssuesTable } from '../db/database.ts';
 import { issueLogger, type Logger } from '../logger.ts';
 import type { FixJobQueue } from '../queue/fix-jobs.ts';
 import { DB, FIX_JOB_QUEUE, LOGGER } from '../tokens.ts';
-import { isTerminal, transition } from './transitions.ts';
+import { isTerminal, IssueStateMachine } from './transitions.ts';
 
 export class IssueNotFoundError extends Error {
   constructor(readonly id: string) {
@@ -61,6 +61,8 @@ function toEventRecord(row: Selectable<IssueEventsTable>): IssueEventRecord {
 
 @Injectable()
 export class IssuesService {
+  private readonly machine = new IssueStateMachine();
+
   constructor(
     @Inject(DB) private readonly db: Db,
     @Inject(FIX_JOB_QUEUE) private readonly fixJobs: FixJobQueue,
@@ -136,7 +138,7 @@ export class IssuesService {
         .executeTakeFirst();
       if (!current) throw new IssueNotFoundError(id);
 
-      const next = transition(
+      const next = this.machine.apply(
         {
           status: current.status,
           class: current.class,
@@ -164,6 +166,7 @@ export class IssuesService {
           { issueId: id, fingerprint: current.fingerprint, tier: next.currentTier },
           trx,
         );
+        if (!job) throw new Error(`fix job for ${current.fingerprint} is already queued`);
         runId = job.runId;
       }
 

@@ -5,5 +5,6 @@ import { TriageService } from './triage.service.ts';
 @Module({
   controllers: [TriageController],
   providers: [TriageService],
+  exports: [TriageService],
 })
 export class TriageModule {}

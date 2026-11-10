@@ -6,18 +6,18 @@ through Kysely, moves them through a state machine, and queues fix jobs on pg-bo
 
 ## Modules
 
-`AppModule` serves `/health` and `/issues` and imports seven feature modules. Each one is
-still a stub: an empty service and a controller with no routes.
+`AppModule` serves `/health`, `/issues` and `/ingest/posthog`, and imports seven feature modules.
+Ingest, triage and notify are wired. The other four are still stubs.
 
-| Module            | Will own                                                                 |
-| ----------------- | ------------------------------------------------------------------------ |
-| `IngestModule`    | PostHog webhook: secret check, upsert by fingerprint, queue triage (#29) |
-| `TriageModule`    | Class and severity by model with a rule fallback, then notify (#30)      |
-| `RunsModule`      | Steps, diffs and results the node daemon streams back per run (#8)       |
-| `TiersModule`     | Escalation after a run: up a tier, or to failed past Tier 3              |
-| `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions             |
-| `NotifyModule`    | Twilio call and SMS to on-call, once per issue (#31)                     |
-| `GatewayModule`   | Socket.IO events to and from the UI and node daemons (#34)               |
+| Module            | Owns                                                                      |
+| ----------------- | ------------------------------------------------------------------------- |
+| `IngestModule`    | `POST /ingest/posthog`: secret check, upsert by fingerprint, queue triage |
+| `TriageModule`    | Class and severity by model with a rule fallback, then notify             |
+| `RunsModule`      | Steps, diffs and results the node daemon streams back per run (#8). Stub. |
+| `TiersModule`     | Escalation after a run: up a tier, or to failed past Tier 3. Stub.        |
+| `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions. Stub.       |
+| `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint            |
+| `GatewayModule`   | Socket.IO events to and from the UI and node daemons (#34). Stub.         |
 
 ## Issue lifecycle
 
@@ -38,8 +38,9 @@ kill from any open status    ─▶ killed
 transaction as the status change. The job's `runId` is also its pg-boss job id and is stored
 on the issue as `current_run_id`. Entering a new tier or a terminal status cancels the job it
 replaces, so a killed issue's job is never claimed and a superseded job is never retried. The
-queue uses pg-boss's `singleton` policy keyed on `fingerprint`, so an issue has at most one
-active fix job.
+`triage`, `fix` and `notify` queues use pg-boss's `exclusive` policy keyed on `fingerprint`,
+so each has at most one open job per issue. `triage` and `notify` retry 3 times with backoff.
+`fix` does not retry. A call that still fails on its last try sends SMS.
 
 The daemon's events (`patch_ready`, `escalate`) carry the `runId` of the job they report on.
 An event for any run other than the current one returns 409, so a retried `escalate` cannot
@@ -57,6 +58,7 @@ new one.
 | GET    | `/issues/:id`        |                                            |
 | GET    | `/issues/:id/events` |                                            |
 | POST   | `/issues/:id/events` | an `issueEvent`, e.g. `{ "type": "kill" }` |
+| POST   | `/ingest/posthog`    | a PostHog `$exception` webhook             |
 
 Bodies are validated against the zod contracts (400). Unknown ids return 404. Events the
 current status doesn't allow, and daemon events for a stale run, return 409. `GET /issues`
@@ -81,19 +83,29 @@ so the app is compiled with `tsc` to `dist/` rather than run from source.
 
 `src/config.ts` reads these once at boot:
 
-| Variable            | Default   | Notes                                              |
-| ------------------- | --------- | -------------------------------------------------- |
-| `DATABASE_URL`      |           | Required; a `postgres://` or `postgresql://` URL   |
-| `PORT`              | `4000`    | Railway sets it                                    |
-| `HOST`              | `0.0.0.0` |                                                    |
-| `PGBOSS_SCHEMA`     | `pgboss`  | Must match the node daemon's                       |
-| `USE_FAKE_ADAPTERS` | `false`   | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`    |
-| `LOG_LEVEL`         | `info`    | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
+| Variable                 | Default                 | Notes                                                                 |
+| ------------------------ | ----------------------- | --------------------------------------------------------------------- |
+| `DATABASE_URL`           |                         | Required; a `postgres://` or `postgresql://` URL                      |
+| `PORT`                   | `4000`                  | Railway sets it                                                       |
+| `HOST`                   | `0.0.0.0`               |                                                                       |
+| `PGBOSS_SCHEMA`          | `pgboss`                | Must match the node daemon's                                          |
+| `USE_FAKE_ADAPTERS`      | `false`                 | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`                       |
+| `LOG_LEVEL`              | `info`                  | `fatal`, `error`, `warn`, `info`, `debug`, `trace`                    |
+| `POSTHOG_WEBHOOK_SECRET` |                         | Bearer secret for `POST /ingest/posthog`. Unset rejects every webhook |
+| `OPENROUTER_API_KEY`     |                         | Unset, or `USE_FAKE_ADAPTERS`, uses the rule fallback                 |
+| `TRIAGE_MODEL`           | `openai/gpt-4o-mini`    | Cheap model for triage                                                |
+| `TRIAGE_TIMEOUT_MS`      | `8000`                  |                                                                       |
+| `TWILIO_ACCOUNT_SID`     |                         | Set together with the token and from-number                           |
+| `TWILIO_AUTH_TOKEN`      |                         |                                                                       |
+| `TWILIO_FROM_NUMBER`     |                         |                                                                       |
+| `NOTIFY_TO_NUMBERS`      |                         | Comma-separated E.164 numbers                                         |
+| `DASHBOARD_URL`          | `http://localhost:3000` | Link included in the call and the SMS                                 |
 
-A missing or bad var stops startup with exit code 1 and one log line naming each, e.g.
-`invalid config: DATABASE_URL is required`. As in `apps/node`, a blank var counts as unset,
-so a copied `.env.example` gets the defaults. `USE_FAKE_ADAPTERS` and `LOG_LEVEL` use the
-daemon's parsers, but nothing in the orchestrator reads `USE_FAKE_ADAPTERS` yet.
+A missing or bad `DATABASE_URL` stops startup with exit code 1 and one log line naming each
+problem, e.g. `invalid config: DATABASE_URL is required`. As in `apps/node`, a blank var
+counts as unset, so a copied `.env.example` boots. `USE_FAKE_ADAPTERS` skips OpenRouter and
+Twilio. With it off, a missing key still boots: triage uses the rules and pages are recorded
+instead of sent. The three Twilio vars are set together or not at all.
 
 ## Logs
 

@@ -12,6 +12,13 @@ describe('loadConfig', () => {
       pgbossSchema: 'pgboss',
       useFakeAdapters: false,
       logLevel: 'info',
+      posthogWebhookSecret: undefined,
+      openRouterApiKey: undefined,
+      triageModel: 'openai/gpt-4o-mini',
+      triageTimeoutMs: 8000,
+      twilio: undefined,
+      notifyTo: [],
+      dashboardUrl: 'http://localhost:3000',
     });
   });
 
@@ -69,6 +76,32 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ DATABASE_URL, LOG_LEVEL: 'loud' })).toThrow(
       /^invalid config: LOG_LEVEL: Invalid option/,
     );
+  });
+
+  it('treats blank secrets as unset and keeps a partial Twilio config from booting', () => {
+    expect(
+      loadConfig({
+        DATABASE_URL,
+        POSTHOG_WEBHOOK_SECRET: ' ',
+        OPENROUTER_API_KEY: '',
+        NOTIFY_TO_NUMBERS: ' +15550000001, +15550000002 ',
+      }),
+    ).toMatchObject({
+      posthogWebhookSecret: undefined,
+      openRouterApiKey: undefined,
+      notifyTo: ['+15550000001', '+15550000002'],
+    });
+    expect(() => loadConfig({ DATABASE_URL, TWILIO_ACCOUNT_SID: 'AC123' })).toThrow(
+      'TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER are set together',
+    );
+    expect(
+      loadConfig({
+        DATABASE_URL,
+        TWILIO_ACCOUNT_SID: 'AC123',
+        TWILIO_AUTH_TOKEN: 'token',
+        TWILIO_FROM_NUMBER: '+15550000000',
+      }).twilio,
+    ).toEqual({ accountSid: 'AC123', authToken: 'token', from: '+15550000000' });
   });
 
   it('rejects an unknown USE_FAKE_ADAPTERS value', () => {

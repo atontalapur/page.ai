@@ -3,19 +3,43 @@ import { PGlite } from '@electric-sql/pglite';
 import { Kysely, PGliteDialect, PostgresDialect } from 'kysely';
 import pg from 'pg';
 import { fromPglite, PgBoss } from 'pg-boss';
-import { pino } from 'pino';
-import type { Logger } from '../logger.ts';
-import { createFixJobQueue, type FixJobQueue } from '../queue/fix-jobs.ts';
-import type { Database, Db } from './database.ts';
 import { loadMigrations } from '@page/db-migrations';
+import { pino } from 'pino';
+import type { Config } from '../config.ts';
+import type { Logger } from '../logger.ts';
+import { FakePager, type Pager } from '../notify/pager.ts';
+import { createFixJobQueue, type FixJobQueue } from '../queue/fix-jobs.ts';
+import { createJobQueues, type JobQueues } from '../queue/queues.ts';
+import { TriageClassifier } from '../triage/classify.ts';
+import type { Database, Db } from './database.ts';
 import { migrate } from './migrate.ts';
+
+export const testConfig: Config = {
+  databaseUrl: 'postgres://page:page@localhost:5432/page',
+  port: 4000,
+  host: '0.0.0.0',
+  pgbossSchema: 'pgboss',
+  useFakeAdapters: true,
+  logLevel: 'info',
+  posthogWebhookSecret: 'test-webhook-secret',
+  openRouterApiKey: undefined,
+  triageModel: 'openai/gpt-4o-mini',
+  triageTimeoutMs: 8_000,
+  twilio: undefined,
+  notifyTo: ['+15550000001'],
+  dashboardUrl: 'http://localhost:3000',
+};
 
 export interface TestDeps {
   db: Db;
   boss: PgBoss;
   fixJobs: FixJobQueue;
+  jobs: JobQueues;
   /** Silent, so test output stays clean. */
   logger: Logger;
+  config: Config;
+  pager: Pager;
+  classifier: TriageClassifier;
   close(): Promise<void>;
 }
 
@@ -46,11 +70,16 @@ async function start(db: Db, boss: PgBoss, close: () => Promise<void>): Promise<
     await migrate(db, await loadMigrations());
     await boss.start();
     const fixJobs = await createFixJobQueue(boss);
+    const jobs = await createJobQueues(boss);
     return {
       db,
       boss,
       fixJobs,
+      jobs,
       logger: pino({ enabled: false }),
+      config: testConfig,
+      pager: new FakePager(),
+      classifier: new TriageClassifier(null, testConfig.triageTimeoutMs),
       async close() {
         await close();
         if (errors.length) throw new AggregateError(errors, 'pg-boss reported errors');

@@ -1,6 +1,12 @@
 import type { IssueEvent, Tier } from '@page/contracts';
 import { describe, expect, it } from 'vitest';
-import { isTerminal, transition, TransitionError, type IssueState } from './transitions.ts';
+import {
+  isTerminal,
+  IssueStateMachine,
+  transition,
+  TransitionError,
+  type IssueState,
+} from './transitions.ts';
 
 const runId = '7f6c2c1e-3d5b-4f0a-9a43-1c2b3d4e5f60';
 const fresh: IssueState = { status: 'new', class: null, severity: null, currentTier: null };
@@ -83,6 +89,53 @@ describe('issue transitions', () => {
       expect(() => transition({ ...fixing(1), status }, { type: 'approve' })).toThrow(
         TransitionError,
       );
+    }
+  });
+
+  it('allows every legal transition and rejects a sample of illegal ones', () => {
+    const machine = new IssueStateMachine();
+    const triaged: IssueState = { ...fresh, status: 'triaged' };
+    const legal: [IssueState, IssueEvent, IssueState['status']][] = [
+      [fresh, { type: 'triage', class: 'frontend', severity: 'low' }, 'triaged'],
+      [fresh, { type: 'kill' }, 'killed'],
+      [triaged, { type: 'start_fix' }, 'fixing'],
+      [triaged, { type: 'kill' }, 'killed'],
+      [fixing(1), { type: 'patch_ready', runId }, 'awaiting_approval'],
+      [fixing(1), { type: 'escalate', runId, reason: 'x' }, 'fixing'],
+      [fixing(3), { type: 'escalate', runId, reason: 'x' }, 'failed'],
+      [fixing(2), { type: 'kill' }, 'killed'],
+      [{ ...fixing(2), status: 'awaiting_approval' }, { type: 'approve' }, 'resolved'],
+      [{ ...fixing(2), status: 'awaiting_approval' }, { type: 'reject', reason: 'x' }, 'fixing'],
+      [{ ...fixing(3), status: 'awaiting_approval' }, { type: 'reject', reason: 'x' }, 'failed'],
+      [{ ...fixing(1), status: 'pr_open' }, { type: 'approve' }, 'resolved'],
+      [{ ...fixing(1), status: 'pr_open' }, { type: 'reject', reason: 'x' }, 'fixing'],
+      [{ ...fixing(3), status: 'pr_open' }, { type: 'reject', reason: 'x' }, 'failed'],
+      [{ ...fixing(1), status: 'pr_open' }, { type: 'kill' }, 'killed'],
+    ];
+    for (const [state, event, status] of legal) {
+      expect(machine.apply(state, event).status).toBe(status);
+    }
+    expect(machine.apply(fixing(1), { type: 'escalate', runId, reason: 'x' }).currentTier).toBe(2);
+
+    const illegal: [IssueState, IssueEvent][] = [
+      [fresh, { type: 'approve' }],
+      [fresh, { type: 'start_fix' }],
+      [triaged, { type: 'triage', class: 'frontend', severity: 'low' }],
+      [fixing(1), { type: 'approve' }],
+      [fixing(1), { type: 'reject', reason: 'x' }],
+      [{ ...fixing(1), status: 'resolved' }, { type: 'kill' }],
+      [{ ...fixing(1), status: 'failed' }, { type: 'start_fix' }],
+      [
+        { ...fixing(1), status: 'killed' },
+        { type: 'escalate', runId, reason: 'x' },
+      ],
+      [
+        { ...fixing(1), status: 'pr_open' },
+        { type: 'patch_ready', runId },
+      ],
+    ];
+    for (const [state, event] of illegal) {
+      expect(() => machine.apply(state, event)).toThrow(TransitionError);
     }
   });
 

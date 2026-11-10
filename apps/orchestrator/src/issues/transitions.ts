@@ -77,6 +77,13 @@ const rules: Record<IssueStatus, Rule> = {
   killed: none,
 };
 
+/** Applies one event. IssuesService routes every status change through this. */
+export class IssueStateMachine {
+  apply(state: IssueState, event: IssueEvent): IssueState {
+    return transition(state, event);
+  }
+}
+
 /** Returns the state after `event`, or throws TransitionError if `event` is not allowed. */
 export function transition(state: IssueState, event: IssueEvent): IssueState {
   const { status } = state;
