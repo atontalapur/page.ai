@@ -8,8 +8,18 @@ if (paths.length === 0) {
   console.error('usage: node eval/scripts/eval-report.ts <results.json>...');
   process.exit(2);
 }
+
+async function load(path: string) {
+  try {
+    return await loadResults(path);
+  } catch (err) {
+    const why = err instanceof Error ? err.message : String(err);
+    throw new ReportError(`${path}: ${why}`);
+  }
+}
+
 try {
-  process.stdout.write(renderReport(await Promise.all(paths.map(loadResults))));
+  process.stdout.write(renderReport(await Promise.all(paths.map(load))));
 } catch (err) {
   if (!(err instanceof ReportError)) throw err;
   console.error(err.message);
