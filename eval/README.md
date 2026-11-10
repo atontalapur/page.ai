@@ -102,3 +102,23 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   planned different scenarios (dev next to held-out), and flags results left incomplete
   by a budget or provider stop, errors, unplayed runs or skipped scenarios. The ladder
   bar and the shortfall table compare fix rates only on bugs both configs played.
+
+## Tuning the escalation threshold (#114)
+
+```sh
+pnpm eval:tune eval/results/<dev-run>-*.json
+```
+
+- `eval:tune` prints, per tier, tables for picking `ESCALATION_THRESHOLD` in
+  `packages/agent/src/threshold.ts`, pooled over every attempt at that tier in the files:
+  attempts, submissions, fixes (submitted and passed `check.sh`), step, cost and time
+  limit hits, and false escalations (a limit hit whose patch still passed); p50, p90 and
+  max model calls, cost and duration of the fixes; and what-if tables showing how many
+  fixes a lower step, cost or time limit would have cut.
+- It reads dev results only. It loads `split.json` and refuses, printing nothing, if any
+  file names a scenario outside the dev set in `runs`, `errors`, `notPlayed` or
+  `skipped`. The error names the file and the scenario.
+- Runs were cut at the current limits, so the data can't say what a higher limit would
+  do. The what-if tables list only candidates at or below the current value. A fix counts
+  as cut when it used more than the candidate: exact for model calls, an upper bound for
+  cost and time, since the agent checks its limits before each call.
