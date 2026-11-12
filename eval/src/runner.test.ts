@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Tier } from '@page/contracts';
 import { describe, expect, it } from 'vitest';
-import { evalResultsSchema, loadResults, type Attempt } from './results.ts';
+import { evalResultsSchema, loadResults, sameLimits, type Attempt } from './results.ts';
 import {
   AttemptError,
   ProviderError,
@@ -230,6 +230,26 @@ describe('runEval', () => {
     expect(results.runs.map((r) => r.scenario)).toEqual(['001-a']);
   });
 
+  it("gives each tier its own cost limit, and counts a tier's own limit as its own", async () => {
+    const { fn, calls } = scripted([
+      { exitStatus: 'cost_limit', checkPassed: false, costUsd: 0.1 },
+      { exitStatus: 'step_limit', checkPassed: false, costUsd: 0.3 },
+      {},
+    ]);
+    const limits = { 1: 0.1, 2: 0.3, 3: 0.5 } as const;
+    const results = await runEval(
+      base(fn, { maxCostUsd: 5, attemptCostLimitUsd: (tier) => limits[tier] }),
+    );
+    expect(calls.map((c) => [c.tier, c.costLimitUsd])).toEqual([
+      [1, 0.1],
+      [2, 0.3],
+      [3, 0.5],
+    ]);
+    // Tier 1 spent its whole $0.10 limit: an escalation, not a budget stop.
+    expect(results.stoppedForBudget).toBe(false);
+    expect(results.runs[0]).toMatchObject({ tierLanded: 3 });
+  });
+
   it('keeps a run that hit its own cost limit, with the full limit to spend', async () => {
     const { fn } = scripted([{ exitStatus: 'cost_limit', checkPassed: false, costUsd: 0.5 }]);
     const results = await runEval(base(fn, { config: 'tier1-only', maxCostUsd: 5 }));
@@ -348,6 +368,58 @@ describe('runEval', () => {
     const old: Record<string, unknown> = { ...(await runEval(base(fn))) };
     delete old.stoppedForProvider;
     expect(evalResultsSchema.parse(old).stoppedForProvider).toBe(false);
+  });
+
+  it("doesn't let a smaller reservation overtake a larger one waiting for money", async () => {
+    const { fn, started, settle } = manual();
+    // Amounts exact in binary, so the free money is exactly what the comments say.
+    const limits = { 1: 0.25, 2: 0.25, 3: 0.5 } as const;
+    const running = runEval(
+      base(fn, {
+        scenarios: [scenario('001-a'), scenario('002-b'), scenario('003-c'), scenario('004-d')],
+        maxCostUsd: 0.75,
+        attemptCostLimitUsd: (tier) => limits[tier],
+        concurrency: 3,
+      }),
+    );
+    await flush();
+    expect(started.map((c) => c.id)).toEqual(['001-a', '002-b', '003-c']);
+    settle(0, { exitStatus: 'step_limit', costUsd: 0 });
+    await flush();
+    settle(3, { exitStatus: 'step_limit', costUsd: 0 });
+    await flush();
+    // 001-a's Tier 3 needs $0.50 and waits; $0.00 is free.
+    expect(started).toHaveLength(4);
+    // 002-b spends its whole $0.25: $0.25 is free, enough for 004-d's Tier 1 but not for
+    // 001-a's Tier 3, which asked first. 004-d waits behind it.
+    settle(1, { costUsd: 0.25 });
+    await flush();
+    expect(started).toHaveLength(4);
+    settle(2, { costUsd: 0 });
+    await flush();
+    expect(started.slice(4).map((c) => [c.id, c.tier, c.costLimitUsd])).toEqual([
+      ['001-a', 3, 0.5],
+    ]);
+    settle(4);
+    await flush();
+    expect(started.slice(5).map((c) => c.id)).toEqual(['004-d']);
+    settle(5);
+    const results = await running;
+    expect(results.runs.map((r) => r.scenario)).toEqual(['001-a', '002-b', '003-c', '004-d']);
+  });
+
+  it('records the limits it was given, and reads a file without them', async () => {
+    const { fn } = scripted([]);
+    const limits = {
+      1: { stepLimit: 40, costLimitUsd: 0.5, wallTimeLimitMs: 840_000 },
+      2: { stepLimit: 30, costLimitUsd: 0.4, wallTimeLimitMs: 840_000 },
+      3: { stepLimit: 20, costLimitUsd: 0.3, wallTimeLimitMs: 600_000 },
+    };
+    const results = await runEval(base(fn, { limits }));
+    expect(evalResultsSchema.parse(results).limits).toEqual(limits);
+    const old: Record<string, unknown> = { ...results };
+    delete old.limits;
+    expect(evalResultsSchema.parse(old).limits).toBeUndefined();
   });
 
   it('reads a results file written before notPlayed existed', async () => {
@@ -750,6 +822,20 @@ describe('runEval', () => {
 });
 
 describe('results files', () => {
+  it('compares limits field by field, whatever the key order', () => {
+    const tier = { stepLimit: 40, costLimitUsd: 0.5, wallTimeLimitMs: 840_000 };
+    const limits = { 1: tier, 2: tier, 3: tier };
+    const reordered = {
+      3: { wallTimeLimitMs: 840_000, costLimitUsd: 0.5, stepLimit: 40 },
+      2: tier,
+      1: tier,
+    };
+    expect(sameLimits(limits, reordered)).toBe(true);
+    expect(sameLimits(limits, { ...limits, 2: { ...tier, stepLimit: 39 } })).toBe(false);
+    expect(sameLimits(limits, { ...limits, 3: { ...tier, costLimitUsd: 0.4 } })).toBe(false);
+    expect(sameLimits(limits, { ...limits, 1: { ...tier, wallTimeLimitMs: 1 } })).toBe(false);
+  });
+
   it('names a results file by start time and config', () => {
     expect(resultsFileName({ startedAt: '2026-11-08T10:00:00.123Z', config: 'ladder' })).toBe(
       '2026-11-08T10-00-00Z-ladder.json',

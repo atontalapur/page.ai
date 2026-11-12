@@ -11,5 +11,7 @@ export type {
 } from './agent.ts';
 export { formatErrorPrompt, instancePrompt, observationPrompt, systemPrompt } from './prompts.ts';
 export type { AgentTask } from './prompts.ts';
+export { budgetFor, ESCALATION_THRESHOLD } from './threshold.ts';
+export type { TierBudget } from './threshold.ts';
 export { recordingDeps, ReplayDivergence, replayDeps, TRANSCRIPT_VERSION } from './transcript.ts';
 export type { Recording, Transcript, Turn } from './transcript.ts';

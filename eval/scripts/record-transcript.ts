@@ -7,6 +7,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
+  budgetFor,
   DEFAULT_AGENT_CONFIG,
   recordingDeps,
   runAgent,
@@ -84,11 +85,14 @@ try {
   // Setup (container start, break.sh) comes out of the budget. Saving the shortened limit
   // in the config keeps the replay exact. At least 1 ms: the agent reads 0 or less as no
   // limit, so setup that overran the budget would otherwise leave the run unbounded.
+  // The task has no tier, so the prompt is Tier 1's: the recorder has no host tools to push
+  // or open a PR. Its commands run at the scenario's tier, so the limits are that tier's.
   const config = {
     ...DEFAULT_AGENT_CONFIG,
+    ...budgetFor(tier),
     wallTimeLimitMs: Math.max(
       1,
-      DEFAULT_AGENT_CONFIG.wallTimeLimitMs - (Date.now() - containerStartedAt),
+      budgetFor(tier).wallTimeLimitMs - (Date.now() - containerStartedAt),
     ),
   };
   const run = await runAgent(task, recording.deps, config);
