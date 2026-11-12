@@ -15,18 +15,23 @@
   "devDependencies": {
     "@page/config": "workspace:*",
     "@tailwindcss/vite": "catalog:",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
+    "jsdom": "^31.0.0",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"
   },
   "dependencies": {
+    "@page/design-system": "workspace:*",
+    "lucide-react": "^1.71.0",
     "react": "catalog:",
     "react-dom": "catalog:"
   }

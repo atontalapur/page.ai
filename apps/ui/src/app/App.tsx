@@ -1,8 +1,10 @@
+import DashboardLayout from '../components/layout/DashboardLayout';
+import DashboardPage from '../pages/DashboardPage';
+
 export default function App() {
   return (
-    <div>
-      <h1>PageAgents Dashboard</h1>
-      <p>AI-powered incident monitoring</p>
-    </div>
+    <DashboardLayout>
+      <DashboardPage />
+    </DashboardLayout>
   );
 }
