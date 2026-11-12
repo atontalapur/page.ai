@@ -1,0 +1,327 @@
+{
+  "v": 1,
+  "config": "ladder",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "gitSha": "cba68786c14c35eea82c988651e73ec4531c3317",
+  "limits": {
+    "1": {
+      "stepLimit": 40,
+      "costLimitUsd": 0.5,
+      "wallTimeLimitMs": 840000
+    },
+    "2": {
+      "stepLimit": 40,
+      "costLimitUsd": 0.5,
+      "wallTimeLimitMs": 840000
+    },
+    "3": {
+      "stepLimit": 40,
+      "costLimitUsd": 0.5,
+      "wallTimeLimitMs": 840000
+    }
+  },
+  "startedAt": "2026-11-12T17:52:59.101Z",
+  "finishedAt": "2026-11-12T18:21:03.974Z",
+  "runsPerScenario": 1,
+  "maxCostUsd": 1,
+  "spentUsd": 0.03632061436,
+  "stoppedForBudget": false,
+  "stoppedForProvider": false,
+  "runs": [
+    {
+      "scenario": "001-bad-currency-code",
+      "class": "frontend",
+      "expectedTier": 1,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 7,
+          "costUsd": 0.001140468,
+          "durationMs": 119394,
+          "steps": 6,
+          "blockedSteps": 0,
+          "diff": "diff --git a/apps/demo-app/src/shop/money.ts b/apps/demo-app/src/shop/money.ts\nindex 3a9c03b..56d0fe7 100644\n--- a/apps/demo-app/src/shop/money.ts\n+++ b/apps/demo-app/src/shop/money.ts\n@@ -1,4 +1,4 @@\n-const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'US' });\n+const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });\n \n export function formatCents(cents: number): string {\n   return usd.format(cents / 100);\n",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 119394,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.001140468
+    },
+    {
+      "scenario": "003-order-date-options",
+      "class": "frontend",
+      "expectedTier": 1,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 11,
+          "costUsd": 0.002017197,
+          "durationMs": 140797,
+          "steps": 10,
+          "blockedSteps": 0,
+          "diff": "diff --git a/apps/demo-app/src/app/orders/[id]/page.tsx b/apps/demo-app/src/app/orders/[id]/page.tsx\nindex cd6f831..e7c4b3e 100644\n--- a/apps/demo-app/src/app/orders/[id]/page.tsx\n+++ b/apps/demo-app/src/app/orders/[id]/page.tsx\n@@ -15,7 +15,7 @@ export default async function OrderPage(props: PageProps<'/orders/[id]'>) {\n     <main>\n       <h1>Order #{order.id}</h1>\n       <p>Status: {order.status}</p>\n-      <p>Placed {order.createdAt.toLocaleDateString('en-US', { dateStyle: 'medium', month: 'long' })}</p>\n+      <p>Placed {order.createdAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>\n       <ul>\n         {order.items.map((item) => (\n           <li key={item.productId}>\n",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 140797,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.002017197
+    },
+    {
+      "scenario": "004-cart-items-bad-json",
+      "class": "backend-api",
+      "expectedTier": 1,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 18,
+          "costUsd": 0.0028699788000000003,
+          "durationMs": 165307,
+          "steps": 15,
+          "blockedSteps": 1,
+          "diff": "diff --git a/apps/demo-app/src/app/api/api.test.ts b/apps/demo-app/src/app/api/api.test.ts\nindex 28a937c..0989cd7 100644\n--- a/apps/demo-app/src/app/api/api.test.ts\n+++ b/apps/demo-app/src/app/api/api.test.ts\n@@ -74,6 +74,8 @@ describe('API routes', () => {\n \n   it('rejects malformed bodies', async () => {\n     expect((await addItem(post('not json'))).status).toBe(400);\n+    expect((await addItem(post(''))).status).toBe(400);\n+    expect((await addItem(post('{\"productId\":'))).status).toBe(400);\n     expect((await addItem(post({ productId: 'mug' }))).status).toBe(400);\n     expect((await addItem(post({ productId: 9999999999 }))).status).toBe(400);\n     expect((await removeItem(req, ctx({ productId: 'abc' }))).status).toBe(400);\ndiff --git a/apps/demo-app/src/app/api/cart/items/route.ts b/apps/demo-app/src/app/api/cart/items/route.ts\nindex aeb18ce..4f0ad38 100644\n--- a/apps/demo-app/src/app/api/cart/items/route.ts\n+++ b/apps/demo-app/src/app/api/cart/items/route.ts\n@@ -3,7 +3,7 @@ import { addItem, getCart } from '../../../../shop/cart.ts';\n import { openCart } from '../../../cart-session.ts';\n import { shop } from '../../../data.ts';\n import { idSchema } from '../../../ids.ts';\n-import { errorResponse, handle } from '../../respond.ts';\n+import { errorResponse, handle, readJson } from '../../respond.ts';\n \n const body = z.object({\n   productId: idSchema,\n@@ -11,7 +11,7 @@ const body = z.object({\n });\n \n export async function POST(req: Request) {\n-  const parsed = body.safeParse(await req.json());\n+  const parsed = body.safeParse(await readJson(req));\n   if (!parsed.success) return errorResponse('bad_request', 'Expected { productId, quantity? }');\n \n   const { db, settings, cookies } = await shop();\ndiff --git a/apps/demo-app/src/app/api/respond.ts b/apps/demo-app/src/app/api/respond.ts\nindex 624ad13..2594a73 100644\n--- a/apps/demo-app/src/app/api/respond.ts\n+++ b/apps/demo-app/src/app/api/respond.ts\n@@ -1,6 +1,15 @@\n import type { ShopErrorCode } from '../../shop/errors.ts';\n import { ShopError } from '../../shop/errors.ts';\n \n+/** Reads a JSON request body; returns undefined when it is missing or not valid JSON. */\n+export async function readJson(req: Request): Promise<unknown> {\n+  try {\n+    return await req.json();\n+  } catch {\n+    return undefined;\n+  }\n+}\n+\n const statusFor: Record<ShopErrorCode, number> = {\n   not_found: 404,\n   invalid_quantity: 400,\n",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 165307,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.0028699788000000003
+    },
+    {
+      "scenario": "005-add-unknown-product",
+      "class": "backend-api",
+      "expectedTier": 1,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 13,
+          "costUsd": 0.0022451710000000002,
+          "durationMs": 135369,
+          "steps": 12,
+          "blockedSteps": 1,
+          "diff": "diff --git a/apps/demo-app/src/shop/cart.ts b/apps/demo-app/src/shop/cart.ts\nindex b7bb5ae..cfc1436 100644\n--- a/apps/demo-app/src/shop/cart.ts\n+++ b/apps/demo-app/src/shop/cart.ts\n@@ -85,7 +85,8 @@ export async function addItem(\n        where p.id = $1`,\n       [productId, cartId],\n     );\n-    const product = rows[0]!;\n+    const product = rows[0];\n+    if (!product) throw new ShopError('not_found', 'That product no longer exists.');\n \n     const total = product.inCart + quantity;\n     if (total > settings.maxItemQuantity) {\n",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 135369,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.0022451710000000002
+    },
+    {
+      "scenario": "008-pending-order-status",
+      "class": "database",
+      "expectedTier": 2,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 16,
+          "costUsd": 0.00373741,
+          "durationMs": 142582,
+          "steps": 13,
+          "blockedSteps": 0,
+          "diff": "diff --git a/apps/demo-app/src/shop/orders.ts b/apps/demo-app/src/shop/orders.ts\nindex 62c533d..cf02896 100644\n--- a/apps/demo-app/src/shop/orders.ts\n+++ b/apps/demo-app/src/shop/orders.ts\n@@ -12,7 +12,7 @@ export interface OrderItem {\n \n export interface Order {\n   id: number;\n-  status: 'pending' | 'placed' | 'cancelled';\n+  status: 'placed' | 'cancelled';\n   subtotalCents: number;\n   shippingCents: number;\n   totalCents: number;\n@@ -51,7 +51,7 @@ export async function placeOrder(\n     const shippingCents = shippingFor(subtotalCents, settings);\n     const { rows } = await tx.query<{ id: number }>(\n       `insert into orders (status, subtotal_cents, shipping_cents, total_cents)\n-       values ('pending', $1, $2, $3) returning id`,\n+       values ('placed', $1, $2, $3) returning id`,\n       [subtotalCents, shippingCents, subtotalCents + shippingCents],\n     );\n     const orderId = rows[0]!.id;\n",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 142582,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.00373741
+    },
+    {
+      "scenario": "009-checkout-enabled-default",
+      "class": "infra-config",
+      "expectedTier": 1,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 13,
+          "costUsd": 0.0025729019999999997,
+          "durationMs": 280498,
+          "steps": 12,
+          "blockedSteps": 2,
+          "diff": "diff --git a/apps/demo-app/src/config.ts b/apps/demo-app/src/config.ts\nindex d525c5d..ad7b479 100644\n--- a/apps/demo-app/src/config.ts\n+++ b/apps/demo-app/src/config.ts\n@@ -13,7 +13,7 @@ const shopSchema = z.object({\n   SHIPPING_FLAT_CENTS: z.coerce.number().int().min(0).default(500),\n   FREE_SHIPPING_MIN_CENTS: z.coerce.number().int().min(0).default(5000),\n   MAX_ITEM_QUANTITY: z.coerce.number().int().min(1).default(10),\n-  CHECKOUT_ENABLED: z.stringbool(),\n+  CHECKOUT_ENABLED: z.stringbool().default(true),\n });\n \n export interface ShopSettings {\n",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 280498,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.0025729019999999997
+    },
+    {
+      "scenario": "011-product-in-cart-assertion",
+      "class": "frontend",
+      "expectedTier": 1,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 22,
+          "costUsd": 0.010226539560000001,
+          "durationMs": 205741,
+          "steps": 20,
+          "blockedSteps": 1,
+          "diff": "diff --git a/apps/demo-app/src/app/products/[slug]/page.test.ts b/apps/demo-app/src/app/products/[slug]/page.test.ts\nnew file mode 100644\nindex 0000000..e3c0a0d\n--- /dev/null\n+++ b/apps/demo-app/src/app/products/[slug]/page.test.ts\n@@ -0,0 +1,34 @@\n+import { renderToStaticMarkup } from 'react-dom/server';\n+import { beforeEach, describe, expect, it, vi } from 'vitest';\n+import { addItem, ensureCart } from '../../../shop/cart.ts';\n+import { productId } from '../../../shop/test-utils.ts';\n+import { testShop, type TestShop } from '../../test-utils.ts';\n+import ProductPage from './page.tsx';\n+\n+const h = vi.hoisted(() => ({ ctx: undefined as unknown as TestShop }));\n+vi.mock('../../data.ts', () => ({ shop: () => Promise.resolve(h.ctx) }));\n+\n+function props(slug: string) {\n+  return { params: Promise.resolve({ slug }), searchParams: Promise.resolve({}) };\n+}\n+\n+describe('ProductPage', () => {\n+  beforeEach(async () => {\n+    h.ctx = await testShop();\n+  });\n+\n+  it('renders a product that is not in the cart', async () => {\n+    expect(renderToStaticMarkup(await ProductPage(props('canvas-tote')))).toContain('Canvas Tote');\n+  });\n+\n+  it('shows how many are already in the cart', async () => {\n+    const tote = await productId(h.ctx.db, 'canvas-tote');\n+    const cartId = await ensureCart(h.ctx.db);\n+    await addItem(h.ctx.db, cartId, tote, 2, h.ctx.settings);\n+    h.ctx.jar.set('cart_id', cartId);\n+\n+    expect(renderToStaticMarkup(await ProductPage(props('canvas-tote')))).toContain(\n+      '2 in your cart',\n+    );\n+  });\n+});\n\\ No newline at end of file\ndiff --git a/apps/demo-app/src/app/products/[slug]/page.tsx b/apps/demo-app/src/app/products/[slug]/page.tsx\nindex a38db33..5130d61 100644\n--- a/apps/demo-app/src/app/products/[slug]/page.tsx\n+++ b/apps/demo-app/src/app/products/[slug]/page.tsx\n@@ -12,7 +12,7 @@ export default async function ProductPage(props: PageProps<'/products/[slug]'>)\n   const product = await getProduct(db, slug);\n   if (!product) notFound();\n   const cart = await getCart(db, readCartId(cookies), settings);\n-  const inCart = cart.lines.find((line) => line.productId === product.id)!.quantity;\n+  const inCart = cart.lines.find((line) => line.productId === product.id)?.quantity ?? 0;\n \n   const soldOut = product.stock === 0;\n   return (\n",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 205741,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.010226539560000001
+    },
+    {
+      "scenario": "013-product-slug-double-decode",
+      "class": "backend-api",
+      "expectedTier": 1,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 15,
+          "costUsd": 0.0037147411999999998,
+          "durationMs": 149107,
+          "steps": 13,
+          "blockedSteps": 1,
+          "diff": "diff --git a/apps/demo-app/src/app/api/api.test.ts b/apps/demo-app/src/app/api/api.test.ts\nindex 28a937c..52b923b 100644\n--- a/apps/demo-app/src/app/api/api.test.ts\n+++ b/apps/demo-app/src/app/api/api.test.ts\n@@ -79,6 +79,11 @@ describe('API routes', () => {\n     expect((await removeItem(req, ctx({ productId: 'abc' }))).status).toBe(400);\n   });\n \n+  it('handles slugs containing percent signs', async () => {\n+    const res = await getProduct(req, ctx({ slug: '50%-off' }));\n+    expect(res.status).toBe(404);\n+  });\n+\n   it('404s an unknown or malformed order id', async () => {\n     expect((await getOrder(req, ctx({ id: '999' }))).status).toBe(404);\n     expect((await getOrder(req, ctx({ id: 'abc' }))).status).toBe(404);\ndiff --git a/apps/demo-app/src/app/api/products/[slug]/route.ts b/apps/demo-app/src/app/api/products/[slug]/route.ts\nindex 6c309d2..a8f379b 100644\n--- a/apps/demo-app/src/app/api/products/[slug]/route.ts\n+++ b/apps/demo-app/src/app/api/products/[slug]/route.ts\n@@ -3,8 +3,8 @@ import { shop } from '../../../data.ts';\n import { errorResponse } from '../../respond.ts';\n \n export async function GET(_req: Request, ctx: RouteContext<'/api/products/[slug]'>) {\n-  // Slugs can arrive percent-encoded from links built with encodeURIComponent.\n-  const slug = decodeURIComponent((await ctx.params).slug);\n+  // Next.js already decodes percent-encoded route params, so use the slug as-is.\n+  const slug = (await ctx.params).slug;\n   const { db } = await shop();\n   const product = await getProduct(db, slug);\n   return product ? Response.json(product) : errorResponse('not_found', `No product ${slug}`);\n",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 149107,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.0037147411999999998
+    },
+    {
+      "scenario": "014-products-sort-param",
+      "class": "backend-api",
+      "expectedTier": 2,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 24,
+          "costUsd": 0.005657788800000001,
+          "durationMs": 165206,
+          "steps": 21,
+          "blockedSteps": 1,
+          "diff": "diff --git a/apps/demo-app/src/app/api/api.test.ts b/apps/demo-app/src/app/api/api.test.ts\nindex 919f74b..bcfde75 100644\n--- a/apps/demo-app/src/app/api/api.test.ts\n+++ b/apps/demo-app/src/app/api/api.test.ts\n@@ -26,6 +26,14 @@ describe('API routes', () => {\n     h.ctx = await testShop();\n   });\n \n+  it('lists products sorted by price', async () => {\n+    const sorted = new Request('http://localhost/api/products?sort=price');\n+    const prices = ((await (await listProducts(sorted)).json()) as { priceCents: number }[]).map(\n+      (p) => p.priceCents,\n+    );\n+    expect(prices).toEqual([...prices].sort((a, b) => a - b));\n+  });\n+\n   it('lists products and fetches one by slug', async () => {\n     expect(await (await listProducts(req)).json()).toHaveLength(5);\n     const res = await getProduct(req, ctx({ slug: 'enamel-mug' }));\ndiff --git a/apps/demo-app/src/shop/products.test.ts b/apps/demo-app/src/shop/products.test.ts\nindex 75e1a2a..275ff6a 100644\n--- a/apps/demo-app/src/shop/products.test.ts\n+++ b/apps/demo-app/src/shop/products.test.ts\n@@ -15,4 +15,16 @@ describe('products', () => {\n     expect(await getProduct(db, 'enamel-mug')).toMatchObject({ priceCents: 1600, stock: 25 });\n     expect(await getProduct(db, 'nope')).toBeNull();\n   });\n+\n+  it('sorts the catalogue by price', async () => {\n+    const db = await seededDb();\n+    const prices = (await listProducts(db, 'price')).map((p) => p.priceCents);\n+    expect(prices).toEqual([...prices].sort((a, b) => a - b));\n+  });\n+\n+  it('falls back to name for an unknown sort', async () => {\n+    const db = await seededDb();\n+    const names = (await listProducts(db, 'drop table products')).map((p) => p.name);\n+    expect(names).toEqual(products.map((p) => p.name).sort());\n+  });\n });\ndiff --git a/apps/demo-app/src/shop/products.ts b/apps/demo-app/src/shop/products.ts\nindex 0f4c1f2..1faf1b4 100644\n--- a/apps/demo-app/src/shop/products.ts\n+++ b/apps/demo-app/src/shop/products.ts\n@@ -11,9 +11,20 @@ export interface Product {\n \n const columns = `id, slug, name, description, price_cents as \"priceCents\", stock`;\n \n-/** Lists the catalogue ordered by `orderBy`, a products column (name by default). */\n-export async function listProducts(db: Queryable, orderBy = 'name'): Promise<Product[]> {\n-  const { rows } = await db.query<Product>(`select ${columns} from products order by ${orderBy}`);\n+/**\n+ * Sort keys callers may use, mapped to real columns. Anything else falls back to\n+ * `name`, so the value is never interpolated into SQL unchecked.\n+ */\n+const orderByColumns: Record<string, string> = {\n+  name: 'name',\n+  price: 'price_cents',\n+  stock: 'stock',\n+};\n+\n+/** Lists the catalogue ordered by `sort` (name by default). */\n+export async function listProducts(db: Queryable, sort = 'name'): Promise<Product[]> {\n+  const column = orderByColumns[sort] ?? orderByColumns.name;\n+  const { rows } = await db.query<Product>(`select ${columns} from products order by ${column}`);\n   return rows;\n }\n \n",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 165206,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.005657788800000001
+    },
+    {
+      "scenario": "015-category-join-ambiguous",
+      "class": "database",
+      "expectedTier": 2,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 13,
+          "costUsd": 0.0021384180000000004,
+          "durationMs": 126890,
+          "steps": 12,
+          "blockedSteps": 0,
+          "diff": "diff --git a/apps/demo-app/src/shop/products.ts b/apps/demo-app/src/shop/products.ts\nindex 1f410c6..1e5658a 100644\n--- a/apps/demo-app/src/shop/products.ts\n+++ b/apps/demo-app/src/shop/products.ts\n@@ -10,17 +10,17 @@ export interface Product {\n   category: string | null;\n }\n \n-const columns = `id, slug, name, description, price_cents as \"priceCents\", stock,\n+const columns = `p.id, p.slug, p.name, p.description, p.price_cents as \"priceCents\", p.stock,\n   c.name as category`;\n const fromProducts = `products p left join categories c on c.id = p.category_id`;\n \n export async function listProducts(db: Queryable): Promise<Product[]> {\n-  const { rows } = await db.query<Product>(`select ${columns} from ${fromProducts} order by name`);\n+  const { rows } = await db.query<Product>(`select ${columns} from ${fromProducts} order by p.name`);\n   return rows;\n }\n \n export async function getProduct(db: Queryable, slug: string): Promise<Product | null> {\n-  const { rows } = await db.query<Product>(`select ${columns} from ${fromProducts} where slug = $1`, [\n+  const { rows } = await db.query<Product>(`select ${columns} from ${fromProducts} where p.slug = $1`, [\n     slug,\n   ]);\n   return rows[0] ?? null;\n",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 126890,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.0021384180000000004
+    }
+  ],
+  "skipped": [],
+  "errors": [],
+  "notPlayed": [],
+  "summary": {
+    "runs": 10,
+    "fixed": 10,
+    "fixRate": 1,
+    "costUsd": 0.03632061436,
+    "costPerFixUsd": 0.0036320614360000002,
+    "falseEscalations": 0,
+    "falsePages": 0,
+    "steps": 134,
+    "blockedSteps": 7,
+    "blockedPer100Steps": 5.223880597014925
+  }
+}
