@@ -22,7 +22,39 @@ git remote add origin git@github.com:<owner>/page-demo.git && git push -u origin
 
 Do this again whenever `apps/demo-app` changes here and the sandbox image is rebuilt. If the
 two drift, a PR can undo `main`'s side of any file the agent touched, since a push writes
-whole files.
+whole files. Once the repo exists, `infra/sandbox/demo-sync.sh` (section 5) does the resync.
+
+## 5. The seeded demo bug, and resetting after a demo
+
+For a live demo, the deployed app has to throw, so `main` carries one seeded bug, and the
+sandbox has to start from the same bugged tree (#115). `infra/sandbox/demo.Dockerfile`
+builds `page-sandbox:demo`: the sandbox image with a scenario's `break.sh` folded into the
+baseline commit. The daemon runs on it:
+
+```sh
+SANDBOX_IMAGE=page-sandbox:demo
+```
+
+The default bug is `001-bad-currency-code` (Tier 1, fixed in every dev eval run). Use a dev
+bug only. The script refuses held-out bugs (`eval/split.json`), since running one before the
+held-out eval spends it (#114). The demo image fails `smoke.sh` on the demo app's tests,
+because the bug is there. That is expected.
+
+`demo-sync.sh` builds both images and opens a PR on page-demo that puts `main` on the demo
+image's tree. Run it once to seed `main`, and again after every demo PR merges to put the
+bug back:
+
+```sh
+infra/sandbox/demo-sync.sh                     # 001-bad-currency-code on atontalapur/page-demo
+infra/sandbox/demo-sync.sh 009-checkout-enabled-default
+gh pr merge -R atontalapur/page-demo --squash --delete-branch pageagents/demo-reset-<time>
+```
+
+The PR comes from a `pageagents/demo-reset-*` branch, the only branches the rulesets let
+anyone create, and the owner merges it like any other PR. If `main` already matches, the
+script says so and opens nothing. Leave an agent's demo PR unmerged and closing it works as
+well, but a merged one needs the reset before the next demo. Restart the deployed app on the
+reset tree too, or it keeps serving the fix.
 
 ## 2. Rulesets
 
