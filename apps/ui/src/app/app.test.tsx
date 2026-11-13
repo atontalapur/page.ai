@@ -6,6 +6,7 @@ describe('App', () => {
   it('renders the dashboard heading', () => {
     const html = renderToStaticMarkup(<App />);
 
-    expect(html).toContain('PageAgents');
+    expect(html).toContain('Page.AI');
+    expect(html).toContain('Dashboard');
   });
 });

@@ -33,6 +33,7 @@ catalog:
   '@vitejs/plugin-react': ^6.2.1
   react: ^19.3.1
   react-dom: ^19.3.1
+  lucide-react: ^1.71.0
   tailwindcss: ^4.3.5
   # vitest 5 pulls in vite 8, keep them in step
   vite: ^8.3.6
