@@ -25,13 +25,14 @@
     "env:pull": "node scripts/env-sync.js pull",
     "env:share": "node scripts/env-sync.js share",
     "eval:run": "node eval/scripts/eval-run.ts",
-    "eval:report": "node eval/scripts/eval-report.ts"
+    "eval:report": "node eval/scripts/eval-report.ts",
+    "eval:tune": "node eval/scripts/eval-tune.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
     "@dotenvx/dotenvx": "2.38.2",
-    "@dotenvx/primitives": "3.3.1",
+    "@dotenvx/primitives": "4.3.0",
     "@page/config": "workspace:*",
     "dependency-cruiser": "^18.7.2",
     "husky": "^9.1.7",

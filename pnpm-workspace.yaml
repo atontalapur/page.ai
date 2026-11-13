@@ -22,21 +22,21 @@ catalog:
   pg: ^8.23.1
   pino: ^10.4.0
   # Job queue (orchestrator sends fix jobs, node claims them)
-  pg-boss: ^12.38.0
+  pg-boss: ^12.38.1
   # Live events between the orchestrator, the node daemon and the UI; keep them in step
   socket.io: ^4.8.4
   socket.io-client: ^4.8.4
   # UI (apps/ui)
-  '@tailwindcss/vite': ^4.3.4
+  '@tailwindcss/vite': ^4.3.5
   '@types/react': ^19.3.0
   '@types/react-dom': ^19.3.0
   '@vitejs/plugin-react': ^6.2.1
   react: ^19.3.1
   react-dom: ^19.3.1
-  tailwindcss: ^4.3.4
   lucide-react: ^1.71.0
+  tailwindcss: ^4.3.5
   # vitest 5 pulls in vite 8, keep them in step
-  vite: ^8.3.5
+  vite: ^8.3.6
 
 # Dependency install scripts pnpm may run. core-js (via posthog-js) only prints a banner.
 allowBuilds:

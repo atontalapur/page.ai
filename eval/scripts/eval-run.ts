@@ -6,15 +6,19 @@ import { renameSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { budgetFor, ESCALATION_THRESHOLD } from '@page/agent';
 import { OpenRouterClient, withRetries } from '@page/model-client';
-import { evalConfigSchema, EVAL_CONFIGS, loadResults, type EvalResults } from '../src/results.ts';
+import {
+  evalConfigSchema,
+  EVAL_CONFIGS,
+  loadResults,
+  sameLimits,
+  type EvalResults,
+} from '../src/results.ts';
 import { resultsFileName, runEval } from '../src/runner.ts';
 import { listScenarioIds, loadScenario, ScenarioError, type Scenario } from '../src/scenario.ts';
 import { loadSplit, splitIds } from '../src/split.ts';
 import { dockerAttempt } from './attempt.ts';
-
-/** The most one attempt may spend; every attempt in flight holds this much of the budget. */
-const ATTEMPT_COST_LIMIT_USD = 0.5;
 
 const USAGE = `usage: OPENROUTER_API_KEY=... node eval/scripts/eval-run.ts <image> --config <${Object.keys(EVAL_CONFIGS).join('|')}>
   [--model <id>] [--runs <n>] [--max-cost <usd>] [--concurrency <n>] [--set dev|held-out]
@@ -24,7 +28,7 @@ const USAGE = `usage: OPENROUTER_API_KEY=... node eval/scripts/eval-run.ts <imag
   --runs      runs per scenario (default 1)
   --max-cost  total budget in USD; no attempt starts past it (default 1)
   --concurrency  scenario runs played at once (default 1); each attempt in flight holds
-              $0.50 of the budget, and a run can have a sandbox up per tier
+              its tier's cost limit (ESCALATION_THRESHOLD) of the budget, and a run can have a sandbox up per tier
   --set       only the dev or held-out scenarios from eval/split.json
   --limit     only the first n scenarios
   --out       results directory (default eval/results)
@@ -115,6 +119,14 @@ if (resume !== undefined) {
       ['commit', resume.gitSha, gitSha],
     ] as const
   ).filter(([, was, now]) => was !== now);
+  // Catches an uncommitted threshold.ts edit, which the commit can't show. Files from
+  // before #114 don't record limits; their commit check covers it.
+  if (resume.limits !== undefined && !sameLimits(resume.limits, ESCALATION_THRESHOLD)) {
+    fail(
+      `--resume ${values.resume} played at other limits than threshold.ts has now: ` +
+        `${JSON.stringify(resume.limits)}. Restore those limits to resume it.`,
+    );
+  }
   if (mismatch.length > 0) {
     const what = mismatch.map(([name, was, now]) => `${name} was ${was}, now ${now}`).join('; ');
     const hint = mismatch.some(([name]) => name === 'commit')
@@ -137,6 +149,11 @@ const client = withRetries(new OpenRouterClient({ apiKey, model }));
 console.log(
   `${config.data}: ${scenarios.length} scenarios x ${runs} runs, ${model}, budget $${maxCost}, ` +
     `up to ${concurrency} at a time`,
+);
+// Every attempt in flight holds its tier's cost limit (the escalation threshold's). The
+// warnings below assume the dearest tier this config plays.
+const ATTEMPT_COST_LIMIT_USD = Math.max(
+  ...EVAL_CONFIGS[config.data].map((tier) => budgetFor(tier).costLimitUsd),
 );
 const funded = Math.floor(maxCost / ATTEMPT_COST_LIMIT_USD);
 if (concurrency > 1 && funded < concurrency) {
@@ -186,10 +203,11 @@ const results = await runEval({
   scenarios,
   runsPerScenario: runs,
   maxCostUsd: maxCost,
-  attemptCostLimitUsd: ATTEMPT_COST_LIMIT_USD,
+  attemptCostLimitUsd: (tier) => budgetFor(tier).costLimitUsd,
   concurrency,
   model,
   gitSha,
+  limits: ESCALATION_THRESHOLD,
   attempt: dockerAttempt(image, client),
   ...(resume === undefined ? {} : { resume }),
   signal: pause.signal,

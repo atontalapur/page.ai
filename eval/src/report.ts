@@ -1,7 +1,13 @@
 // Turns eval results files into the markdown tables for the report's Results section
 // (docs/report/evaluation-method.md) and checks the bars in docs/report/eval-prereg.md.
 import type { Tier } from '@page/contracts';
-import { EVAL_CONFIGS, type EvalConfig, type EvalResults, type ScenarioRun } from './results.ts';
+import {
+  EVAL_CONFIGS,
+  loadResults,
+  type EvalConfig,
+  type EvalResults,
+  type ScenarioRun,
+} from './results.ts';
 import { summarize } from './runner.ts';
 
 const CONFIG_ORDER = Object.keys(EVAL_CONFIGS) as EvalConfig[];
@@ -16,9 +22,27 @@ export const BARS = {
 
 export class ReportError extends Error {}
 
+/** loadResults, with a failure that names the file. */
+export async function loadResultsFile(path: string): Promise<EvalResults> {
+  try {
+    return await loadResults(path);
+  } catch (err) {
+    const why = err instanceof Error ? err.message : String(err);
+    throw new ReportError(`${path}: ${why}`);
+  }
+}
+
 /** Every scenario a file planned: played, skipped, errored or not played. */
+/** Every list in a results file that names scenarios. */
+export const SCENARIO_LISTS = [
+  'runs',
+  'skipped',
+  'errors',
+  'notPlayed',
+] as const satisfies readonly (keyof EvalResults)[];
+
 export function plannedIds(f: EvalResults): string[] {
-  const ids = [...f.runs, ...f.skipped, ...f.errors, ...f.notPlayed].map((r) => r.scenario);
+  const ids = SCENARIO_LISTS.flatMap((field) => f[field].map((r) => r.scenario));
   return [...new Set(ids)].sort();
 }
 
@@ -59,23 +83,29 @@ function rate(runs: ScenarioRun[]): string {
   return s.runs === 0 ? 'n/a' : `${s.fixRate.toFixed(2)} (${s.fixed}/${s.runs})`;
 }
 
-function usd(n: number | null): string {
+export function usd(n: number | null): string {
   return n === null ? 'n/a' : `$${n.toFixed(4)}`;
+}
+
+/** Nearest-rank percentile. Null for no values. */
+export function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const i = Math.max(0, Math.ceil((p / 100) * sorted.length) - 1);
+  return sorted[i] ?? 0;
 }
 
 /** Nearest-rank percentile of ms values, in seconds. */
 export function percentileSec(ms: number[], p: number): number | null {
-  if (ms.length === 0) return null;
-  const sorted = [...ms].sort((a, b) => a - b);
-  const i = Math.max(0, Math.ceil((p / 100) * sorted.length) - 1);
-  return Math.round((sorted[i] ?? 0) / 1000);
+  const v = percentile(ms, p);
+  return v === null ? null : Math.round(v / 1000);
 }
 
-function sec(n: number | null): string {
+export function sec(n: number | null): string {
   return n === null ? 'n/a' : `${n}s`;
 }
 
-function table(head: string[], rows: string[][]): string {
+export function table(head: string[], rows: string[][]): string {
   const line = (cells: string[]) => `| ${cells.join(' | ')} |`;
   return [line(head), line(head.map(() => '---')), ...rows.map(line)].join('\n');
 }

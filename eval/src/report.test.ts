@@ -1,76 +1,14 @@
-import type { Tier } from '@page/contracts';
 import { describe, expect, it } from 'vitest';
-import type { Attempt, EvalConfig, EvalResults, ScenarioRun } from './results.ts';
-import { byConfig, checkBars, percentileSec, renderReport, ReportError } from './report.ts';
-
-const attempt = (tier: Tier, over: Partial<Attempt> = {}): Attempt => ({
-  tier,
-  exitStatus: 'submitted',
-  checkPassed: true,
-  prOpened: false,
-  modelCalls: 3,
-  costUsd: 0.001,
-  durationMs: 10_000,
-  steps: 10,
-  blockedSteps: 0,
-  diff: '',
-  ...over,
-});
-
-const run = (scenario: string, fixed: boolean, over: Partial<ScenarioRun> = {}): ScenarioRun => ({
-  scenario,
-  class: 'frontend',
-  expectedTier: 1,
-  run: 1,
-  attempts: [attempt(1, { checkPassed: fixed, exitStatus: fixed ? 'submitted' : 'step_limit' })],
-  tierLanded: fixed ? 1 : null,
-  fixed,
-  paged: !fixed,
-  timeToFixMs: fixed ? 10_000 : null,
-  timeToPageMs: fixed ? null : 20_000,
-  falseEscalations: 0,
-  falsePage: false,
-  costUsd: 0.001,
-  ...over,
-});
-
-const results = (
-  config: EvalConfig,
-  runs: ScenarioRun[],
-  over: Partial<EvalResults> = {},
-): EvalResults => {
-  const fixed = runs.filter((r) => r.fixed).length;
-  return {
-    v: 1,
-    config,
-    model: 'm',
-    gitSha: 'abcdef1234',
-    startedAt: '2026-11-10T00:00:00.000Z',
-    finishedAt: '2026-11-10T01:00:00.000Z',
-    runsPerScenario: 1,
-    maxCostUsd: 1,
-    spentUsd: 0.01,
-    stoppedForBudget: false,
-    stoppedForProvider: false,
-    runs,
-    skipped: [],
-    errors: [],
-    notPlayed: [],
-    summary: {
-      runs: runs.length,
-      fixed,
-      fixRate: runs.length === 0 ? 0 : fixed / runs.length,
-      costUsd: 0.01,
-      costPerFixUsd: fixed === 0 ? null : 0.01 / fixed,
-      falseEscalations: 0,
-      falsePages: 0,
-      steps: 10,
-      blockedSteps: 0,
-      blockedPer100Steps: 0,
-    },
-    ...over,
-  };
-};
+import {
+  byConfig,
+  checkBars,
+  loadResultsFile,
+  percentile,
+  percentileSec,
+  renderReport,
+  ReportError,
+} from './report.ts';
+import { attempt, results, run } from './test-utils.ts';
 
 describe('byConfig', () => {
   it('orders configs as the report does', () => {
@@ -256,5 +194,21 @@ describe('renderReport', () => {
 
   it('refuses an empty set', () => {
     expect(() => renderReport([])).toThrow(ReportError);
+  });
+});
+
+describe('loadResultsFile', () => {
+  it('names the file that failed to load', async () => {
+    const failed = loadResultsFile('/nonexistent/eval-results.json');
+    await expect(failed).rejects.toBeInstanceOf(ReportError);
+    await expect(failed).rejects.toThrow(/^\/nonexistent\/eval-results\.json: /);
+  });
+});
+
+describe('percentile', () => {
+  it('takes the nearest rank, unrounded', () => {
+    expect(percentile([0.3, 0.1, 0.2], 50)).toBe(0.2);
+    expect(percentile([0.3, 0.1, 0.2], 100)).toBe(0.3);
+    expect(percentile([], 50)).toBeNull();
   });
 });

@@ -91,17 +91,22 @@ export interface RunEvalOptions {
    * by one call's cost.
    */
   maxCostUsd: number;
-  /** The most one attempt may spend, before the remaining budget lowers it. */
-  attemptCostLimitUsd: number;
+  /**
+   * The most one attempt may spend at a tier, before the remaining budget lowers it: one
+   * number for every tier, or each tier's own (eval:run passes the escalation threshold's).
+   */
+  attemptCostLimitUsd: number | ((tier: Tier) => number);
   /**
    * Scenario runs played at once, each climbing its tiers in order (default 1). A run's
-   * checks overlap its later tiers whatever this is. Each attempt in flight holds a full
-   * attemptCostLimitUsd, so more than maxCostUsd / attemptCostLimitUsd runs never play
-   * at once.
+   * checks overlap its later tiers whatever this is. Each attempt in flight holds its
+   * tier's full attemptCostLimitUsd, so runs play together only while the budget left
+   * covers all their limits.
    */
   concurrency?: number;
   model: string;
   gitSha: string;
+  /** The per-tier agent limits the attempts play at, recorded in the results. */
+  limits?: EvalResults['limits'];
   attempt: AttemptFn;
   now?: () => Date;
   /** Each kept run, in the order the runs were planned. */
@@ -135,13 +140,12 @@ class Budget {
   stopped = false;
   private reserved = 0;
   private inFlight = 0;
-  private waiting: (() => void)[] = [];
+  /** Reservations not yet granted, oldest first. */
+  private queue: { attemptUsd: number; resolve: (limit: number | undefined) => void }[] = [];
   private readonly maxUsd: number;
-  private readonly attemptUsd: number;
 
-  constructor(maxUsd: number, attemptUsd: number) {
+  constructor(maxUsd: number) {
     this.maxUsd = maxUsd;
-    this.attemptUsd = attemptUsd;
   }
 
   /**
@@ -149,25 +153,16 @@ class Budget {
    * budget has it. Less than that goes out only when no other attempt is in flight to
    * give money back, so an attempt isn't cut short by money another attempt won't spend.
    * Resolves undefined when the budget can't pay for a real attempt, or has stopped.
+   *
+   * Reservations are granted in the order they were asked for, and none overtakes one that
+   * is waiting: tiers can have different limits, and a smaller one taking each amount
+   * freed would leave a larger one waiting for good.
    */
-  async reserve(): Promise<number | undefined> {
-    for (;;) {
-      if (this.stopped) return undefined;
-      const free = this.maxUsd - this.spent - this.reserved;
-      let limit: number | undefined;
-      if (free >= this.attemptUsd) limit = this.attemptUsd;
-      else if (this.inFlight === 0) {
-        // Too little left for a real attempt: it would only be cut short.
-        if (free < MIN_ATTEMPT_USD) return undefined;
-        limit = free;
-      }
-      if (limit !== undefined) {
-        this.reserved += limit;
-        this.inFlight++;
-        return limit;
-      }
-      await new Promise<void>((resolve) => this.waiting.push(resolve));
-    }
+  reserve(attemptUsd: number): Promise<number | undefined> {
+    return new Promise((resolve) => {
+      this.queue.push({ attemptUsd, resolve });
+      this.grant();
+    });
   }
 
   /** Charges what an attempt spent against its reservation and frees the rest. */
@@ -175,18 +170,32 @@ class Budget {
     this.reserved -= limit;
     this.spent += costUsd;
     this.inFlight--;
-    this.wake();
+    this.grant();
   }
 
   stop(): void {
     this.stopped = true;
-    this.wake();
+    this.grant();
   }
 
-  private wake(): void {
-    const waiting = this.waiting;
-    this.waiting = [];
-    for (const resolve of waiting) resolve();
+  /** Grants waiting reservations from the oldest, until one has to wait for money. */
+  private grant(): void {
+    for (let next = this.queue[0]; next !== undefined; next = this.queue[0]) {
+      const free = this.maxUsd - this.spent - this.reserved;
+      let limit: number | undefined;
+      if (this.stopped) limit = undefined;
+      else if (free >= next.attemptUsd) limit = next.attemptUsd;
+      else if (this.inFlight === 0) {
+        // Too little left for a real attempt: it would only be cut short.
+        limit = free < MIN_ATTEMPT_USD ? undefined : free;
+      } else return;
+      this.queue.shift();
+      if (limit !== undefined) {
+        this.reserved += limit;
+        this.inFlight++;
+      }
+      next.resolve(limit);
+    }
   }
 }
 
@@ -222,8 +231,11 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
   const skipped: EvalResults['skipped'] = [];
   const errors: EvalResults['errors'] = [];
   const notPlayed: EvalResults['notPlayed'] = [];
-  const budget = new Budget(options.maxCostUsd, options.attemptCostLimitUsd);
+  const budget = new Budget(options.maxCostUsd);
   budget.spent = options.resume?.spentUsd ?? 0;
+  const { attemptCostLimitUsd } = options;
+  const limitFor = (tier: Tier) =>
+    typeof attemptCostLimitUsd === 'number' ? attemptCostLimitUsd : attemptCostLimitUsd(tier);
   let stoppedForBudget = false;
   let stoppedForProvider = false;
 
@@ -267,7 +279,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     let cutShort = false;
     for (const tier of tiers) {
       if (signal.aborted) break;
-      const limit = await budget.reserve();
+      const limit = await budget.reserve(limitFor(tier));
       if (limit === undefined) {
         cutShort = true;
         if (!budget.stopped) {
@@ -304,7 +316,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
         break;
       }
       // Out of money because the budget lowered the limit, not the agent's own limit.
-      if (attempt.agent.exitStatus === 'cost_limit' && limit < options.attemptCostLimitUsd) {
+      if (attempt.agent.exitStatus === 'cost_limit' && limit < limitFor(tier)) {
         cutShort = true;
         stoppedForBudget = true;
         budget.stop();
@@ -351,6 +363,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     config: options.config,
     model: options.model,
     gitSha: options.gitSha,
+    ...(options.limits === undefined ? {} : { limits: options.limits }),
     startedAt,
     finishedAt: now().toISOString(),
     runsPerScenario: options.runsPerScenario,
