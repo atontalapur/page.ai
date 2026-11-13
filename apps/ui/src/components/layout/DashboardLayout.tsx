@@ -44,7 +44,7 @@ const navigation = [
 ] as const;
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
-  const [activePage, setActivePage] = useState<Page>('Dashboard');
+  const activePage = 'Dashboard';
 
   return (
     <SidebarProvider>
