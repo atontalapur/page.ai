@@ -15,7 +15,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.15",
-    "@nestjs/testing": "^12.3.3",
+    "@nestjs/testing": "^12.4.0",
     "@page/config": "workspace:*",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
@@ -25,9 +25,9 @@
     "vitest": "catalog:"
   },
   "dependencies": {
-    "@nestjs/common": "^12.3.3",
-    "@nestjs/core": "^12.3.3",
-    "@nestjs/platform-fastify": "^12.3.3",
+    "@nestjs/common": "^12.4.0",
+    "@nestjs/core": "^12.4.0",
+    "@nestjs/platform-fastify": "^12.4.0",
     "@page/contracts": "workspace:*",
     "@page/db-migrations": "workspace:*",
     "@page/model-client": "workspace:*",
