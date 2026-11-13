@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import {
   LayoutDashboard,
   AlertTriangle,
@@ -28,8 +28,6 @@ import {
 import { Button } from '@page/design-system/components/ui/button';
 import { Avatar, AvatarFallback } from '@page/design-system/components/ui/avatar';
 import { Separator } from '@page/design-system/components/ui/separator';
-
-type Page = 'Dashboard' | 'Incidents' | 'Agents' | 'Activity' | 'Settings';
 
 interface DashboardLayoutProps {
   children: ReactNode;
