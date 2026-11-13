@@ -12,33 +12,6 @@ import {
 import { Badge } from '@page/design-system/components/ui/badge';
 import AgentOverview, { type Agent } from '../components/agents/AgentOverview';
 
-const metrics = [
-  {
-    id: 'total-incidents',
-    title: 'Total Incidents',
-    value: 24,
-    description: '+3 today',
-  },
-  {
-    id: 'active-incidents',
-    title: 'Active Incidents',
-    value: 8,
-    description: 'Needs attention',
-  },
-  {
-    id: 'active-agents',
-    title: 'Active Agents',
-    value: 4,
-    description: '2 tasks running',
-  },
-  {
-    id: 'resolved-today',
-    title: 'Resolved Today',
-    value: 12,
-    description: 'Resolved in the last 24 hours',
-  },
-];
-
 const recentIncidents = [
   {
     id: 'INC-001',
@@ -81,6 +54,35 @@ const agents: Agent[] = [
   },
 ];
 
+const runningAgents = agents.filter((agent) => agent.status === 'Running').length;
+
+const metrics = [
+  {
+    id: 'total-incidents',
+    title: 'Total Incidents',
+    value: 24,
+    description: '+3 today',
+  },
+  {
+    id: 'active-incidents',
+    title: 'Active Incidents',
+    value: 8,
+    description: 'Needs attention',
+  },
+  {
+    id: 'active-agents',
+    title: 'Active Agents',
+    value: agents.length,
+    description: `${runningAgents} tasks running`,
+  },
+  {
+    id: 'resolved-today',
+    title: 'Resolved Today',
+    value: 12,
+    description: 'Resolved in the last 24 hours',
+  },
+];
+
 const severityColors: Record<string, string> = {
   Critical: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
   High: 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300',
@@ -103,12 +105,12 @@ export default function DashboardPage() {
           <Card key={metric.id}>
             <CardHeader>
               <CardTitle>{metric.title}</CardTitle>
-
-              <CardContent>
-                <div className="text-3xl font-bold">{metric.value}</div>
-                <div className="text-sm text-muted-foreground">{metric.description}</div>
-              </CardContent>
             </CardHeader>
+
+            <CardContent>
+              <div className="text-3xl font-bold">{metric.value}</div>
+              <p className="text-sm text-muted-foreground">{metric.description}</p>
+            </CardContent>
           </Card>
         ))}
       </div>

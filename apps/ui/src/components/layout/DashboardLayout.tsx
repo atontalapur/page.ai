@@ -69,8 +69,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
                       tooltip={item.title}
-                      isActive={activePage === item.title}
-                      onClick={() => setActivePage(item.title)}
+                      isActive={item.title === 'Dashboard'}
+                      disabled={item.title !== 'Dashboard'}
                     >
                       <item.icon className="size-4" />
                       <span>{item.title}</span>
@@ -113,9 +113,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           </div>
         </header>
 
-        <main className="flex-1 bg-muted/20 p-4 md:p-6">
+        <div className="flex-1 bg-muted/20 p-4 md:p-6">
           <div className="mx-auto w-full max-w-7xl">{children}</div>
-        </main>
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );
