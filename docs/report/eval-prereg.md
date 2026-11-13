@@ -20,6 +20,11 @@ gpt-oss-20b, 1 of 2 on gpt-oss-120b and 3 of 3 on deepseek-v4.1-flash. The agent
 is not changed to suit one model. Bars, decoys, stop rules and the held-out reservation are
 unchanged. The gpt-oss-20b pilot ($0.0004) is kept as a record, not as results.
 
+Amendment 3 (2026-11-12), committed before the threshold freeze (#114) and before any
+held-out run: the per-attempt wall clock under Arms reads 14 min, not 15. The agent has used
+14 min since #57 (the sandbox kills the container at 15, so each tier stops a minute before),
+and every dev run used 14. This corrects the text to match the code; no run changes.
+
 ## Bars
 
 lesson: how close the full ladder gets to the Tier 3 from-start fix rate while granting
@@ -39,7 +44,7 @@ Tier 2 and Tier 3 only to runs that need them.
 ## Arms
 
 All arms use `deepseek/deepseek-v4.1-flash` on OpenRouter, with the agent's default limits
-(40 steps, $0.50, 15 min per attempt). Price: $0.051 per million input tokens and $0.567 per
+(40 steps, $0.50, 14 min per attempt). Price: $0.051 per million input tokens and $0.567 per
 million output tokens (OpenRouter `/models`, 2026-11-09). The probe measured about $0.0002
 per call, so about $0.005 per run and $0.70 to $1.50 for the dev run; the pilot measures it. The gstack price table has no row for
 this model, so arms are priced from OpenRouter, and the runner records `usage.cost` for
