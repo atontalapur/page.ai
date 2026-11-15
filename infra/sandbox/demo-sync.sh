@@ -14,11 +14,12 @@ set -eu
 scenario=${1:-001-bad-currency-code}
 repo=${2:-atontalapur/page-demo}
 [ -f "scenarios/$scenario/break.sh" ] || { echo "no scenarios/$scenario/break.sh" >&2; exit 1; }
-if node -e 'process.exit(require("./eval/split.json").heldOut.includes(process.argv[1]) ? 0 : 1)' \
-  "$scenario"; then
-  echo "$scenario is held out (eval/split.json); pick a dev bug" >&2
+# Fails closed: only a scenario listed in split.json's dev set gets through.
+node -e 'process.exit(require("./eval/split.json").dev.includes(process.argv[1]) ? 0 : 1)' \
+  "$scenario" || {
+  echo "$scenario is not a dev bug in eval/split.json (held out or unlisted); pick a dev bug" >&2
   exit 1
-fi
+}
 
 docker build -q -f infra/sandbox/Dockerfile -t page-sandbox . >/dev/null
 docker build -q -f infra/sandbox/demo.Dockerfile --build-arg "SCENARIO=$scenario" \
