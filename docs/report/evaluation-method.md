@@ -225,8 +225,8 @@ check rejected.
 #### Cost per fixed bug
 
 tier3-start was cheapest per fixed bug ($0.0069), then tier1-only ($0.0086) and the ladder
-($0.0096). Only 2 ladder runs climbed, so most of that gap is run-to-run noise. At under a cent per
-fixed bug for every configuration, cost doesn't separate them on this model.
+($0.0096). Only 2 ladder runs climbed, so most of that gap is run-to-run noise. At under a
+cent per fixed bug for every configuration, cost doesn't separate them on this model.
 
 #### Time to page and time to fix
 
@@ -236,9 +236,9 @@ fixed bug for every configuration, cost doesn't separate them on this model.
 | tier3-start | 51      | 172s    | 321s    | 3       | 7s       | 9s       |
 | ladder      | 51      | 180s    | 383s    | 1       | 74s      | 74s      |
 
-Most pages on `format_errors` come within seconds (the ladder's took 74s). The tier1-only p90 of 841s is its one
-`step_limit` page. There are 1 to 3 pages per configuration, so the page percentiles
-describe single runs, not a distribution.
+Most pages on `format_errors` come within seconds (the ladder's took 74s). The tier1-only
+p90 of 841s is its one `step_limit` page. There are 1 to 3 pages per configuration, so the
+page percentiles describe single runs, not a distribution.
 
 #### False escalations
 
