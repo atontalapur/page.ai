@@ -20,9 +20,9 @@ const pagerShape = {
   TWILIO_AUTH_TOKEN: z.string().min(1).optional(),
   TWILIO_FROM_NUMBER: z.string().min(1).optional(),
   NOTIFY_TO_NUMBERS: z.string().optional().transform(splitNumbers),
-  // Twilio answering machine detection, so a call voicemail picks up is retried. Off is the
-  // escape hatch if the account rejects it.
-  TWILIO_MACHINE_DETECTION: z.stringbool().default(true),
+  // Twilio answering machine detection, so a call voicemail picks up is retried. Off by
+  // default: a trial account rejects the parameter, failing every call (docs/twilio.md).
+  TWILIO_MACHINE_DETECTION: z.stringbool().default(false),
 };
 const pagerSchema = envSchema(z.object(pagerShape));
 

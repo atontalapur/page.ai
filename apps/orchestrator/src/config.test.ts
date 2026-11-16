@@ -105,7 +105,7 @@ describe('loadConfig', () => {
       accountSid: 'AC123',
       authToken: 'token',
       from: '+15550000000',
-      machineDetection: true,
+      machineDetection: false,
     });
     expect(
       loadConfig({
@@ -113,9 +113,9 @@ describe('loadConfig', () => {
         TWILIO_ACCOUNT_SID: 'AC123',
         TWILIO_AUTH_TOKEN: 'token',
         TWILIO_FROM_NUMBER: '+15550000000',
-        TWILIO_MACHINE_DETECTION: 'false',
+        TWILIO_MACHINE_DETECTION: 'true',
       }).twilio?.machineDetection,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('rejects an unknown USE_FAKE_ADAPTERS value', () => {
@@ -139,7 +139,7 @@ describe('loadPagerConfig', () => {
         accountSid: 'AC123',
         authToken: 'token',
         from: '+15550000000',
-        machineDetection: true,
+        machineDetection: false,
       },
       notifyTo: ['+15550000001', '+15550000002'],
     });
