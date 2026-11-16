@@ -1,7 +1,7 @@
 // Usage: node eval/scripts/eval-charts.ts <results.json>... --out <dir>
 // Writes the Results section charts as SVG files into <dir>, one results file per config.
 // Same inputs and checks as eval-report.ts, so the charts match its tables.
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { chartData } from '../src/chart-data.ts';
@@ -28,10 +28,17 @@ const out = values.out;
 try {
   const set = chartData(await Promise.all(paths.map(loadResultsFile)));
   await mkdir(out, { recursive: true });
+  const written = new Set<string>();
   for (const chart of set.charts) {
-    const file = join(out, `${chart.id}.svg`);
-    await writeFile(file, renderChart(chart, set));
-    console.log(file);
+    const name = `${chart.id}.svg`;
+    await writeFile(join(out, name), renderChart(chart, set));
+    written.add(name);
+    console.log(join(out, name));
+  }
+  // A renamed or dropped chart leaves its old SVG behind. Name it rather than delete it.
+  const stale = (await readdir(out)).filter((f) => f.endsWith('.svg') && !written.has(f)).sort();
+  if (stale.length > 0) {
+    console.error(`warning: ${out} has SVGs this run didn't write: ${stale.join(', ')}`);
   }
 } catch (err) {
   if (!(err instanceof ReportError)) throw err;
