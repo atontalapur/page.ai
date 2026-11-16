@@ -20,6 +20,9 @@ const pagerShape = {
   TWILIO_AUTH_TOKEN: z.string().min(1).optional(),
   TWILIO_FROM_NUMBER: z.string().min(1).optional(),
   NOTIFY_TO_NUMBERS: z.string().optional().transform(splitNumbers),
+  // Twilio answering machine detection, so a call voicemail picks up is retried. Off is the
+  // escape hatch if the account rejects it.
+  TWILIO_MACHINE_DETECTION: z.stringbool().default(true),
 };
 const pagerSchema = envSchema(z.object(pagerShape));
 
@@ -53,6 +56,8 @@ export interface TwilioCreds {
   accountSid: string;
   authToken: string;
   from: string;
+  /** Answering machine detection: voicemail counts as not answered. */
+  machineDetection: boolean;
 }
 
 export interface Config {
@@ -106,7 +111,15 @@ function pagerConfig(config: z.infer<typeof pagerSchema>): PagerConfig {
     );
   }
   return {
-    twilio: sid && token && from ? { accountSid: sid, authToken: token, from } : undefined,
+    twilio:
+      sid && token && from
+        ? {
+            accountSid: sid,
+            authToken: token,
+            from,
+            machineDetection: config.TWILIO_MACHINE_DETECTION,
+          }
+        : undefined,
     notifyTo: config.NOTIFY_TO_NUMBERS,
   };
 }

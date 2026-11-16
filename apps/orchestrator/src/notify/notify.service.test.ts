@@ -66,22 +66,32 @@ describe('NotifyService', () => {
   });
 });
 
-/** Answers the call POST with the first status and each status check with the next. */
-function fakeTwilio(statuses: string[]) {
+const creds = { accountSid: 'AC', authToken: 't', from: '+1', machineDetection: true };
+
+/**
+ * Answers the call POST with the first state and each status check with the next. A state is
+ * a CallStatus, `status:answeredBy`, or `error` for a failed check.
+ */
+function fakeTwilio(states: string[], machineDetection = true) {
   const urls: string[] = [];
+  const posted: URLSearchParams[] = [];
   let next = 0;
-  const fetchFn: typeof fetch = (url) => {
+  const fetchFn: typeof fetch = (url, init) => {
     urls.push(url instanceof Request ? url.url : url.toString());
-    const status = statuses[Math.min(next, statuses.length - 1)] ?? 'completed';
+    if (init?.body instanceof URLSearchParams) posted.push(init.body);
+    const state = states[Math.min(next, states.length - 1)] ?? 'completed';
     next += 1;
-    if (status === 'error') return Promise.resolve(new Response('busy', { status: 503 }));
-    return Promise.resolve(Response.json({ sid: 'CA1', status }, { status: 201 }));
+    if (state === 'error') return Promise.resolve(new Response('busy', { status: 503 }));
+    const [status, answeredBy] = state.split(':');
+    const body = { sid: 'CA1', status, answered_by: answeredBy ?? null };
+    return Promise.resolve(Response.json(body, { status: 201 }));
   };
   const wait = { pollMs: 1_000, maxWaitMs: 5_000, sleep: () => Promise.resolve() };
-  const pager = new TwilioPager({ accountSid: 'AC', authToken: 't', from: '+1' }, fetchFn, wait);
+  const pager = new TwilioPager({ ...creds, machineDetection }, fetchFn, wait);
   return {
     pager,
     urls,
+    posted,
     get statusChecks() {
       return urls.length - 1;
     },
@@ -97,10 +107,7 @@ describe('TwilioPager', () => {
       else if (typeof body === 'string') bodies.push(new URLSearchParams(body));
       return Promise.resolve(Response.json({ sid: 'CA1', status: 'completed' }, { status: 201 }));
     };
-    const pager = new TwilioPager(
-      { accountSid: 'AC123', authToken: 'tok', from: '+1000' },
-      fetchFn,
-    );
+    const pager = new TwilioPager({ ...creds, from: '+1000' }, fetchFn);
     await pager.call('+2000', 'high backend-api: Boom <x>');
     await pager.sms('+2000', 'high backend-api: Boom');
     expect(bodies[0]?.get('To')).toBe('+2000');
@@ -113,7 +120,8 @@ describe('TwilioPager', () => {
   it('waits for the call to be answered', async () => {
     const twilio = fakeTwilio(['queued', 'ringing', 'in-progress', 'completed']);
     await twilio.pager.call('+2000', 'page');
-    expect(twilio.statusChecks).toBe(2);
+    // Detection on and no verdict yet, so in-progress keeps it waiting until completed.
+    expect(twilio.statusChecks).toBe(3);
     expect(twilio.urls[1]).toMatch(/\/Calls\/CA1\.json$/);
   });
 
@@ -124,6 +132,35 @@ describe('TwilioPager', () => {
       await expect(twilio.pager.call('+2000', 'page')).rejects.toThrow(`call ${status}`);
     },
   );
+
+  it('asks Twilio to detect voicemail, and waits for its verdict', async () => {
+    const twilio = fakeTwilio(['queued', 'in-progress', 'in-progress:human']);
+    await twilio.pager.call('+2000', 'page');
+    expect(twilio.posted[0]?.get('MachineDetection')).toBe('DetectMessageEnd');
+    expect(twilio.statusChecks).toBe(2);
+  });
+
+  it.each(['machine_end_beep', 'machine_end_silence', 'machine_start', 'fax'])(
+    'throws when %s answers, so the job retries',
+    async (answeredBy) => {
+      const twilio = fakeTwilio(['queued', `in-progress:${answeredBy}`]);
+      await expect(twilio.pager.call('+2000', 'page')).rejects.toThrow(
+        `call answered by ${answeredBy}`,
+      );
+    },
+  );
+
+  it('counts an unknown verdict as a person', async () => {
+    const twilio = fakeTwilio(['queued', 'completed:unknown']);
+    await expect(twilio.pager.call('+2000', 'page')).resolves.toBeUndefined();
+  });
+
+  it('skips detection when it is off', async () => {
+    const twilio = fakeTwilio(['queued', 'in-progress'], false);
+    await twilio.pager.call('+2000', 'page');
+    expect(twilio.posted[0]?.has('MachineDetection')).toBe(false);
+    expect(twilio.statusChecks).toBe(1);
+  });
 
   it('keeps waiting through a failed status check', async () => {
     const twilio = fakeTwilio(['queued', 'error', 'completed']);
@@ -139,13 +176,13 @@ describe('TwilioPager', () => {
 
   it('counts a call as placed when Twilio accepts it without a readable sid', async () => {
     const fetchFn: typeof fetch = () => Promise.resolve(new Response('ok', { status: 201 }));
-    const pager = new TwilioPager({ accountSid: 'AC', authToken: 't', from: '+1' }, fetchFn);
+    const pager = new TwilioPager(creds, fetchFn);
     await expect(pager.call('+2', 'hi')).resolves.toBeUndefined();
   });
 
   it('throws when Twilio rejects the request', async () => {
     const fetchFn: typeof fetch = () => Promise.resolve(new Response('nope', { status: 401 }));
-    const pager = new TwilioPager({ accountSid: 'AC', authToken: 't', from: '+1' }, fetchFn);
+    const pager = new TwilioPager(creds, fetchFn);
     await expect(pager.sms('+2', 'hi')).rejects.toThrow(/401/);
   });
 
@@ -154,7 +191,7 @@ describe('TwilioPager', () => {
       ...testConfig,
       useFakeAdapters: false,
       notifyTo: ['+15550000001'],
-      twilio: { accountSid: 'AC', authToken: 't', from: '+1000' },
+      twilio: { ...creds, from: '+1000' },
     });
     expect(pager).toBeInstanceOf(TwilioPager);
     expect(buildPager(testConfig)).toBeInstanceOf(FakePager);

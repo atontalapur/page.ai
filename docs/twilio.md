@@ -15,6 +15,10 @@ From Twilio's [trial restrictions](https://www.twilio.com/docs/usage/trials):
   arrives as a call only. Each phone has its own notify job: a failed call retries that phone
   alone, and once its call goes through, a failed text is logged without calling it again.
 - Calls can speak custom text with `<Say>`, so the call still names the class.
+- Answering machine detection works on trial. The orchestrator turns it on, so a call that
+  voicemail picks up counts as not answered and that phone is called again. The message
+  plays after the beep, so the voicemail holds all of it. On a paid account Twilio bills each
+  detection; set `TWILIO_MACHINE_DETECTION=false` to turn it off, or if Twilio rejects it.
 - The trial ends 30 days after sign-up. Voice has 75 minutes in total, 10 per call.
 - Calls and texts stay inside the sign-up country.
 - Twilio assigns the trial number, and it can differ between voice and SMS. If the test call
@@ -72,8 +76,8 @@ Without the CLI, put the four values in the repo's `.env` and drop the `railway 
 This places one call and sends one SMS to every number in `NOTIFY_TO_NUMBERS` through the
 same adapter and config parser the orchestrator uses. It prints one line per phone and
 channel, with only the last four digits of any number, and exits 1 if Twilio rejected any
-of them. A call line says `sent` only once that phone picks up; busy or no answer shows as
-`FAILED call no-answer`. Calls go one phone at a time, so answer each as it rings. #127 is
+of them. A call line says `sent` only once a person picks up; busy or no answer shows as
+`FAILED call no-answer`, and voicemail as `FAILED call answered by machine_end_beep`. Calls go one phone at a time, so answer each as it rings. #127 is
 done when all eight lines say `sent` and every phone got the text. Paste the output into the
 issue.
 

@@ -85,23 +85,24 @@ so the app is compiled with `tsc` to `dist/` rather than run from source.
 
 `src/config.ts` reads these once at boot:
 
-| Variable                 | Default                 | Notes                                                                 |
-| ------------------------ | ----------------------- | --------------------------------------------------------------------- |
-| `DATABASE_URL`           |                         | Required; a `postgres://` or `postgresql://` URL                      |
-| `PORT`                   | `4000`                  | Railway sets it                                                       |
-| `HOST`                   | `0.0.0.0`               |                                                                       |
-| `PGBOSS_SCHEMA`          | `pgboss`                | Must match the node daemon's                                          |
-| `USE_FAKE_ADAPTERS`      | `false`                 | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`                       |
-| `LOG_LEVEL`              | `info`                  | `fatal`, `error`, `warn`, `info`, `debug`, `trace`                    |
-| `POSTHOG_WEBHOOK_SECRET` |                         | Bearer secret for `POST /ingest/posthog`. Unset rejects every webhook |
-| `OPENROUTER_API_KEY`     |                         | Unset, or `USE_FAKE_ADAPTERS`, uses the rule fallback                 |
-| `TRIAGE_MODEL`           | `openai/gpt-4o-mini`    | Cheap model for triage                                                |
-| `TRIAGE_TIMEOUT_MS`      | `8000`                  |                                                                       |
-| `TWILIO_ACCOUNT_SID`     |                         | Set together with the token and from-number                           |
-| `TWILIO_AUTH_TOKEN`      |                         |                                                                       |
-| `TWILIO_FROM_NUMBER`     |                         |                                                                       |
-| `NOTIFY_TO_NUMBERS`      |                         | Comma-separated E.164 numbers                                         |
-| `DASHBOARD_URL`          | `http://localhost:3000` | Link included in the call and the SMS                                 |
+| Variable                   | Default                 | Notes                                                                 |
+| -------------------------- | ----------------------- | --------------------------------------------------------------------- |
+| `DATABASE_URL`             |                         | Required; a `postgres://` or `postgresql://` URL                      |
+| `PORT`                     | `4000`                  | Railway sets it                                                       |
+| `HOST`                     | `0.0.0.0`               |                                                                       |
+| `PGBOSS_SCHEMA`            | `pgboss`                | Must match the node daemon's                                          |
+| `USE_FAKE_ADAPTERS`        | `false`                 | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`                       |
+| `LOG_LEVEL`                | `info`                  | `fatal`, `error`, `warn`, `info`, `debug`, `trace`                    |
+| `POSTHOG_WEBHOOK_SECRET`   |                         | Bearer secret for `POST /ingest/posthog`. Unset rejects every webhook |
+| `OPENROUTER_API_KEY`       |                         | Unset, or `USE_FAKE_ADAPTERS`, uses the rule fallback                 |
+| `TRIAGE_MODEL`             | `openai/gpt-4o-mini`    | Cheap model for triage                                                |
+| `TRIAGE_TIMEOUT_MS`        | `8000`                  |                                                                       |
+| `TWILIO_ACCOUNT_SID`       |                         | Set together with the token and from-number                           |
+| `TWILIO_AUTH_TOKEN`        |                         |                                                                       |
+| `TWILIO_FROM_NUMBER`       |                         |                                                                       |
+| `TWILIO_MACHINE_DETECTION` | `true`                  | Voicemail or fax counts as not answered, so that phone's call retries |
+| `NOTIFY_TO_NUMBERS`        |                         | Comma-separated E.164 numbers                                         |
+| `DASHBOARD_URL`            | `http://localhost:3000` | Link included in the call and the SMS                                 |
 
 A missing or bad `DATABASE_URL` stops startup with exit code 1 and one log line naming each
 problem, e.g. `invalid config: DATABASE_URL is required`. As in `apps/node`, a blank var

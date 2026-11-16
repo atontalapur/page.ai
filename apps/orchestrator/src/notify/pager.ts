@@ -1,16 +1,12 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod';
-import type { Config } from '../config.ts';
+import type { Config, TwilioCreds } from '../config.ts';
+
+export type { TwilioCreds };
 
 export interface Pager {
   call(to: string, message: string): Promise<void>;
   sms(to: string, message: string): Promise<void>;
-}
-
-export interface TwilioCreds {
-  accountSid: string;
-  authToken: string;
-  from: string;
 }
 
 /** Records pages in memory. Used in tests and when Twilio is not configured. */
@@ -55,7 +51,17 @@ const ANSWERED = new Set(['in-progress', 'completed']);
 const NOT_ANSWERED = new Set(['busy', 'no-answer', 'failed', 'canceled']);
 const FINAL = new Set([...ANSWERED, ...NOT_ANSWERED]);
 
-const callSchema = z.object({ sid: z.string().min(1), status: z.string().min(1) });
+const callSchema = z.object({
+  sid: z.string().min(1),
+  status: z.string().min(1),
+  // Set by answering machine detection: human, machine_*, fax or unknown.
+  answered_by: z.string().nullish(),
+});
+
+/** Voicemail or a fax took the call, so nobody heard the page. */
+function machineAnswered(answeredBy: string | null | undefined): boolean {
+  return answeredBy === 'fax' || (answeredBy?.startsWith('machine') ?? false);
+}
 
 function parseJson(text: string): unknown {
   try {
@@ -68,7 +74,10 @@ function parseJson(text: string): unknown {
 export interface CallWait {
   /** Between status checks. */
   pollMs: number;
-  /** Longest wait for an answer. Twilio stops ringing after 60 s by default. */
+  /**
+   * Longest wait for an answer. Twilio stops ringing after 60 s by default, and detection
+   * listens for up to 30 s more.
+   */
   maxWaitMs: number;
   sleep: (ms: number) => Promise<unknown>;
 }
@@ -84,32 +93,39 @@ export class TwilioPager implements Pager {
   ) {}
 
   /**
-   * Places the call and waits until the phone picks up. Busy, no answer, failed or canceled
-   * throws, so the notify job retries this phone. Twilio's create response only says the
-   * call was queued, so the status is polled. A call still unresolved after maxWaitMs
-   * resolves, since a retry then could ring a phone that is about to pick up. Voicemail
-   * counts as answered: telling it apart needs Twilio's answering machine detection.
+   * Places the call and waits until a person picks up. Busy, no answer, failed or canceled
+   * throws, so the notify job retries this phone, and so does voicemail or a fax when
+   * machine detection is on. Detection runs in DetectMessageEnd mode, so voicemail records
+   * the whole message after the beep. `unknown` counts as a person: often someone who
+   * answered and stayed quiet. Twilio's create response only says the call was queued, so
+   * the status is polled. A call still unresolved after maxWaitMs resolves, since a retry
+   * then could ring a phone that is about to pick up.
    */
   async call(to: string, message: string): Promise<void> {
     const twiml = `<Response><Say>${escapeXml(message)}</Say></Response>`;
-    const fields = { To: to, From: this.creds.from, Twiml: twiml };
+    const fields: Record<string, string> = { To: to, From: this.creds.from, Twiml: twiml };
+    if (this.creds.machineDetection) fields.MachineDetection = 'DetectMessageEnd';
     const placed = callSchema.safeParse(parseJson(await this.request('Calls.json', fields)));
     // Twilio accepted the call. Without its sid it can't be watched, and throwing would ring
     // the phone again, so count it as placed.
     if (!placed.success) return;
-    const { sid } = placed.data;
     const { pollMs, maxWaitMs } = this.wait;
-    let status = placed.data.status;
-    for (let waited = 0; !FINAL.has(status) && waited < maxWaitMs; waited += pollMs) {
+    let call = placed.data;
+    // While the call is in progress, detection may still be listening.
+    const settled = () =>
+      FINAL.has(call.status) &&
+      !(this.creds.machineDetection && call.status === 'in-progress' && !call.answered_by);
+    for (let waited = 0; !settled() && waited < maxWaitMs; waited += pollMs) {
       await this.wait.sleep(pollMs);
       try {
-        const path = `Calls/${encodeURIComponent(sid)}.json`;
-        status = callSchema.parse(parseJson(await this.request(path))).status;
+        const path = `Calls/${encodeURIComponent(call.sid)}.json`;
+        call = callSchema.parse(parseJson(await this.request(path)));
       } catch {
         // A failed status check is not a failed call. Keep waiting until the deadline.
       }
     }
-    if (NOT_ANSWERED.has(status)) throw new Error(`call ${status}`);
+    if (NOT_ANSWERED.has(call.status)) throw new Error(`call ${call.status}`);
+    if (machineAnswered(call.answered_by)) throw new Error(`call answered by ${call.answered_by}`);
   }
 
   async sms(to: string, message: string): Promise<void> {
