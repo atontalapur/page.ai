@@ -1,3 +1,4 @@
+import { maskNumbers } from './mask.ts';
 import type { Pager } from './pager.ts';
 
 export interface TestPageResult {
@@ -5,16 +6,6 @@ export interface TestPageResult {
   channel: 'call' | 'sms';
   /** Set when Twilio rejected the request. */
   error?: string;
-}
-
-/** The last four digits only, so a run's output can go in an issue comment. */
-export function maskNumber(number: string): string {
-  return number.length > 4 ? `***${number.slice(-4)}` : '***';
-}
-
-/** Masks every E.164-looking number in text, such as a Twilio error naming the recipient. */
-export function maskNumbers(text: string): string {
-  return text.replaceAll(/\+\d{8,15}/g, maskNumber);
 }
 
 /**

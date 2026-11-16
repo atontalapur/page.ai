@@ -12,8 +12,8 @@ From Twilio's [trial restrictions](https://www.twilio.com/docs/usage/trials):
   verified automatically.
 - An SMS body must be one of Twilio's template names, such as `sms_internal_alerts`. The
   orchestrator's own page text (class and dashboard link) is rejected, so on trial a page
-  arrives as a call only. Notify logs the failed text and completes the job. It retries a
-  page only when no phone rang, so a retry never calls a phone twice.
+  arrives as a call only. Each phone has its own notify job: a failed call retries that phone
+  alone, and once its call goes through, a failed text is logged without calling it again.
 - Calls can speak custom text with `<Say>`, so the call still names the class.
 - The trial ends 30 days after sign-up. Voice has 75 minutes in total, 10 per call.
 - Calls and texts stay inside the sign-up country.
@@ -59,17 +59,20 @@ and text from the account. Keep it in Railway and in the `.env` of whoever runs 
 
 ## 4. Test
 
-With the four Twilio values in the repo's `.env`:
+Run it with Railway's values, so it tests exactly what the orchestrator uses and no secret
+lands in a local file (needs the Railway CLI, logged in and linked to the project):
 
 ```sh
-pnpm --filter @page/orchestrator page:test --sms-body sms_internal_alerts
+railway run --service orchestrator pnpm --filter @page/orchestrator page:test --sms-body sms_internal_alerts
 ```
 
+Without the CLI, put the four values in the repo's `.env` and drop the `railway run
+--service orchestrator` prefix.
+
 This places one call and sends one SMS to every number in `NOTIFY_TO_NUMBERS` through the
-same adapter the orchestrator uses. It prints one line per phone and channel, with only the
-last four digits of any number, and exits 1 if Twilio rejected any of them. It reads your
-`.env`, not Railway, so it checks the account and the phones; a typo in Railway's copy
-shows up only in the orchestrator's logs. #127 is done when all eight
-lines say `sent` and every phone rang and got the text. Paste the output into the issue.
+same adapter and config parser the orchestrator uses. It prints one line per phone and
+channel, with only the last four digits of any number, and exits 1 if Twilio rejected any
+of them. #127 is done when all eight lines say `sent` and every phone rang and got the
+text. Paste the output into the issue.
 
 After an upgrade, drop `--sms-body` to send the script's own text instead of a template.
