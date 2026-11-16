@@ -11,7 +11,8 @@ describe('jobSchemas', () => {
   });
 
   it.each(queues)('%s rejects an unknown v', (queue) => {
-    expect(() => jobSchemas[queue].parse({ ...jobFixtures[queue], v: 2 })).toThrow();
+    const v = jobFixtures[queue].v + 1;
+    expect(() => jobSchemas[queue].parse({ ...jobFixtures[queue], v })).toThrow();
   });
 
   it('rejects a fix job without the fingerprint singletonKey', () => {

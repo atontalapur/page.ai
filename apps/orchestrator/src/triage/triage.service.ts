@@ -31,10 +31,17 @@ export class TriageService {
       issueId: issue.id,
       dashboardUrl: this.config.dashboardUrl,
     });
-    await this.jobs.sendNotify(
-      { v: 1, issueId: issue.id, channel: 'call', message },
-      issue.fingerprint,
-    );
+    // One job per phone, so a retry pages only the phone that missed it.
+    const numbers = this.config.notifyTo;
+    if (numbers.length === 0) {
+      issueLogger(this.logger, { issueId: issue.id }).warn('no numbers configured, nobody paged');
+    }
+    for (const to of numbers) {
+      await this.jobs.sendNotify(
+        { v: 2, issueId: issue.id, channel: 'call', to, message },
+        issue.fingerprint,
+      );
+    }
     await this.issues.apply(issue.id, {
       type: 'triage',
       class: verdict.class,

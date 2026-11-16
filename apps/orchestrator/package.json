@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "pnpm build && node --env-file-if-exists=../../.env --enable-source-maps dist/apps/orchestrator/src/main.js",
     "start": "node --enable-source-maps dist/apps/orchestrator/src/main.js",
+    "page:test": "node --experimental-transform-types --disable-warning=ExperimentalWarning --env-file-if-exists=../../.env scripts/test-page.ts",
     "lint": "eslint .",
     "typecheck": "tsc",
     "test": "vitest run --project unit --coverage",

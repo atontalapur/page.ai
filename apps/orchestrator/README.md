@@ -16,7 +16,7 @@ Ingest, triage and notify are wired. The other four are still stubs.
 | `RunsModule`      | Steps, diffs and results the node daemon streams back per run (#8). Stub. |
 | `TiersModule`     | Escalation after a run: up a tier, or to failed past Tier 3. Stub.        |
 | `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions. Stub.       |
-| `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint            |
+| `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone  |
 | `GatewayModule`   | Socket.IO events to and from the UI and node daemons (#34). Stub.         |
 
 ## Issue lifecycle
@@ -39,8 +39,10 @@ transaction as the status change. The job's `runId` is also its pg-boss job id a
 on the issue as `current_run_id`. Entering a new tier or a terminal status cancels the job it
 replaces, so a killed issue's job is never claimed and a superseded job is never retried. The
 `triage`, `fix` and `notify` queues use pg-boss's `exclusive` policy keyed on `fingerprint`,
-so each has at most one open job per issue. `triage` and `notify` retry 3 times with backoff.
-`fix` does not retry. A call that still fails on its last try sends SMS.
+so each has at most one open job per issue. `notify` is keyed on `fingerprint` and phone:
+triage queues one job per `NOTIFY_TO_NUMBERS` entry, so a retry pages only the phone that
+missed it. `triage` and `notify` retry 3 times with backoff. `fix` does not retry. A call that
+still fails on its last try sends SMS.
 
 The daemon's events (`patch_ready`, `escalate`) carry the `runId` of the job they report on.
 An event for any run other than the current one returns 409, so a retried `escalate` cannot
@@ -83,29 +85,33 @@ so the app is compiled with `tsc` to `dist/` rather than run from source.
 
 `src/config.ts` reads these once at boot:
 
-| Variable                 | Default                 | Notes                                                                 |
-| ------------------------ | ----------------------- | --------------------------------------------------------------------- |
-| `DATABASE_URL`           |                         | Required; a `postgres://` or `postgresql://` URL                      |
-| `PORT`                   | `4000`                  | Railway sets it                                                       |
-| `HOST`                   | `0.0.0.0`               |                                                                       |
-| `PGBOSS_SCHEMA`          | `pgboss`                | Must match the node daemon's                                          |
-| `USE_FAKE_ADAPTERS`      | `false`                 | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`                       |
-| `LOG_LEVEL`              | `info`                  | `fatal`, `error`, `warn`, `info`, `debug`, `trace`                    |
-| `POSTHOG_WEBHOOK_SECRET` |                         | Bearer secret for `POST /ingest/posthog`. Unset rejects every webhook |
-| `OPENROUTER_API_KEY`     |                         | Unset, or `USE_FAKE_ADAPTERS`, uses the rule fallback                 |
-| `TRIAGE_MODEL`           | `openai/gpt-4o-mini`    | Cheap model for triage                                                |
-| `TRIAGE_TIMEOUT_MS`      | `8000`                  |                                                                       |
-| `TWILIO_ACCOUNT_SID`     |                         | Set together with the token and from-number                           |
-| `TWILIO_AUTH_TOKEN`      |                         |                                                                       |
-| `TWILIO_FROM_NUMBER`     |                         |                                                                       |
-| `NOTIFY_TO_NUMBERS`      |                         | Comma-separated E.164 numbers                                         |
-| `DASHBOARD_URL`          | `http://localhost:3000` | Link included in the call and the SMS                                 |
+| Variable                   | Default                 | Notes                                                                         |
+| -------------------------- | ----------------------- | ----------------------------------------------------------------------------- |
+| `DATABASE_URL`             |                         | Required; a `postgres://` or `postgresql://` URL                              |
+| `PORT`                     | `4000`                  | Railway sets it                                                               |
+| `HOST`                     | `0.0.0.0`               |                                                                               |
+| `PGBOSS_SCHEMA`            | `pgboss`                | Must match the node daemon's                                                  |
+| `USE_FAKE_ADAPTERS`        | `false`                 | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`                               |
+| `LOG_LEVEL`                | `info`                  | `fatal`, `error`, `warn`, `info`, `debug`, `trace`                            |
+| `POSTHOG_WEBHOOK_SECRET`   |                         | Bearer secret for `POST /ingest/posthog`. Unset rejects every webhook         |
+| `OPENROUTER_API_KEY`       |                         | Unset, or `USE_FAKE_ADAPTERS`, uses the rule fallback                         |
+| `TRIAGE_MODEL`             | `openai/gpt-4o-mini`    | Cheap model for triage                                                        |
+| `TRIAGE_TIMEOUT_MS`        | `8000`                  |                                                                               |
+| `TWILIO_ACCOUNT_SID`       |                         | Set together with the token and from-number                                   |
+| `TWILIO_AUTH_TOKEN`        |                         |                                                                               |
+| `TWILIO_FROM_NUMBER`       |                         |                                                                               |
+| `TWILIO_MACHINE_DETECTION` | `false`                 | Voicemail or fax counts as not answered. Paid accounts only: trial rejects it |
+| `TWILIO_TRIAL`             | `false`                 | Trial account: calls and texts use Twilio's templates, not the page text      |
+| `NOTIFY_TO_NUMBERS`        |                         | Comma-separated E.164 numbers                                                 |
+| `DASHBOARD_URL`            | `http://localhost:3000` | Link included in the call and the SMS                                         |
 
 A missing or bad `DATABASE_URL` stops startup with exit code 1 and one log line naming each
 problem, e.g. `invalid config: DATABASE_URL is required`. As in `apps/node`, a blank var
 counts as unset, so a copied `.env.example` boots. `USE_FAKE_ADAPTERS` skips OpenRouter and
 Twilio. With it off, a missing key still boots: triage uses the rules and pages are recorded
-instead of sent. The three Twilio vars are set together or not at all.
+instead of sent. The three Twilio vars are set together or not at all. Account setup, trial
+limits and the `page:test` check that pages every phone are in
+[docs/twilio.md](../../docs/twilio.md).
 
 ## Logs
 
