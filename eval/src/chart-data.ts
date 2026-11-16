@@ -3,15 +3,15 @@
 // disagree. chart-svg.ts draws them.
 import {
   byClass,
-  byConfig,
   byExpectedTier,
   groupSummaries,
-  incomplete,
+  incompleteNotes,
   percentileSec,
   plannedIds,
   rateLabel,
-  ReportError,
+  reportFiles,
   sec,
+  shortShas,
   times,
   usd,
   type Cell,
@@ -75,18 +75,9 @@ export interface ChartSet {
   charts: Chart[];
 }
 
-function overall(results: EvalResults[]): Cell[] {
-  return results.map((f) => ({ config: f.config, summary: summarize(f.runs) }));
-}
+const allBugs: GroupKey = () => 'all bugs';
 
-function rateChart(
-  results: EvalResults[],
-  id: string,
-  title: string,
-  key: GroupKey | null,
-): BarChart {
-  const groups =
-    key === null ? [{ key: 'all bugs', cells: overall(results) }] : groupSummaries(results, key);
+function rateChart(results: EvalResults[], id: string, title: string, key: GroupKey): BarChart {
   return {
     kind: 'bars',
     id,
@@ -94,7 +85,7 @@ function rateChart(
     xLabel: 'fix rate (fixed runs / runs)',
     xMax: 1,
     xFormat: 'rate',
-    groups: groups.map((g) => ({
+    groups: groupSummaries(results, key).map((g) => ({
       label: g.key,
       bars: g.cells.map(({ config, summary }) => ({
         config,
@@ -133,26 +124,24 @@ function stripChart(
 }
 
 export function chartData(files: EvalResults[]): ChartSet {
-  const results = byConfig(files);
-  const first = results[0];
-  if (!first) throw new ReportError('no results files');
+  const { results, first } = reportFiles(files);
 
   const played = new Set(results.flatMap((f) => f.runs.map((r) => r.scenario))).size;
-  const shas = [...new Set(results.map((f) => f.gitSha.slice(0, 7)))].join(', ');
-  const cells = overall(results);
-  const counts = (n: (c: Cell) => number): Bar[] =>
-    cells.map((c) => ({
-      config: c.config,
-      value: n(c),
-      label: `${n(c)} in ${c.summary.runs} runs`,
-    }));
+  const shas = shortShas(results);
+  const commits = `${shas.length > 1 ? 'commits' : 'commit'} ${shas.join(', ')}`;
+  const cells: Cell[] = results.map((f) => ({ config: f.config, summary: summarize(f.runs) }));
+  // summarize counts false escalations per attempt, so one run can escalate twice, and
+  // false pages per run. The labels say which.
+  const counts = (n: (c: Cell) => number, label: (n: number, runs: number) => string): Bar[] =>
+    cells.map((c) => ({ config: c.config, value: n(c), label: label(n(c), c.summary.runs) }));
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
   return {
-    subtitle: `${first.model}, ${played} of ${plannedIds(first).length} planned bugs played, commit ${shas}`,
-    notes: results.flatMap((f) => incomplete(f).map((w) => `${f.config} ${w}`)),
+    subtitle: `${first.model}, ${played} of ${plannedIds(first).length} planned bugs played, ${commits}`,
+    notes: incompleteNotes(results),
     configs: results.map((f) => f.config),
     charts: [
-      rateChart(results, 'fix-rate', 'Fix rate', null),
+      rateChart(results, 'fix-rate', 'Fix rate', allBugs),
       rateChart(results, 'fix-rate-by-class', 'Fix rate by bug class', byClass),
       rateChart(results, 'fix-rate-by-expected-tier', 'Fix rate by expected tier', byExpectedTier),
       {
@@ -179,15 +168,27 @@ export function chartData(files: EvalResults[]): ChartSet {
         kind: 'bars',
         id: 'false-escalations',
         title: 'False escalations and false pages',
-        xLabel: 'count',
+        xLabel: 'escalations, or runs paged',
         xMax: Math.max(
           1,
           ...cells.flatMap((c) => [c.summary.falseEscalations, c.summary.falsePages]),
         ),
         xFormat: 'count',
         groups: [
-          { label: 'false escalations', bars: counts((c) => c.summary.falseEscalations) },
-          { label: 'false pages', bars: counts((c) => c.summary.falsePages) },
+          {
+            label: 'false escalations',
+            bars: counts(
+              (c) => c.summary.falseEscalations,
+              (n, runs) => `${plural(n, 'escalation')} in ${plural(runs, 'run')}`,
+            ),
+          },
+          {
+            label: 'false pages',
+            bars: counts(
+              (c) => c.summary.falsePages,
+              (n, runs) => `${n} of ${plural(runs, 'run')} paged`,
+            ),
+          },
         ],
       },
     ],

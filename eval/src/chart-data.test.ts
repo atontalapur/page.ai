@@ -81,22 +81,27 @@ describe('chartData', () => {
     });
   });
 
-  it('counts false escalations and false pages against the runs kept', () => {
+  it('counts false escalations per attempt and false pages per run', () => {
     const set = chartData([
       results('ladder', [
         run('a', true, {
-          attempts: [attempt(1, { exitStatus: 'step_limit' }), attempt(2)],
-          falseEscalations: 1,
+          attempts: [
+            attempt(1, { exitStatus: 'step_limit' }),
+            attempt(2, { exitStatus: 'step_limit' }),
+            attempt(3),
+          ],
+          falseEscalations: 2,
         }),
         run('b', false, { falsePage: true }),
       ]),
+      results('tier1-only', [run('a', true)], { skipped: [{ scenario: 'b', reason: 'ops' }] }),
     ]);
     const c = bars(set.charts, 'false-escalations');
     expect(labels(c)).toEqual([
-      ['false escalations', '1 in 2 runs'],
-      ['false pages', '1 in 2 runs'],
+      ['false escalations', '0 escalations in 1 run', '2 escalations in 2 runs'],
+      ['false pages', '0 of 1 run paged', '1 of 2 runs paged'],
     ]);
-    expect(c.xMax).toBe(1);
+    expect(c.xMax).toBe(2);
   });
 
   it('notes runs left out, and names model, bugs and commit', () => {
@@ -105,6 +110,14 @@ describe('chartData', () => {
     ]);
     expect(set.subtitle).toBe('m, 1 of 2 planned bugs played, commit abcdef1');
     expect(set.notes).toEqual(['ladder 1 scenarios skipped']);
+  });
+
+  it('names every commit when the files ran at more than one', () => {
+    const set = chartData([
+      results('ladder', [run('a', true)]),
+      results('tier1-only', [run('a', true)], { gitSha: '1234567890' }),
+    ]);
+    expect(set.subtitle).toBe('m, 1 of 1 planned bugs played, commits 1234567, abcdef1');
   });
 
   it('refuses what the report refuses', () => {
@@ -155,8 +168,13 @@ describe('chartData on the dev results', () => {
       ['ladder', 'n=1, p50 74s, p90 74s'],
     ]);
     expect(labels(bars(set.charts, 'false-escalations'))).toEqual([
-      ['false escalations', '0 in 54 runs', '0 in 54 runs', '2 in 54 runs'],
-      ['false pages', '1 in 54 runs', '0 in 54 runs', '0 in 54 runs'],
+      [
+        'false escalations',
+        '0 escalations in 54 runs',
+        '0 escalations in 54 runs',
+        '2 escalations in 54 runs',
+      ],
+      ['false pages', '1 of 54 runs paged', '0 of 54 runs paged', '0 of 54 runs paged'],
     ]);
   });
 });

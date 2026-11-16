@@ -68,6 +68,24 @@ export function byConfig(files: EvalResults[]): EvalResults[] {
   return CONFIG_ORDER.flatMap((c) => seen.get(c) ?? []);
 }
 
+/** byConfig, refusing an empty list. `first` names the model and planned bugs for all. */
+export function reportFiles(files: EvalResults[]): { results: EvalResults[]; first: EvalResults } {
+  const results = byConfig(files);
+  const first = results[0];
+  if (!first) throw new ReportError('no results files');
+  return { results, first };
+}
+
+/** Each commit the files ran at, as a short SHA, once. */
+export function shortShas(results: EvalResults[]): string[] {
+  return [...new Set(results.map((f) => f.gitSha.slice(0, 7)))];
+}
+
+/** Why each file's runs fall short of its plan, prefixed with its config. */
+export function incompleteNotes(results: EvalResults[]): string[] {
+  return results.flatMap((f) => incomplete(f).map((w) => `${f.config} ${w}`));
+}
+
 /** A file whose runs don't cover every planned run. */
 export function incomplete(f: EvalResults): string[] {
   return [
@@ -251,18 +269,13 @@ function blockedByTier(results: EvalResults[]): string {
 }
 
 export function renderReport(files: EvalResults[]): string {
-  const results = byConfig(files);
-  const first = results[0];
-  if (!first) throw new ReportError('no results files');
+  const { results, first } = reportFiles(files);
   const out: string[] = [];
 
   const dates = [...new Set(results.map((f) => f.startedAt.slice(0, 10)))].sort();
   out.push(`Model \`${first.model}\`, ${plannedIds(first).length} bugs planned.`);
-  out.push(
-    `Commits: ${[...new Set(results.map((f) => f.gitSha.slice(0, 7)))].join(', ')}. ` +
-      `Played ${dates.join(', ')}.`,
-  );
-  const warnings = results.flatMap((f) => incomplete(f).map((w) => `${f.config} ${w}`));
+  out.push(`Commits: ${shortShas(results).join(', ')}. Played ${dates.join(', ')}.`);
+  const warnings = incompleteNotes(results);
   if (warnings.length > 0) out.push(`\nIncomplete: ${warnings.join('; ')}.`);
 
   out.push('\n### Bars\n');

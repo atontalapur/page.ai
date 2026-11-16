@@ -53,8 +53,8 @@ describe('renderChart', () => {
 
   it('labels a zero bar without drawing it', () => {
     const out = svg('false-escalations');
-    expect(out).toContain('0 in 2 runs');
-    expect(out).not.toContain('false escalations: 0 in 2 runs</title>');
+    expect(out).toContain('0 escalations in 2 runs');
+    expect(out).not.toContain('false escalations: 0 escalations in 2 runs</title>');
   });
 
   it('marks p50 and p90 and shows n beside each strip', () => {
