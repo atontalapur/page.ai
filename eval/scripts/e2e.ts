@@ -8,6 +8,7 @@ import { parseArgs } from 'node:util';
 import { RestGitHub } from '@page/toolkit';
 import pg from 'pg';
 import {
+  defaultExpectation,
   parseDuration,
   parseTimeouts,
   runE2E,
@@ -115,6 +116,9 @@ if (orchestratorUrl === undefined) fail('E2E_ORCHESTRATOR_URL is not set');
 const token = env('GITHUB_TOKEN');
 const repo = env('GITHUB_REPO');
 const github = token && repo ? new RestGitHub({ token, repo }) : undefined;
+if (github === undefined && (options.expect ?? defaultExpectation(scenario)) === 'pr') {
+  fail(`expecting a PR from ${id} needs GITHUB_TOKEN and GITHUB_REPO`);
+}
 
 const opsSecret = env('OPS_SECRET');
 const demoAppUrl = env('DEMO_APP_URL')?.replace(/\/+$/, '');

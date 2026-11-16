@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { Tier } from '@page/contracts';
 import { AGENT_BRANCH_PREFIX, type PullRequest } from '@page/toolkit';
 import { describe, expect, it } from 'vitest';
@@ -5,6 +6,7 @@ import {
   defaultExpectation,
   defaultTimeouts,
   formatMs,
+  issueTitleMatches,
   parseDuration,
   parseTimeouts,
   reportErrorLine,
@@ -21,7 +23,8 @@ import {
   type Target,
   type TimedStep,
 } from './e2e.ts';
-import type { Scenario } from './scenario.ts';
+import { loadScenario, type Scenario } from './scenario.ts';
+import { loadSplit } from './split.ts';
 
 const S = 1000;
 const MIN = 60 * S;
@@ -466,20 +469,35 @@ describe('runE2E', () => {
     it('several new issues and none with the report title', async () => {
       const h = harness([
         opened(5 * S, { id: R1, title: 'TypeError: a' }),
-        opened(6 * S, { id: R2, title: 'TypeError: b' }),
+        opened(6 * S, { id: R2, title: 'TypeError: b\n  more' }),
       ]);
       const r = await play(h, scenario(1), { timeouts: { issue: 20 * S } });
       expect(r.failedStep).toBe('issue');
-      expect(r.error).toContain('2 issues opened, none titled');
+      expect(r.error).toContain(
+        `2 issues seen since the trigger, none titled "${TITLE}": "TypeError: b", "TypeError: a"`,
+      );
     });
 
-    it('takes the only new issue even if its title differs', async () => {
+    it('waits past the only new issue when its title differs', async () => {
       const changes = tier1Fix();
       changes[0] = opened(40 * S, { title: 'Error: something else' });
       const h = harness(changes);
-      const r = await play(h, scenario(1));
+      const r = await play(h, scenario(1), { timeouts: { issue: 2 * MIN } });
+      expect(r.failedStep).toBe('issue');
+      expect(r.error).toBe(
+        `timed out after 2m00s: 1 issues seen since the trigger, none titled "${TITLE}": ` +
+          '"Error: something else"',
+      );
+      expect(stepOf(r, 'issue')!.durationMs).toBeGreaterThanOrEqual(2 * MIN);
+      expect(h.world.killed).toEqual([]);
+    });
+
+    it('matches a multi-line title on its first line', async () => {
+      const changes = tier1Fix();
+      changes[0] = opened(40 * S, { title: `${TITLE}\n    at new NumberFormat` });
+      const r = await play(harness(changes), scenario(1));
       expect(r.passed).toBe(true);
-      expect(stepOf(r, 'issue')?.detail).toContain(`(expected "${TITLE}")`);
+      expect(stepOf(r, 'issue')?.detail).toBe(`${ISSUE} "${TITLE}"`);
     });
 
     it('an issue that escalated past Tier 3', async () => {
@@ -616,16 +634,31 @@ describe('runE2E', () => {
     expect(h.world.killed).toEqual([]);
   });
 
-  it('needs GitHub to expect a PR, and resets without it', async () => {
+  it('needs GitHub to expect a PR, and touches nothing without it', async () => {
     const h = harness(ladderToPr());
     const r = await play(h, scenario(2), {}, false);
+    expect(r.passed).toBe(false);
     expect(r.failedStep).toBe('seed');
     expect(r.error).toBe('expecting a PR, but no GitHub reader was given');
-    expect(h.calls).toEqual(['unseed']);
+    expect(r.steps).toEqual([]);
+    expect(r.reset).toEqual([]);
+    expect(h.calls).toEqual([]);
 
     const approval = await play(harness(tier1Fix()), scenario(1), {}, false);
     expect(approval.passed).toBe(true);
     expect(approval.reset.map((a) => a.action)).toEqual([`kill issue ${ISSUE}`, 'unseed']);
+  });
+
+  it('refuses a report with no error line before seeding', async () => {
+    const h = harness(tier1Fix());
+    const s = scenario(1);
+    s.meta.report = 'GET / returned 500';
+    const r = await play(h, s);
+    expect(r.failedStep).toBe('seed');
+    expect(r.error).toBe(
+      "001-bad-currency-code's report has no error line to match the issue's title against",
+    );
+    expect(h.calls).toEqual([]);
   });
 
   it('fails a trigger script that exits non-zero', async () => {
@@ -641,6 +674,16 @@ describe('helpers', () => {
     expect(reportErrorLine(scenario().meta.report)).toBe(TITLE);
     expect(reportErrorLine('one line')).toBeNull();
     expect(reportErrorLine('GET /\n\n')).toBeNull();
+  });
+
+  it("matches an issue's title on its first line", () => {
+    expect(issueTitleMatches(TITLE, TITLE)).toBe(true);
+    expect(issueTitleMatches(`  ${TITLE}  `, TITLE)).toBe(true);
+    expect(issueTitleMatches('ZodError: [\n  {\n    "code": "invalid_type"', 'ZodError: [')).toBe(
+      true,
+    );
+    expect(issueTitleMatches('ZodError: [ ]', 'ZodError: [')).toBe(false);
+    expect(issueTitleMatches('Exception', TITLE)).toBe(false);
   });
 
   it('formats durations', () => {
@@ -692,5 +735,44 @@ describe('helpers', () => {
 
     const passed = summarize(await play(harness(tier1Fix()), scenario(1)));
     expect(passed.split('\n')[0]).toBe('PASS 001-bad-currency-code on fake (expect approval)');
+  });
+});
+
+// The issue the orchestrator opens for each dev scenario has to match the scenario's report.
+describe('dev scenario titles', () => {
+  const ROOT = join(import.meta.dirname, '..', '..');
+
+  /**
+   * ingest.service.ts titleFrom: PostHog's exception type and value (posthog-node sends
+   * the error's `name` and `message`) joined by ': ', trimmed and cut at 500 characters.
+   */
+  const titleFrom = (type: string, value: string) =>
+    [type, value]
+      .filter((part) => part.trim().length > 0)
+      .join(': ')
+      .trim()
+      .slice(0, 500);
+
+  it("titles each dev scenario's issue so its first line is the report's error line", async () => {
+    const split = await loadSplit(join(ROOT, 'eval', 'split.json'));
+    const mismatched: string[] = [];
+    for (const id of split.dev) {
+      const { meta } = await loadScenario(join(ROOT, 'scenarios', id));
+      const line = reportErrorLine(meta.report);
+      if (line === null) {
+        mismatched.push(`${id}: no error line`);
+        continue;
+      }
+      // The report prints the error the way Node does: `<name>: <message>`, the message
+      // over as many lines as it has, then the stack.
+      const error = meta.report.slice(meta.report.indexOf(line)).split(/\n {4}at /)[0]!;
+      const colon = error.indexOf(': ');
+      const title =
+        colon === -1
+          ? titleFrom(error, '')
+          : titleFrom(error.slice(0, colon), error.slice(colon + 2));
+      if (!issueTitleMatches(title, line)) mismatched.push(`${id}: ${JSON.stringify(title)}`);
+    }
+    expect(mismatched).toEqual([]);
   });
 });

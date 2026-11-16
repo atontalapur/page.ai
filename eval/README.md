@@ -163,6 +163,12 @@ the orchestrator is a stub. The test is written for the pipeline as designed.
 
 Change a limit with `--timeout fix=20m`. A step that runs out names the last state it
 saw, such as `issue triaged at tier -, no run (nothing sent start_fix after triage)`.
+The orchestrator titles an issue with the whole exception, `<type>: <message>`, so the
+`issue` step matches the title's first line against the report's error line (a ZodError
+is `ZodError: [`). Any other issue seen meanwhile is ignored, and if none matches the step
+runs out listing the titles it saw. A scenario that can't pass (no error line in its
+report, or `--expect pr` without `GITHUB_TOKEN` and `GITHUB_REPO`) is refused before
+seeding, so there is nothing to reset.
 The `fix` step also fails when the issue ends `failed` or `killed`, and when the run's job
 has finished but the issue is still `fixing` a minute later (its result never reached the
 orchestrator).

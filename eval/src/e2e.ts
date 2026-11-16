@@ -306,6 +306,17 @@ export function reportErrorLine(report: string): string | null {
   return lines.slice(blank + 1).find((line) => line.trim() !== '') ?? null;
 }
 
+/**
+ * Whether an issue's title is the report's error line. The orchestrator titles an issue
+ * with the whole exception, `<type>: <message>` cut at 500 characters (ingest titleFrom),
+ * so a multi-line message such as a ZodError's JSON only matches on its first line.
+ */
+export function issueTitleMatches(title: string, errorLine: string): boolean {
+  return firstLine(title) === errorLine.trim();
+}
+
+const firstLine = (text: string) => (text.split('\n')[0] ?? '').trim();
+
 const isTerminal = (status: IssueStatus) =>
   (TERMINAL_ISSUE_STATUSES as readonly IssueStatus[]).includes(status);
 const JOB_DONE: readonly JobState[] = ['completed', 'failed', 'cancelled'];
@@ -478,12 +489,24 @@ export async function runE2E(
     }
   }
 
+  // Checked before seeding, so a run that can't pass doesn't touch the target, and the
+  // reset has nothing to undo.
+  const title = reportErrorLine(scenario.meta.report);
+  const unplayable =
+    title === null
+      ? `${scenario.id}'s report has no error line to match the issue's title against`
+      : expect === 'pr' && github === undefined
+        ? 'expecting a PR, but no GitHub reader was given'
+        : null;
+  if (title === null || unplayable !== null) {
+    result.failedStep = 'seed';
+    result.error = unplayable;
+    log(`[seed] not started: ${unplayable}`);
+    return result;
+  }
+
   let issue: IssueRow | null = null;
   try {
-    if (expect === 'pr' && github === undefined) {
-      throw new E2EFailure('seed', 'expecting a PR, but no GitHub reader was given');
-    }
-
     await step('seed', async () => {
       await withTimeout(clock, 'seed', timeouts.seed, (signal) => target.seed(scenario, signal));
       return { value: undefined, detail: `${scenario.id} on ${target.name}` };
@@ -500,7 +523,8 @@ export async function runE2E(
       return { value: undefined, detail: output.trim().split('\n').slice(-3).join(' | ') };
     });
 
-    const title = reportErrorLine(scenario.meta.report);
+    // Only an issue titled like the report counts. Another one seen meanwhile is some
+    // other error, so the wait goes on until the step's limit.
     let seen: IssueRow[] = [];
     issue = await step('issue', async () => {
       const found = await waitFor(
@@ -510,8 +534,7 @@ export async function runE2E(
         pollMs,
         async () => {
           seen = await reader.issuesSeenSince(since);
-          const pick =
-            seen.find((i) => i.title === title) ?? (seen.length === 1 ? seen[0] : undefined);
+          const pick = seen.find((i) => issueTitleMatches(i.title, title));
           if (pick !== undefined && pick.createdAt < since) {
             throw new E2EFailure(
               'issue',
@@ -525,12 +548,11 @@ export async function runE2E(
         () =>
           seen.length === 0
             ? 'no issue opened since the trigger (is the PostHog webhook pointed at this orchestrator?)'
-            : `${seen.length} issues opened, none titled ${JSON.stringify(title)}: ` +
-              seen.map((i) => JSON.stringify(i.title)).join(', '),
+            : `${seen.length} issues seen since the trigger, none titled ${JSON.stringify(title)}: ` +
+              seen.map((i) => JSON.stringify(firstLine(i.title))).join(', '),
       );
       result.issueId = found.id;
-      const titled = found.title === title ? '' : ` (expected ${JSON.stringify(title)})`;
-      return { value: found, detail: `${found.id} ${JSON.stringify(found.title)}${titled}` };
+      return { value: found, detail: `${found.id} ${JSON.stringify(firstLine(found.title))}` };
     });
     const issueId = issue.id;
 
