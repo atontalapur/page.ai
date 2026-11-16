@@ -25,6 +25,10 @@ services:
     build:
       context: .
       dockerfile: apps/demo-app/Dockerfile
+      # Browser reporting is inlined at build time. Blank key reports nothing.
+      args:
+        POSTHOG_KEY: ${POSTHOG_KEY:-}
+        POSTHOG_HOST: ${POSTHOG_HOST:-https://us.i.posthog.com}
     image: page-demo-app
     environment:
       # Own database on the shared server; `db.ts migrate` creates it on first run.
@@ -42,6 +46,9 @@ services:
       DATABASE_URL: postgres://page:page@postgres:5432/demo
       # Turns on the ops API (#13). Set it to 32+ characters to try config and restart.
       OPS_SECRET: ${OPS_SECRET:-}
+      # Server error reporting, read at runtime.
+      POSTHOG_KEY: ${POSTHOG_KEY:-}
+      POSTHOG_HOST: ${POSTHOG_HOST:-https://us.i.posthog.com}
     # POST /api/ops/restart exits and relies on this to come back, as on Railway.
     restart: unless-stopped
     command: node_modules/.bin/next start

@@ -8,7 +8,11 @@ const schema = z.object({
     .trim()
     .optional()
     .transform((key) => key || undefined),
-  POSTHOG_HOST: z.url().default('https://us.i.posthog.com'),
+  POSTHOG_HOST: z
+    .string()
+    .trim()
+    .optional()
+    .transform((host) => host || ''),
   // Railway sets this on deploys. Locally there's no SHA, so errors carry "dev".
   RAILWAY_GIT_COMMIT_SHA: z.string().min(1).default('dev'),
 });

@@ -27,7 +27,7 @@ After `env:share`, commit `.env.shared` in a PR. Teammates run `pnpm env:pull` o
 
 ## Settings that aren't secret
 
-Ports, URLs, `OPENROUTER_MODEL`, `GITHUB_REPO` and `USE_FAKE_ADAPTERS` live in plain text in
+Ports, URLs (`POSTHOG_HOST` too), `OPENROUTER_MODEL`, `GITHUB_REPO` and `USE_FAKE_ADAPTERS` live in plain text in
 `.env.example`. `pnpm env:pull` adds any of them your `.env` doesn't set yet, with the example
 value, so a setting added later reaches everyone on their next pull. A value you already set,
 such as a different `POSTGRES_PORT`, is never overwritten. To change a default for the team,
@@ -35,7 +35,7 @@ edit `.env.example` in a PR.
 
 ## What is shared
 
-`NODE_SHARED_SECRET`, `POSTHOG_WEBHOOK_SECRET` and `OPENROUTER_API_KEY`. The list is
+`NODE_SHARED_SECRET`, `POSTHOG_WEBHOOK_SECRET`, `POSTHOG_KEY` and `OPENROUTER_API_KEY`. The list is
 `SHARED_KEYS` in `scripts/env-sync.js`. To share a new key, add it there first.
 
 Anyone can encrypt a value with the public key, so `env:pull` treats `.env.shared` as untrusted.
@@ -54,7 +54,7 @@ decrypts all of them. Rotate each shared secret at its source (OpenRouter, PostH
 
 ```
 rm .env.shared .env.keys
-pnpm env:share NODE_SHARED_SECRET POSTHOG_WEBHOOK_SECRET OPENROUTER_API_KEY
+pnpm env:share NODE_SHARED_SECRET POSTHOG_WEBHOOK_SECRET POSTHOG_KEY OPENROUTER_API_KEY
 ```
 
 Then send the new `.env.keys` value to each teammate.
