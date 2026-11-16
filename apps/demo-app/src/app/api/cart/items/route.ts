@@ -1,7 +1,5 @@
 import { z } from 'zod';
 import { addItem, getCart } from '../../../../shop/cart.ts';
-import { captureServerEvent } from '../../../../observability/analytics.ts';
-import { logStorefrontOutcome } from '../../../../observability/logs.ts';
 import { openCart } from '../../../cart-session.ts';
 import { shop } from '../../../data.ts';
 import { idSchema } from '../../../ids.ts';
@@ -20,14 +18,6 @@ export async function POST(req: Request) {
   return handle(async () => {
     const cartId = await openCart(db, cookies);
     await addItem(db, cartId, parsed.data.productId, parsed.data.quantity, settings);
-    await captureServerEvent('api_product_added_to_cart', {
-      product_id: parsed.data.productId,
-      quantity: parsed.data.quantity,
-    });
-    logStorefrontOutcome('API cart item added', {
-      product_id: parsed.data.productId,
-      quantity: parsed.data.quantity,
-    });
     return Response.json(await getCart(db, cartId, settings), { status: 201 });
   });
 }
