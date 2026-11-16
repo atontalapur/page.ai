@@ -1,7 +1,7 @@
 # Twilio paging
 
 The orchestrator pages on-call by phone call and SMS through Twilio (#31). This page sets up
-the trial account, verifies the team's four phones and checks that a page reaches each one
+the trial account, verifies the two on-call phones and checks that a page reaches each one
 (#127).
 
 ## Trial limits
@@ -34,23 +34,24 @@ one.
 1. Sign up at twilio.com with one teammate's phone. That phone is verified.
 2. In the Console, note the Account SID, the Auth Token and the trial phone number.
 
-## 2. Verify the other three phones
+## 2. Verify the second phone
 
-In the Console, open **Verified Caller IDs** and add each remaining phone in E.164 form
+In the Console, open **Verified Caller IDs** and add the second on-call phone in E.164 form
 (`+1` and ten digits). Twilio calls or texts that phone with a code, and its owner reads the
-code back to whoever is at the Console. One phone at a time.
+code back to whoever is at the Console. More phones can be added the same way later, up to
+the trial's five.
 
 ## 3. Railway
 
 Set these on the `orchestrator` service in the `extraordinary-presence` project:
 
-| Variable             | Value                                     |
-| -------------------- | ----------------------------------------- |
-| `TWILIO_ACCOUNT_SID` | Account SID                               |
-| `TWILIO_AUTH_TOKEN`  | Auth Token                                |
-| `TWILIO_FROM_NUMBER` | Trial number, E.164                       |
-| `NOTIFY_TO_NUMBERS`  | The four verified phones, comma-separated |
-| `USE_FAKE_ADAPTERS`  | `false`                                   |
+| Variable             | Value                                    |
+| -------------------- | ---------------------------------------- |
+| `TWILIO_ACCOUNT_SID` | Account SID                              |
+| `TWILIO_AUTH_TOKEN`  | Auth Token                               |
+| `TWILIO_FROM_NUMBER` | Trial number, E.164                      |
+| `NOTIFY_TO_NUMBERS`  | The two verified phones, comma-separated |
+| `USE_FAKE_ADAPTERS`  | `false`                                  |
 
 The orchestrator keeps the fake pager, which records pages instead of sending them, while
 `USE_FAKE_ADAPTERS` is on, while the three Twilio settings are unset, or while
@@ -77,8 +78,8 @@ This places one call and sends one SMS to every number in `NOTIFY_TO_NUMBERS` th
 same adapter and config parser the orchestrator uses. It prints one line per phone and
 channel, with only the last four digits of any number, and exits 1 if Twilio rejected any
 of them. A call line says `sent` only once a person picks up; busy or no answer shows as
-`FAILED call no-answer`, and voicemail as `FAILED call answered by machine_end_beep`. Calls go one phone at a time, so answer each as it rings. #127 is
-done when all eight lines say `sent` and every phone got the text. Paste the output into the
-issue.
+`FAILED call no-answer`, and voicemail as `FAILED call answered by machine_end_beep`. Calls
+go one phone at a time, so answer each as it rings. #127 is done when all four lines say
+`sent` and both phones got the text. Paste the output into the issue.
 
 After an upgrade, drop `--sms-body` to send the script's own text instead of a template.
