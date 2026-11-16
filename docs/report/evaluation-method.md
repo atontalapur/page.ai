@@ -248,9 +248,9 @@ cent per fixed bug for every configuration, cost doesn't separate them on this m
 | tier3-start | 51      | 172s    | 321s    | 3       | 7s       | 9s       |
 | ladder      | 51      | 180s    | 383s    | 1       | 74s      | 74s      |
 
-![Time to fix per run, with p50 and p90](charts/dev/time-to-fix.svg)
+![Time to fix per run on a log scale, with p50 and p90](charts/dev/time-to-fix.svg)
 
-![Time to page per run, with p50 and p90](charts/dev/time-to-page.svg)
+![Time to page per run on a log scale, with p50 and p90](charts/dev/time-to-page.svg)
 
 Most pages on `format_errors` come within seconds (the ladder's took 74s). The tier1-only
 p90 of 841s is its one `step_limit` page. There are 1 to 3 pages per configuration, so the

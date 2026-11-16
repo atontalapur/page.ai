@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="316" viewBox="0 0 760 316" role="img" aria-labelledby="title desc" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif">
-<title id="title">Time to fix</title>
-<desc id="desc">deepseek/deepseek-v4.1-flash, 18 of 20 planned bugs played, commit b862244</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="316" viewBox="0 0 760 316" role="img" aria-labelledby="time-to-fix-title time-to-fix-desc" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif">
+<title id="time-to-fix-title">Time to fix</title>
+<desc id="time-to-fix-desc">deepseek/deepseek-v4.1-flash, 18 of 20 planned bugs played, commit b862244</desc>
 <rect x="0.5" y="0.5" width="759" height="315" rx="8" fill="#fcfcfb" stroke="#e1e0d9"/>
 <text x="20" y="36" font-size="16" fill="#0b0b0b" font-weight="600">Time to fix</text>
 <text x="20" y="56" font-size="12" fill="#52514e">deepseek/deepseek-v4.1-flash, 18 of 20 planned bugs played, commit b862244</text>
@@ -14,181 +14,181 @@
 <text x="335" y="82" font-size="12" fill="#0b0b0b">p50</text>
 <line x1="380" y1="71" x2="380" y2="85" stroke="#0b0b0b" stroke-width="2" stroke-dasharray="3 2"/>
 <text x="392" y="82" font-size="12" fill="#0b0b0b">p90</text>
-<line x1="130" y1="104" x2="130" y2="236" stroke="#c3c2b7" stroke-width="1"/>
-<line x1="232.5" y1="104" x2="232.5" y2="236" stroke="#e1e0d9" stroke-width="1"/>
-<line x1="335" y1="104" x2="335" y2="236" stroke="#e1e0d9" stroke-width="1"/>
-<line x1="437.5" y1="104" x2="437.5" y2="236" stroke="#e1e0d9" stroke-width="1"/>
-<line x1="540" y1="104" x2="540" y2="236" stroke="#e1e0d9" stroke-width="1"/>
-<text x="130" y="252" font-size="11" fill="#52514e" text-anchor="middle">0</text>
-<text x="232.5" y="252" font-size="11" fill="#52514e" text-anchor="middle">200</text>
-<text x="335" y="252" font-size="11" fill="#52514e" text-anchor="middle">400</text>
-<text x="437.5" y="252" font-size="11" fill="#52514e" text-anchor="middle">600</text>
-<text x="540" y="252" font-size="11" fill="#52514e" text-anchor="middle">800</text>
-<text x="335" y="272" font-size="12" fill="#52514e" text-anchor="middle">seconds from the exception to the fix, one dot per run</text>
-<text x="118" y="136" font-size="12" fill="#0b0b0b" text-anchor="end">tier1-only</text>
-<circle cx="185.1" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 108s</title></circle>
-<circle cx="185.2" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 108s</title></circle>
-<circle cx="188.1" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 113s</title></circle>
-<circle cx="188.2" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 114s</title></circle>
-<circle cx="188.7" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 115s</title></circle>
-<circle cx="191.4" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 120s</title></circle>
-<circle cx="192.1" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 121s</title></circle>
-<circle cx="192.3" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 122s</title></circle>
-<circle cx="192.7" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 122s</title></circle>
-<circle cx="193.8" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 125s</title></circle>
-<circle cx="194" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 125s</title></circle>
-<circle cx="196.4" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 130s</title></circle>
-<circle cx="197.6" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 132s</title></circle>
-<circle cx="201.1" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 139s</title></circle>
-<circle cx="201.1" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 139s</title></circle>
-<circle cx="201.2" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 139s</title></circle>
-<circle cx="202.4" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 141s</title></circle>
-<circle cx="203.5" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 143s</title></circle>
-<circle cx="206.6" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 149s</title></circle>
-<circle cx="206.7" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 150s</title></circle>
-<circle cx="206.7" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 150s</title></circle>
-<circle cx="208.1" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 152s</title></circle>
-<circle cx="209.3" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 155s</title></circle>
-<circle cx="209.5" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 155s</title></circle>
-<circle cx="210.4" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 157s</title></circle>
-<circle cx="211.7" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 159s</title></circle>
-<circle cx="213.5" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 163s</title></circle>
-<circle cx="215.5" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 167s</title></circle>
-<circle cx="215.5" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 167s</title></circle>
-<circle cx="216.4" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 169s</title></circle>
-<circle cx="216.7" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 169s</title></circle>
-<circle cx="220.9" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 177s</title></circle>
-<circle cx="221.6" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 179s</title></circle>
-<circle cx="223.9" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 183s</title></circle>
-<circle cx="224.8" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 185s</title></circle>
-<circle cx="225" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 185s</title></circle>
-<circle cx="225.1" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 186s</title></circle>
-<circle cx="235.1" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 205s</title></circle>
-<circle cx="240.1" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 215s</title></circle>
-<circle cx="240.9" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 216s</title></circle>
-<circle cx="241.6" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 218s</title></circle>
-<circle cx="249.3" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 233s</title></circle>
-<circle cx="258.6" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 251s</title></circle>
-<circle cx="276.3" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 285s</title></circle>
-<circle cx="277.9" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 289s</title></circle>
-<circle cx="286.4" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 305s</title></circle>
-<circle cx="291.1" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 314s</title></circle>
-<circle cx="328.2" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 387s</title></circle>
-<circle cx="332.1" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 394s</title></circle>
-<circle cx="348.6" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 426s</title></circle>
-<circle cx="440.2" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 605s</title></circle>
-<line x1="211.5" y1="115" x2="211.5" y2="149" stroke="#0b0b0b" stroke-width="2"/>
-<line x1="286.3" y1="115" x2="286.3" y2="149" stroke="#0b0b0b" stroke-width="2" stroke-dasharray="3 2"/>
-<text x="556" y="136" font-size="12" fill="#0b0b0b">n=51, p50 159s, p90 305s</text>
-<text x="118" y="176" font-size="12" fill="#0b0b0b" text-anchor="end">tier3-start</text>
-<circle cx="181.5" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 100s</title></circle>
-<circle cx="185.6" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 109s</title></circle>
-<circle cx="187.5" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 112s</title></circle>
-<circle cx="187.9" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 113s</title></circle>
-<circle cx="190.1" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 117s</title></circle>
-<circle cx="190.8" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 119s</title></circle>
-<circle cx="192.9" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 123s</title></circle>
-<circle cx="193.9" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 125s</title></circle>
-<circle cx="194.3" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 125s</title></circle>
-<circle cx="195.1" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 127s</title></circle>
-<circle cx="195.5" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 128s</title></circle>
-<circle cx="198" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 133s</title></circle>
-<circle cx="198.4" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 134s</title></circle>
-<circle cx="199.4" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 135s</title></circle>
-<circle cx="201.6" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 140s</title></circle>
-<circle cx="203.5" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 143s</title></circle>
-<circle cx="205.8" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 148s</title></circle>
-<circle cx="205.9" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 148s</title></circle>
-<circle cx="206" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 148s</title></circle>
-<circle cx="211.1" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 158s</title></circle>
-<circle cx="214.6" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 165s</title></circle>
-<circle cx="215.8" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 167s</title></circle>
-<circle cx="216.1" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 168s</title></circle>
-<circle cx="216.2" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 168s</title></circle>
-<circle cx="217.3" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 170s</title></circle>
-<circle cx="218.1" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 172s</title></circle>
-<circle cx="226.4" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 188s</title></circle>
-<circle cx="227.3" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 190s</title></circle>
-<circle cx="227.7" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 191s</title></circle>
-<circle cx="228.4" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 192s</title></circle>
-<circle cx="229.9" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 195s</title></circle>
-<circle cx="230.1" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 195s</title></circle>
-<circle cx="237.4" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 210s</title></circle>
-<circle cx="239.8" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 214s</title></circle>
-<circle cx="240" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 215s</title></circle>
-<circle cx="241.7" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 218s</title></circle>
-<circle cx="251.8" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 238s</title></circle>
-<circle cx="260.6" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 255s</title></circle>
-<circle cx="262" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 258s</title></circle>
-<circle cx="264.9" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 263s</title></circle>
-<circle cx="266.3" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 266s</title></circle>
-<circle cx="270.1" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 273s</title></circle>
-<circle cx="273.2" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 279s</title></circle>
-<circle cx="278.4" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 290s</title></circle>
-<circle cx="284.1" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 301s</title></circle>
-<circle cx="294.7" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 321s</title></circle>
-<circle cx="302.2" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 336s</title></circle>
-<circle cx="311.4" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 354s</title></circle>
-<circle cx="328.7" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 388s</title></circle>
-<circle cx="384.6" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 497s</title></circle>
-<circle cx="443.2" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 611s</title></circle>
-<line x1="218.2" y1="155" x2="218.2" y2="189" stroke="#0b0b0b" stroke-width="2"/>
-<line x1="294.5" y1="155" x2="294.5" y2="189" stroke="#0b0b0b" stroke-width="2" stroke-dasharray="3 2"/>
-<text x="556" y="176" font-size="12" fill="#0b0b0b">n=51, p50 172s, p90 321s</text>
-<text x="118" y="216" font-size="12" fill="#0b0b0b" text-anchor="end">ladder</text>
-<circle cx="180.3" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 98s</title></circle>
-<circle cx="180.4" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 98s</title></circle>
-<circle cx="188.4" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 114s</title></circle>
-<circle cx="193" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 123s</title></circle>
-<circle cx="193.8" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 124s</title></circle>
-<circle cx="195.9" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 129s</title></circle>
-<circle cx="196.2" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 129s</title></circle>
-<circle cx="196.8" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 130s</title></circle>
-<circle cx="198.3" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 133s</title></circle>
-<circle cx="198.4" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 133s</title></circle>
-<circle cx="199.4" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 135s</title></circle>
-<circle cx="200.4" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 137s</title></circle>
-<circle cx="200.6" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 138s</title></circle>
-<circle cx="200.6" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 138s</title></circle>
-<circle cx="202.3" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 141s</title></circle>
-<circle cx="203.4" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 143s</title></circle>
-<circle cx="206.4" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 149s</title></circle>
-<circle cx="209.5" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 155s</title></circle>
-<circle cx="210.4" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 157s</title></circle>
-<circle cx="211.4" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 159s</title></circle>
-<circle cx="211.5" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 159s</title></circle>
-<circle cx="216.3" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 168s</title></circle>
-<circle cx="218.5" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 173s</title></circle>
-<circle cx="219.5" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 175s</title></circle>
-<circle cx="222.3" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 180s</title></circle>
-<circle cx="222.4" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 180s</title></circle>
-<circle cx="224" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 183s</title></circle>
-<circle cx="225.5" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 186s</title></circle>
-<circle cx="226" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 187s</title></circle>
-<circle cx="227.7" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 191s</title></circle>
-<circle cx="230.1" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 195s</title></circle>
-<circle cx="233" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 201s</title></circle>
-<circle cx="234.2" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 203s</title></circle>
-<circle cx="241.7" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 218s</title></circle>
-<circle cx="241.9" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 218s</title></circle>
-<circle cx="243" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 220s</title></circle>
-<circle cx="245.9" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 226s</title></circle>
-<circle cx="249.1" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 232s</title></circle>
-<circle cx="249.6" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 233s</title></circle>
-<circle cx="251.7" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 237s</title></circle>
-<circle cx="261.1" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 256s</title></circle>
-<circle cx="271.5" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 276s</title></circle>
-<circle cx="276.9" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 287s</title></circle>
-<circle cx="307.6" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 346s</title></circle>
-<circle cx="320.6" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 372s</title></circle>
-<circle cx="326.5" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 383s</title></circle>
-<circle cx="362.5" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 454s</title></circle>
-<circle cx="384.1" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 496s</title></circle>
-<circle cx="390.7" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 509s</title></circle>
-<circle cx="476.7" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 676s</title></circle>
-<circle cx="535" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 790s</title></circle>
-<line x1="222.3" y1="195" x2="222.3" y2="229" stroke="#0b0b0b" stroke-width="2"/>
-<line x1="326.3" y1="195" x2="326.3" y2="229" stroke="#0b0b0b" stroke-width="2" stroke-dasharray="3 2"/>
-<text x="556" y="216" font-size="12" fill="#0b0b0b">n=51, p50 180s, p90 383s</text>
+<line x1="176.3" y1="104" x2="176.3" y2="236" stroke="#e1e0d9" stroke-width="1" stroke-dasharray="3 2"/>
+<line x1="265.2" y1="104" x2="265.2" y2="236" stroke="#e1e0d9" stroke-width="1" stroke-dasharray="3 2"/>
+<line x1="399.8" y1="104" x2="399.8" y2="236" stroke="#e1e0d9" stroke-width="1" stroke-dasharray="3 2"/>
+<line x1="488.7" y1="104" x2="488.7" y2="236" stroke="#e1e0d9" stroke-width="1" stroke-dasharray="3 2"/>
+<line x1="109" y1="104" x2="109" y2="236" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="332.5" y1="104" x2="332.5" y2="236" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="556" y1="104" x2="556" y2="236" stroke="#e1e0d9" stroke-width="1"/>
+<text x="109" y="252" font-size="11" fill="#52514e" text-anchor="middle">10s</text>
+<text x="332.5" y="252" font-size="11" fill="#52514e" text-anchor="middle">100s</text>
+<text x="556" y="252" font-size="11" fill="#52514e" text-anchor="middle">1000s</text>
+<text x="332.5" y="272" font-size="12" fill="#52514e" text-anchor="middle">seconds from the exception to the fix (log scale), one dot per run</text>
+<text x="97" y="136" font-size="12" fill="#0b0b0b" text-anchor="end">tier1-only</text>
+<circle cx="339.6" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 108s</title></circle>
+<circle cx="339.7" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 108s</title></circle>
+<circle cx="344.7" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 113s</title></circle>
+<circle cx="344.8" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 114s</title></circle>
+<circle cx="345.6" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 115s</title></circle>
+<circle cx="350" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 120s</title></circle>
+<circle cx="351.1" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 121s</title></circle>
+<circle cx="351.4" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 122s</title></circle>
+<circle cx="352.1" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 122s</title></circle>
+<circle cx="353.8" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 125s</title></circle>
+<circle cx="354.1" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 125s</title></circle>
+<circle cx="357.7" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 130s</title></circle>
+<circle cx="359.4" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 132s</title></circle>
+<circle cx="364.3" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 139s</title></circle>
+<circle cx="364.3" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 139s</title></circle>
+<circle cx="364.5" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 139s</title></circle>
+<circle cx="366.1" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 141s</title></circle>
+<circle cx="367.6" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 143s</title></circle>
+<circle cx="371.5" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 149s</title></circle>
+<circle cx="371.6" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 150s</title></circle>
+<circle cx="371.7" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 150s</title></circle>
+<circle cx="373.5" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 152s</title></circle>
+<circle cx="374.8" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 155s</title></circle>
+<circle cx="375.2" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 155s</title></circle>
+<circle cx="376.2" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 157s</title></circle>
+<circle cx="377.8" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 159s</title></circle>
+<circle cx="379.8" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 163s</title></circle>
+<circle cx="382.1" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 167s</title></circle>
+<circle cx="382.2" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 167s</title></circle>
+<circle cx="383.2" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 169s</title></circle>
+<circle cx="383.5" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 169s</title></circle>
+<circle cx="388.1" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 177s</title></circle>
+<circle cx="388.9" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 179s</title></circle>
+<circle cx="391.3" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 183s</title></circle>
+<circle cx="392.2" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 185s</title></circle>
+<circle cx="392.4" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 185s</title></circle>
+<circle cx="392.5" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 186s</title></circle>
+<circle cx="402.2" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 205s</title></circle>
+<circle cx="406.7" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 215s</title></circle>
+<circle cx="407.4" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 216s</title></circle>
+<circle cx="408" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 218s</title></circle>
+<circle cx="414.5" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 233s</title></circle>
+<circle cx="421.8" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 251s</title></circle>
+<circle cx="434.3" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 285s</title></circle>
+<circle cx="435.4" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 289s</title></circle>
+<circle cx="440.8" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 305s</title></circle>
+<circle cx="443.7" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 314s</title></circle>
+<circle cx="463.8" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 387s</title></circle>
+<circle cx="465.7" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 394s</title></circle>
+<circle cx="473.3" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 426s</title></circle>
+<circle cx="507.3" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 605s</title></circle>
+<line x1="377.5" y1="115" x2="377.5" y2="149" stroke="#0b0b0b" stroke-width="2"/>
+<line x1="440.7" y1="115" x2="440.7" y2="149" stroke="#0b0b0b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="572" y="136" font-size="12" fill="#0b0b0b">n=51, p50 159s, p90 305s</text>
+<text x="97" y="176" font-size="12" fill="#0b0b0b" text-anchor="end">tier3-start</text>
+<circle cx="332.9" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 100s</title></circle>
+<circle cx="340.4" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 109s</title></circle>
+<circle cx="343.7" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 112s</title></circle>
+<circle cx="344.4" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 113s</title></circle>
+<circle cx="348" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 117s</title></circle>
+<circle cx="349.1" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 119s</title></circle>
+<circle cx="352.4" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 123s</title></circle>
+<circle cx="353.9" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 125s</title></circle>
+<circle cx="354.5" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 125s</title></circle>
+<circle cx="355.7" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 127s</title></circle>
+<circle cx="356.4" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 128s</title></circle>
+<circle cx="359.9" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 133s</title></circle>
+<circle cx="360.6" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 134s</title></circle>
+<circle cx="362" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 135s</title></circle>
+<circle cx="364.9" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 140s</title></circle>
+<circle cx="367.5" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 143s</title></circle>
+<circle cx="370.5" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 148s</title></circle>
+<circle cx="370.6" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 148s</title></circle>
+<circle cx="370.8" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 148s</title></circle>
+<circle cx="377" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 158s</title></circle>
+<circle cx="381.2" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 165s</title></circle>
+<circle cx="382.5" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 167s</title></circle>
+<circle cx="382.9" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 168s</title></circle>
+<circle cx="382.9" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 168s</title></circle>
+<circle cx="384.2" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 170s</title></circle>
+<circle cx="385.1" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 172s</title></circle>
+<circle cx="393.9" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 188s</title></circle>
+<circle cx="394.8" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 190s</title></circle>
+<circle cx="395.1" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 191s</title></circle>
+<circle cx="395.9" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 192s</title></circle>
+<circle cx="397.2" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 195s</title></circle>
+<circle cx="397.5" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 195s</title></circle>
+<circle cx="404.4" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 210s</title></circle>
+<circle cx="406.5" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 214s</title></circle>
+<circle cx="406.7" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 215s</title></circle>
+<circle cx="408.1" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 218s</title></circle>
+<circle cx="416.5" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 238s</title></circle>
+<circle cx="423.3" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 255s</title></circle>
+<circle cx="424.3" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 258s</title></circle>
+<circle cx="426.4" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 263s</title></circle>
+<circle cx="427.4" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 266s</title></circle>
+<circle cx="430.1" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 273s</title></circle>
+<circle cx="432.3" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 279s</title></circle>
+<circle cx="435.7" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 290s</title></circle>
+<circle cx="439.4" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 301s</title></circle>
+<circle cx="445.8" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 321s</title></circle>
+<circle cx="450.1" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 336s</title></circle>
+<circle cx="455.2" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 354s</title></circle>
+<circle cx="464" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 388s</title></circle>
+<circle cx="488.1" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 497s</title></circle>
+<circle cx="508.2" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 611s</title></circle>
+<line x1="385.1" y1="155" x2="385.1" y2="189" stroke="#0b0b0b" stroke-width="2"/>
+<line x1="445.7" y1="155" x2="445.7" y2="189" stroke="#0b0b0b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="572" y="176" font-size="12" fill="#0b0b0b">n=51, p50 172s, p90 321s</text>
+<text x="97" y="216" font-size="12" fill="#0b0b0b" text-anchor="end">ladder</text>
+<circle cx="330.7" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 98s</title></circle>
+<circle cx="330.9" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 98s</title></circle>
+<circle cx="345.2" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 114s</title></circle>
+<circle cx="352.6" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 123s</title></circle>
+<circle cx="353.7" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 124s</title></circle>
+<circle cx="356.9" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 129s</title></circle>
+<circle cx="357.3" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 129s</title></circle>
+<circle cx="358.2" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 130s</title></circle>
+<circle cx="360.4" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 133s</title></circle>
+<circle cx="360.5" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 133s</title></circle>
+<circle cx="361.9" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 135s</title></circle>
+<circle cx="363.3" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 137s</title></circle>
+<circle cx="363.6" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 138s</title></circle>
+<circle cx="363.6" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 138s</title></circle>
+<circle cx="365.9" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 141s</title></circle>
+<circle cx="367.4" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 143s</title></circle>
+<circle cx="371.2" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 149s</title></circle>
+<circle cx="375.1" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 155s</title></circle>
+<circle cx="376.2" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 157s</title></circle>
+<circle cx="377.5" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 159s</title></circle>
+<circle cx="377.6" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 159s</title></circle>
+<circle cx="383" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 168s</title></circle>
+<circle cx="385.5" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 173s</title></circle>
+<circle cx="386.6" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 175s</title></circle>
+<circle cx="389.6" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 180s</title></circle>
+<circle cx="389.7" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 180s</title></circle>
+<circle cx="391.4" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 183s</title></circle>
+<circle cx="392.9" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 186s</title></circle>
+<circle cx="393.4" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 187s</title></circle>
+<circle cx="395.1" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 191s</title></circle>
+<circle cx="397.5" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 195s</title></circle>
+<circle cx="400.2" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 201s</title></circle>
+<circle cx="401.4" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 203s</title></circle>
+<circle cx="408.1" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 218s</title></circle>
+<circle cx="408.3" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 218s</title></circle>
+<circle cx="409.2" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 220s</title></circle>
+<circle cx="411.7" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 226s</title></circle>
+<circle cx="414.4" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 232s</title></circle>
+<circle cx="414.8" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 233s</title></circle>
+<circle cx="416.4" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 237s</title></circle>
+<circle cx="423.6" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 256s</title></circle>
+<circle cx="431.1" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 276s</title></circle>
+<circle cx="434.7" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 287s</title></circle>
+<circle cx="453.1" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 346s</title></circle>
+<circle cx="460" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 372s</title></circle>
+<circle cx="462.9" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 383s</title></circle>
+<circle cx="479.3" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 454s</title></circle>
+<circle cx="487.9" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 496s</title></circle>
+<circle cx="490.4" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 509s</title></circle>
+<circle cx="518.1" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 676s</title></circle>
+<circle cx="533.2" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 790s</title></circle>
+<line x1="389.6" y1="195" x2="389.6" y2="229" stroke="#0b0b0b" stroke-width="2"/>
+<line x1="462.8" y1="195" x2="462.8" y2="229" stroke="#0b0b0b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="572" y="216" font-size="12" fill="#0b0b0b">n=51, p50 180s, p90 383s</text>
 <text x="20" y="296" font-size="11" fill="#52514e">Incomplete: tier1-only 2 scenarios skipped; tier3-start 2 scenarios skipped; ladder 2 scenarios skipped.</text>
 </svg>

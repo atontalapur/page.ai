@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="322" viewBox="0 0 760 322" role="img" aria-labelledby="title desc" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif">
-<title id="title">False escalations and false pages</title>
-<desc id="desc">deepseek/deepseek-v4.1-flash, 18 of 20 planned bugs played, commit b862244</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="322" viewBox="0 0 760 322" role="img" aria-labelledby="false-escalations-title false-escalations-desc" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif">
+<title id="false-escalations-title">False escalations and false pages</title>
+<desc id="false-escalations-desc">deepseek/deepseek-v4.1-flash, 18 of 20 planned bugs played, commit b862244</desc>
 <rect x="0.5" y="0.5" width="759" height="321" rx="8" fill="#fcfcfb" stroke="#e1e0d9"/>
 <text x="20" y="36" font-size="16" fill="#0b0b0b" font-weight="600">False escalations and false pages</text>
 <text x="20" y="56" font-size="12" fill="#52514e">deepseek/deepseek-v4.1-flash, 18 of 20 planned bugs played, commit b862244</text>
@@ -10,26 +10,26 @@
 <text x="144" y="82" font-size="12" fill="#0b0b0b">tier3-start</text>
 <rect x="239" y="72" width="12" height="12" rx="2" fill="#1baf7a"/>
 <text x="257" y="82" font-size="12" fill="#0b0b0b">ladder</text>
-<line x1="150" y1="104" x2="150" y2="242" stroke="#c3c2b7" stroke-width="1"/>
-<line x1="340" y1="104" x2="340" y2="242" stroke="#e1e0d9" stroke-width="1"/>
-<line x1="530" y1="104" x2="530" y2="242" stroke="#e1e0d9" stroke-width="1"/>
-<text x="150" y="258" font-size="11" fill="#52514e" text-anchor="middle">0</text>
-<text x="340" y="258" font-size="11" fill="#52514e" text-anchor="middle">1</text>
-<text x="530" y="258" font-size="11" fill="#52514e" text-anchor="middle">2</text>
-<text x="340" y="278" font-size="12" fill="#52514e" text-anchor="middle">count</text>
-<text x="138" y="142" font-size="12" fill="#0b0b0b" text-anchor="end">false escalations</text>
+<line x1="151" y1="104" x2="151" y2="242" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="330.5" y1="104" x2="330.5" y2="242" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="510" y1="104" x2="510" y2="242" stroke="#e1e0d9" stroke-width="1"/>
+<text x="151" y="258" font-size="11" fill="#52514e" text-anchor="middle">0</text>
+<text x="330.5" y="258" font-size="11" fill="#52514e" text-anchor="middle">1</text>
+<text x="510" y="258" font-size="11" fill="#52514e" text-anchor="middle">2</text>
+<text x="330.5" y="278" font-size="12" fill="#52514e" text-anchor="middle">escalations, or runs paged</text>
+<text x="139" y="142" font-size="12" fill="#0b0b0b" text-anchor="end">false escalations</text>
 
-<text x="156" y="124" font-size="12" fill="#0b0b0b">0 in 54 runs<tspan fill="#52514e">  tier1-only</tspan></text>
+<text x="157" y="124" font-size="12" fill="#0b0b0b">0 escalations in 54 runs<tspan fill="#52514e">  tier1-only</tspan></text>
 
-<text x="156" y="142" font-size="12" fill="#0b0b0b">0 in 54 runs<tspan fill="#52514e">  tier3-start</tspan></text>
-<path d="M150,148h376a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-376z" fill="#1baf7a"><title>ladder, false escalations: 2 in 54 runs</title></path>
-<text x="536" y="160" font-size="12" fill="#0b0b0b">2 in 54 runs<tspan fill="#52514e">  ladder</tspan></text>
-<text x="138" y="212" font-size="12" fill="#0b0b0b" text-anchor="end">false pages</text>
-<path d="M150,182h186a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-186z" fill="#2a78d6"><title>tier1-only, false pages: 1 in 54 runs</title></path>
-<text x="346" y="194" font-size="12" fill="#0b0b0b">1 in 54 runs<tspan fill="#52514e">  tier1-only</tspan></text>
+<text x="157" y="142" font-size="12" fill="#0b0b0b">0 escalations in 54 runs<tspan fill="#52514e">  tier3-start</tspan></text>
+<path d="M151,148h355a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-355z" fill="#1baf7a"><title>ladder, false escalations: 2 escalations in 54 runs</title></path>
+<text x="516" y="160" font-size="12" fill="#0b0b0b">2 escalations in 54 runs<tspan fill="#52514e">  ladder</tspan></text>
+<text x="139" y="212" font-size="12" fill="#0b0b0b" text-anchor="end">false pages</text>
+<path d="M151,182h175.5a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-175.5z" fill="#2a78d6"><title>tier1-only, false pages: 1 of 54 runs paged</title></path>
+<text x="336.5" y="194" font-size="12" fill="#0b0b0b">1 of 54 runs paged<tspan fill="#52514e">  tier1-only</tspan></text>
 
-<text x="156" y="212" font-size="12" fill="#0b0b0b">0 in 54 runs<tspan fill="#52514e">  tier3-start</tspan></text>
+<text x="157" y="212" font-size="12" fill="#0b0b0b">0 of 54 runs paged<tspan fill="#52514e">  tier3-start</tspan></text>
 
-<text x="156" y="230" font-size="12" fill="#0b0b0b">0 in 54 runs<tspan fill="#52514e">  ladder</tspan></text>
+<text x="157" y="230" font-size="12" fill="#0b0b0b">0 of 54 runs paged<tspan fill="#52514e">  ladder</tspan></text>
 <text x="20" y="302" font-size="11" fill="#52514e">Incomplete: tier1-only 2 scenarios skipped; tier3-start 2 scenarios skipped; ladder 2 scenarios skipped.</text>
 </svg>
