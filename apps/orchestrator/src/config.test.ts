@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, loadConfig } from './config.ts';
+import { ConfigError, loadConfig, loadPagerConfig } from './config.ts';
 
 const DATABASE_URL = 'postgres://page:page@localhost:5432/page';
 
@@ -101,12 +101,48 @@ describe('loadConfig', () => {
         TWILIO_AUTH_TOKEN: 'token',
         TWILIO_FROM_NUMBER: '+15550000000',
       }).twilio,
-    ).toEqual({ accountSid: 'AC123', authToken: 'token', from: '+15550000000' });
+    ).toEqual({
+      accountSid: 'AC123',
+      authToken: 'token',
+      from: '+15550000000',
+      machineDetection: true,
+    });
+    expect(
+      loadConfig({
+        DATABASE_URL,
+        TWILIO_ACCOUNT_SID: 'AC123',
+        TWILIO_AUTH_TOKEN: 'token',
+        TWILIO_FROM_NUMBER: '+15550000000',
+        TWILIO_MACHINE_DETECTION: 'false',
+      }).twilio?.machineDetection,
+    ).toBe(false);
   });
 
   it('rejects an unknown USE_FAKE_ADAPTERS value', () => {
     expect(() => loadConfig({ DATABASE_URL, USE_FAKE_ADAPTERS: 'maybe' })).toThrow(
       /^invalid config: USE_FAKE_ADAPTERS: Invalid option/,
     );
+  });
+});
+
+describe('loadPagerConfig', () => {
+  it('reads the Twilio settings without the rest of the app', () => {
+    expect(
+      loadPagerConfig({
+        TWILIO_ACCOUNT_SID: 'AC123',
+        TWILIO_AUTH_TOKEN: 'token',
+        TWILIO_FROM_NUMBER: '+15550000000',
+        NOTIFY_TO_NUMBERS: '+15550000001, +15550000002',
+      }),
+    ).toEqual({
+      twilio: {
+        accountSid: 'AC123',
+        authToken: 'token',
+        from: '+15550000000',
+        machineDetection: true,
+      },
+      notifyTo: ['+15550000001', '+15550000002'],
+    });
+    expect(() => loadPagerConfig({ TWILIO_ACCOUNT_SID: 'AC123' })).toThrow(ConfigError);
   });
 });

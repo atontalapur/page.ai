@@ -5,6 +5,27 @@ type Env = Record<string, string | undefined>;
 
 export type LogLevel = z.infer<typeof baseConfigSchema.shape.LOG_LEVEL>;
 
+/** NOTIFY_TO_NUMBERS: comma-separated, blanks dropped. */
+export function splitNumbers(list = ''): string[] {
+  return list
+    .split(',')
+    .map((number) => number.trim())
+    .filter((number) => number.length > 0);
+}
+
+// The pager's settings. scripts/test-page.ts reads them through loadPagerConfig, so the
+// test and the orchestrator parse them the same way.
+const pagerShape = {
+  TWILIO_ACCOUNT_SID: z.string().min(1).optional(),
+  TWILIO_AUTH_TOKEN: z.string().min(1).optional(),
+  TWILIO_FROM_NUMBER: z.string().min(1).optional(),
+  NOTIFY_TO_NUMBERS: z.string().optional().transform(splitNumbers),
+  // Twilio answering machine detection, so a call voicemail picks up is retried. Off is the
+  // escape hatch if the account rejects it.
+  TWILIO_MACHINE_DETECTION: z.stringbool().default(true),
+};
+const pagerSchema = envSchema(z.object(pagerShape));
+
 // envSchema drops blank vars first, as the node daemon's does, so a copied .env.example
 // behaves like an unset var.
 const schema = envSchema(
@@ -26,18 +47,7 @@ const schema = envSchema(
     OPENROUTER_API_KEY: z.string().min(1).optional(),
     TRIAGE_MODEL: z.string().min(1).default('openai/gpt-4o-mini'),
     TRIAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(8_000),
-    TWILIO_ACCOUNT_SID: z.string().min(1).optional(),
-    TWILIO_AUTH_TOKEN: z.string().min(1).optional(),
-    TWILIO_FROM_NUMBER: z.string().min(1).optional(),
-    NOTIFY_TO_NUMBERS: z
-      .string()
-      .optional()
-      .transform((list) =>
-        (list ?? '')
-          .split(',')
-          .map((number) => number.trim())
-          .filter((number) => number.length > 0),
-      ),
+    ...pagerShape,
     DASHBOARD_URL: z.string().min(1).default('http://localhost:3000'),
   }),
 );
@@ -46,6 +56,8 @@ export interface TwilioCreds {
   accountSid: string;
   authToken: string;
   from: string;
+  /** Answering machine detection: voicemail counts as not answered. */
+  machineDetection: boolean;
 }
 
 export interface Config {
@@ -77,13 +89,18 @@ function describeIssue(issue: z.core.$ZodIssue, env: Env): string {
   return env[key]?.trim() ? `${key}: ${issue.message}` : `${key} is required`;
 }
 
-export function loadConfig(env: Env = process.env): Config {
+function parseEnv<T>(schema: z.ZodType<T>, env: Env): T {
   const parsed = schema.safeParse(env);
   if (!parsed.success) {
     const problems = parsed.error.issues.map((issue) => describeIssue(issue, env));
     throw new ConfigError(`invalid config: ${problems.join('; ')}`);
   }
-  const config = parsed.data;
+  return parsed.data;
+}
+
+export type PagerConfig = Pick<Config, 'twilio' | 'notifyTo'>;
+
+function pagerConfig(config: z.infer<typeof pagerSchema>): PagerConfig {
   const sid = config.TWILIO_ACCOUNT_SID;
   const token = config.TWILIO_AUTH_TOKEN;
   const from = config.TWILIO_FROM_NUMBER;
@@ -94,6 +111,28 @@ export function loadConfig(env: Env = process.env): Config {
     );
   }
   return {
+    twilio:
+      sid && token && from
+        ? {
+            accountSid: sid,
+            authToken: token,
+            from,
+            machineDetection: config.TWILIO_MACHINE_DETECTION,
+          }
+        : undefined,
+    notifyTo: config.NOTIFY_TO_NUMBERS,
+  };
+}
+
+/** The Twilio settings and numbers alone, for a script that pages without the app. */
+export function loadPagerConfig(env: Env = process.env): PagerConfig {
+  return pagerConfig(parseEnv(pagerSchema, env));
+}
+
+export function loadConfig(env: Env = process.env): Config {
+  const config = parseEnv(schema, env);
+  return {
+    ...pagerConfig(config),
     databaseUrl: config.DATABASE_URL,
     port: config.PORT,
     host: config.HOST,
@@ -104,8 +143,6 @@ export function loadConfig(env: Env = process.env): Config {
     openRouterApiKey: config.OPENROUTER_API_KEY,
     triageModel: config.TRIAGE_MODEL,
     triageTimeoutMs: config.TRIAGE_TIMEOUT_MS,
-    twilio: sid && token && from ? { accountSid: sid, authToken: token, from } : undefined,
-    notifyTo: config.NOTIFY_TO_NUMBERS,
     dashboardUrl: config.DASHBOARD_URL,
   };
 }
