@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { chartData, type BarChart, type ChartSet } from './chart-data.ts';
-import {
-  escapeXml,
-  logTicks,
-  niceTicks,
-  renderChart,
-  seriesColor,
-  textWidth,
-} from './chart-svg.ts';
+import { logTicks, niceTicks, renderChart, seriesColor, textWidth } from './chart-svg.ts';
 import { results, run } from './test-utils.ts';
 
 const set = (over: Partial<ChartSet> = {}): ChartSet => ({
@@ -146,7 +139,6 @@ describe('renderChart', () => {
   });
 
   it('escapes text', () => {
-    expect(escapeXml('a<b & "c">')).toBe('a&lt;b &amp; &quot;c&quot;&gt;');
     expect(svg('fix-rate', set({ subtitle: 'x & y' }))).toContain('x &amp; y');
   });
 });

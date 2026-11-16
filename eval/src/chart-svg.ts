@@ -4,6 +4,7 @@
 // vision deficiency; every bar and row is also labelled in text, so color never carries
 // identity alone.
 import type { Bar, BarChart, Chart, ChartSet, StripChart } from './chart-data.ts';
+import { escapeXml } from '@page/contracts';
 import { CONFIG_ORDER } from './report.ts';
 import type { EvalConfig } from './results.ts';
 
@@ -32,14 +33,6 @@ const CHAR = 7;
 /** Estimated width of s at a font size, never narrower than it renders for these labels. */
 export function textWidth(s: string, size = 12): number {
   return (s.length * CHAR * size) / 12;
-}
-
-export function escapeXml(s: string): string {
-  return s
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
 }
 
 const DASH = ' stroke-dasharray="3 2"';

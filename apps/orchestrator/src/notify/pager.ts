@@ -1,3 +1,4 @@
+import { escapeXml } from '@page/contracts';
 import type { Config } from '../config.ts';
 
 export interface Pager {
@@ -31,15 +32,6 @@ export class FakePager implements Pager {
     this.texts.push({ to, message });
     return Promise.resolve();
   }
-}
-
-function escapeXml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;');
 }
 
 /** Twilio REST adapter. A non-2xx response throws so the notify job can retry. */
