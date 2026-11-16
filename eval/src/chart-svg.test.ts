@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { chartData, type ChartSet } from './chart-data.ts';
-import { escapeXml, niceTicks, renderChart, seriesColor } from './chart-svg.ts';
+import { chartData, type BarChart, type ChartSet } from './chart-data.ts';
+import {
+  escapeXml,
+  logTicks,
+  niceTicks,
+  renderChart,
+  seriesColor,
+  textWidth,
+} from './chart-svg.ts';
 import { results, run } from './test-utils.ts';
 
 const set = (over: Partial<ChartSet> = {}): ChartSet => ({
@@ -33,12 +40,33 @@ describe('niceTicks', () => {
   });
 });
 
+describe('logTicks', () => {
+  it('spans whole decades around the values', () => {
+    expect(logTicks(7, 841)).toEqual([1, 10, 100, 1000]);
+    expect(logTicks(10, 100)).toEqual([10, 100]);
+    expect(logTicks(150, 380)).toEqual([100, 1000]);
+    expect(logTicks(0, 0.5)).toEqual([0.1, 1]);
+  });
+});
+
+/** Where each text element starts and ends, from its x, anchor and estimated width. */
+function textSpans(out: string): { text: string; start: number; end: number }[] {
+  return [
+    ...out.matchAll(/<text x="([\d.-]+)"[^>]*?(?: text-anchor="(\w+)")?[^>]*>(.*?)<\/text>/g),
+  ].map(([, x, anchor, inner]) => {
+    const t = (inner ?? '').replace(/<[^>]+>/g, '').replaceAll('&amp;', '&');
+    const w = textWidth(t);
+    const start = Number(x) - (anchor === 'end' ? w : anchor === 'middle' ? w / 2 : 0);
+    return { text: t, start, end: start + w };
+  });
+}
+
 describe('renderChart', () => {
   it('draws a standalone SVG on its own background', () => {
     const out = svg('fix-rate');
     expect(out).toMatch(/^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"/);
     expect(out).toContain('fill="#fcfcfb"');
-    expect(out).toContain('<title id="title">Fix rate</title>');
+    expect(out).toContain('<title id="fix-rate-title">Fix rate</title>');
     expect(out.trimEnd().endsWith('</svg>')).toBe(true);
   });
 
@@ -63,6 +91,53 @@ describe('renderChart', () => {
     expect(out).toContain('n=0, p50 n/a, p90 n/a');
     expect(out).toContain('stroke-dasharray="3 2"');
     expect(out).toContain('<title>tier1-only: 841s</title>');
+  });
+
+  it('gives each chart its own title and desc ids', () => {
+    const out = svg('time-to-fix');
+    expect(out).toContain('aria-labelledby="time-to-fix-title time-to-fix-desc"');
+    expect(out).toContain('<desc id="time-to-fix-desc">');
+  });
+
+  it('draws times on a log axis labelled in seconds', () => {
+    const out = svg('time-to-page');
+    expect(out).toContain('>100s</text>');
+    expect(out).toContain('>1000s</text>');
+    expect(out).toContain('seconds from the exception to the page (log scale), one dot per run');
+  });
+
+  it('keeps long labels on the card, beside the longest bar too', () => {
+    const base = set();
+    const chart: BarChart = {
+      kind: 'bars',
+      id: 'long',
+      title: 'Long',
+      xLabel: 'count',
+      xMax: 10,
+      xFormat: 'count',
+      groups: [
+        {
+          label: 'a group label far longer than any in the report',
+          bars: [
+            {
+              config: 'tier1-only',
+              value: 10,
+              label: 'a bar label that is long as well, 10 of 10',
+            },
+            { config: 'ladder', value: 3, label: '3' },
+          ],
+        },
+      ],
+    };
+    const out = renderChart(chart, { ...base, charts: [chart] });
+    const spans = textSpans(out);
+    expect(spans.map((s) => s.text)).toContain(
+      'a bar label that is long as well, 10 of 10  tier1-only',
+    );
+    for (const s of spans) {
+      expect(s.start, s.text).toBeGreaterThanOrEqual(20);
+      expect(s.end, s.text).toBeLessThanOrEqual(740);
+    }
   });
 
   it('lists what the files left out', () => {

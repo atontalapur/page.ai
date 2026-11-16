@@ -3,7 +3,7 @@
 // themes. Colors are the first three categorical slots of a palette checked for color
 // vision deficiency; every bar and row is also labelled in text, so color never carries
 // identity alone.
-import type { BarChart, Chart, ChartSet, StripChart } from './chart-data.ts';
+import type { Bar, BarChart, Chart, ChartSet, StripChart } from './chart-data.ts';
 import { CONFIG_ORDER } from './report.ts';
 import type { EvalConfig } from './results.ts';
 
@@ -26,8 +26,13 @@ export function seriesColor(config: EvalConfig): string {
 const W = 760;
 const PAD = 20;
 const FONT = 'system-ui, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif';
-/** Rough width of one character at 12px, for laying out text without measuring it. */
+/** Width of one character at 12px, on the wide side, for laying out text without measuring it. */
 const CHAR = 7;
+
+/** Estimated width of s at a font size, never narrower than it renders for these labels. */
+export function textWidth(s: string, size = 12): number {
+  return (s.length * CHAR * size) / 12;
+}
 
 export function escapeXml(s: string): string {
   return s
@@ -55,7 +60,10 @@ function text(
   );
 }
 
-/** Ticks from 0 at a step of 1, 2, 2.5 or 5 times a power of ten, 4 or 5 of them. */
+/**
+ * Ticks from 0 at a step of 1, 2, 2.5 or 5 times a power of ten, no smaller than max / 4,
+ * so at most 5 of them. Rounding the step up can leave 3, and whole counts below 2 get 2.
+ */
 export function niceTicks(max: number, integer = false): { ticks: number[]; decimals: number } {
   const top = max > 0 ? max : 1;
   const raw = top / 4;
@@ -68,6 +76,16 @@ export function niceTicks(max: number, integer = false): { ticks: number[]; deci
   const decimals = (String(Number(step.toFixed(10))).split('.')[1] ?? '').length;
   const ticks = Array.from({ length: count + 1 }, (_, i) => Number((i * step).toFixed(10)));
   return { ticks, decimals };
+}
+
+/**
+ * Powers of ten from the one at or below min to the one at or above max, at least one decade
+ * apart. Values under 0.1 count as 0.1.
+ */
+export function logTicks(min: number, max: number): number[] {
+  const lo = Math.floor(Math.log10(Math.max(min, 0.1)));
+  const hi = Math.max(Math.ceil(Math.log10(Math.max(max, 0.1))), lo + 1);
+  return Array.from({ length: hi - lo + 1 }, (_, i) => Number((10 ** (lo + i)).toPrecision(1)));
 }
 
 function wrap(s: string, width: number): string[] {
@@ -137,8 +155,8 @@ function axis(
 ): string[] {
   return [
     ...ticks.map(
-      (t) =>
-        `<line x1="${n(xOf(t))}" y1="${n(top)}" x2="${n(xOf(t))}" y2="${n(bottom)}" stroke="${t === 0 ? INK.axis : INK.grid}" stroke-width="1"/>`,
+      (t, i) =>
+        `<line x1="${n(xOf(t))}" y1="${n(top)}" x2="${n(xOf(t))}" y2="${n(bottom)}" stroke="${i === 0 ? INK.axis : INK.grid}" stroke-width="1"/>`,
     ),
     ...ticks.map((t) =>
       text(xOf(t), bottom + 16, label(t), { size: 11, fill: INK.secondary, anchor: 'middle' }),
@@ -147,7 +165,7 @@ function axis(
   ];
 }
 
-function finish(title: string, set: ChartSet, body: string[], bottom: number): string {
+function finish(chart: Chart, set: ChartSet, body: string[], bottom: number): string {
   const notes =
     set.notes.length > 0 ? wrap(`Incomplete: ${set.notes.join('; ')}.`, W - 2 * PAD) : [];
   const noteY = bottom + 60;
@@ -156,9 +174,10 @@ function finish(title: string, set: ChartSet, body: string[], bottom: number): s
   );
   const h = Math.round((notes.length > 0 ? noteY + (notes.length - 1) * 16 : bottom + 40) + PAD);
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${h}" viewBox="0 0 ${W} ${h}" role="img" aria-labelledby="title desc" font-family="${FONT}">`,
-    `<title id="title">${escapeXml(title)}</title>`,
-    `<desc id="desc">${escapeXml(set.subtitle)}</desc>`,
+    // Ids carry the chart id, so several charts inlined into one page don't share them.
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${h}" viewBox="0 0 ${W} ${h}" role="img" aria-labelledby="${chart.id}-title ${chart.id}-desc" font-family="${FONT}">`,
+    `<title id="${chart.id}-title">${escapeXml(chart.title)}</title>`,
+    `<desc id="${chart.id}-desc">${escapeXml(set.subtitle)}</desc>`,
     `<rect x="0.5" y="0.5" width="${W - 1}" height="${h - 1}" rx="8" fill="${INK.surface}" stroke="${INK.border}"/>`,
     ...body,
     ...lines,
@@ -178,15 +197,31 @@ function bar(x: number, y: number, w: number, h: number, fill: string, tip: stri
   return d ? `<path d="${d}" fill="${fill}"><title>${escapeXml(tip)}</title></path>` : '';
 }
 
+/** The text right of a bar: its label, then its config. */
+const barText = (b: Bar) => `${b.label}  ${b.config}`;
+
+/** Space between a bar's end and its text, and between a row label and the plot. */
+const GAP = 6;
+const LABEL_GAP = 12;
+
 function renderBars(chart: BarChart, set: ChartSet): string {
   const { head, top } = header(chart.title, set, []);
-  const left = PAD + 130;
-  const right = W - PAD - 210;
   const { ticks, decimals } = niceTicks(chart.xMax, chart.xFormat === 'count');
   const max = ticks.at(-1) ?? 1;
-  const xOf = (v: number) => left + (v / max) * (right - left);
   const fmt = (v: number) =>
     chart.xFormat === 'usd' ? `$${v.toFixed(decimals)}` : v.toFixed(decimals);
+
+  // The plot spans whatever the labels leave: group labels on the left, and on the right the
+  // last tick label and each bar's text past its end, so no text runs off the card.
+  const left = PAD + Math.max(0, ...chart.groups.map((g) => textWidth(g.label))) + LABEL_GAP;
+  const edge = W - PAD;
+  let right = edge - textWidth(fmt(max), 11) / 2;
+  for (const b of chart.groups.flatMap((g) => g.bars)) {
+    const share = b.value / max;
+    if (share > 0)
+      right = Math.min(right, left + (edge - GAP - textWidth(barText(b)) - left) / share);
+  }
+  const xOf = (v: number) => left + (v / max) * (right - left);
 
   const barH = 16;
   const gap = 2;
@@ -195,13 +230,13 @@ function renderBars(chart: BarChart, set: ChartSet): string {
   let y = top + 8;
   for (const g of chart.groups) {
     const gh = g.bars.length * barH + (g.bars.length - 1) * gap;
-    body.push(text(left - 12, y + gh / 2 + 4, g.label, { anchor: 'end' }));
+    body.push(text(left - LABEL_GAP, y + gh / 2 + 4, g.label, { anchor: 'end' }));
     g.bars.forEach((b, i) => {
       const by = y + i * (barH + gap);
       const tip = `${b.config}, ${g.label}: ${b.label}`;
       body.push(bar(left, by, xOf(b.value) - left, barH, seriesColor(b.config), tip));
       body.push(
-        `<text x="${n(xOf(b.value) + 6)}" y="${n(by + barH / 2 + 4)}" font-size="12" fill="${INK.primary}">` +
+        `<text x="${n(xOf(b.value) + GAP)}" y="${n(by + barH / 2 + 4)}" font-size="12" fill="${INK.primary}">` +
           `${escapeXml(b.label)}<tspan fill="${INK.secondary}">  ${escapeXml(b.config)}</tspan></text>`,
       );
     });
@@ -209,7 +244,7 @@ function renderBars(chart: BarChart, set: ChartSet): string {
   }
   const bottom = y - groupGap + 8;
   return finish(
-    chart.title,
+    chart,
     set,
     [...head, ...axis(ticks, fmt, xOf, top, bottom, chart.xLabel, (left + right) / 2), ...body],
     bottom,
@@ -221,19 +256,24 @@ function renderStrip(chart: StripChart, set: ChartSet): string {
     { key: lineKey(''), label: 'p50' },
     { key: lineKey(DASH), label: 'p90' },
   ]);
-  const left = PAD + 110;
-  const right = W - PAD - 200;
+  const left = PAD + Math.max(0, ...chart.rows.map((r) => textWidth(r.config))) + LABEL_GAP;
+  const right = W - PAD - Math.max(0, ...chart.rows.map((r) => textWidth(r.label))) - 16;
+  // Log scale: times run from seconds to many minutes, and a linear axis sized to the
+  // slowest run would squeeze every fast row into a few pixels.
   const all = chart.rows.flatMap((r) => r.sec);
-  const { ticks, decimals } = niceTicks(Math.max(1, ...all));
-  const max = ticks.at(-1) ?? 1;
-  const xOf = (v: number) => left + (v / max) * (right - left);
+  const ticks = all.length > 0 ? logTicks(Math.min(...all), Math.max(...all)) : logTicks(1, 10);
+  const lo = Math.log10(ticks[0] ?? 1);
+  const span = Math.log10(ticks.at(-1) ?? 10) - lo;
+  const xOf = (v: number) =>
+    left + ((Math.log10(Math.max(v, ticks[0] ?? 1)) - lo) / span) * (right - left);
+  const minor = ticks.slice(0, -1).flatMap((t) => [2 * t, 5 * t]);
 
   const rowH = 40;
   const jitter = [-8, -4, 0, 4, 8];
   const body: string[] = [];
   chart.rows.forEach((r, i) => {
     const cy = top + 8 + i * rowH + rowH / 2;
-    body.push(text(left - 12, cy + 4, r.config, { anchor: 'end' }));
+    body.push(text(left - LABEL_GAP, cy + 4, r.config, { anchor: 'end' }));
     [...r.sec]
       .sort((a, b) => a - b)
       .forEach((s, j) => {
@@ -254,17 +294,21 @@ function renderStrip(chart: StripChart, set: ChartSet): string {
   });
   const bottom = top + 8 + chart.rows.length * rowH + 4;
   return finish(
-    chart.title,
+    chart,
     set,
     [
       ...head,
+      ...minor.map(
+        (t) =>
+          `<line x1="${n(xOf(t))}" y1="${n(top)}" x2="${n(xOf(t))}" y2="${n(bottom)}" stroke="${INK.grid}" stroke-width="1"${DASH}/>`,
+      ),
       ...axis(
         ticks,
-        (v) => v.toFixed(decimals),
+        (v) => `${v}s`,
         xOf,
         top,
         bottom,
-        `${chart.xLabel}, one dot per run`,
+        `${chart.xLabel} (log scale), one dot per run`,
         (left + right) / 2,
       ),
       ...body,
