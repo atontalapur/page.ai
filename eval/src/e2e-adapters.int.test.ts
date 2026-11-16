@@ -16,7 +16,10 @@ beforeAll(async () => {
   await pool.query(`create schema ${schema}`);
   for (const migration of await loadMigrations()) await pool.query(migration.sql);
   await pool.query(`create schema ${boss}`);
-  await pool.query(`create table ${boss}.job (name text, id uuid, state text)`);
+  await pool.query(
+    `create table ${boss}.job (name text, id uuid, state text, data jsonb,
+     created_on timestamptz not null default now())`,
+  );
 });
 
 afterAll(async () => {
@@ -49,7 +52,10 @@ describe('PgPipelineReader against Postgres', () => {
       [runId],
     );
     await pool.query(`insert into approvals (run_id, action) values ($1, 'ops.restart')`, [runId]);
-    await pool.query(`insert into ${boss}.job values ('fix', $1, 'active')`, [runId]);
+    await pool.query(
+      `insert into ${boss}.job (name, id, state, data) values ('fix', $1, 'active', $2)`,
+      [runId, { v: 1, issueId, runId }],
+    );
 
     const seen = await reader.issuesSeenSince(since);
     expect(seen.map((i) => i.id)).toEqual([issueId]);
@@ -71,6 +77,17 @@ describe('PgPipelineReader against Postgres', () => {
       steps: 2,
       pendingApprovals: 1,
     });
+    // A later tier's job that never got a runs row, and another issue's job.
+    const next = randomUUID();
+    await pool.query(
+      `insert into ${boss}.job (name, id, state, data, created_on)
+       values ('fix', $1, 'created', $2, now() + interval '1 second'),
+              ('fix', $3, 'created', $4, now())`,
+      [next, { v: 1, issueId, runId: next }, randomUUID(), { v: 1, issueId: randomUUID() }],
+    );
+    expect(await reader.runIdsForIssue(issueId)).toEqual([runId, next]);
+    expect(await reader.runIdsForIssue(randomUUID())).toEqual([]);
+
     expect(await reader.run(randomUUID())).toMatchObject({
       run: null,
       jobState: null,

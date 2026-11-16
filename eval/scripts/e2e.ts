@@ -30,7 +30,8 @@ const USAGE = `usage: pnpm e2e <scenario-id> [--target local|staging] [--expect 
   --expect   what the run ends on (default: pr for a Tier 2 code scenario, else approval)
   --timeout  a step's limit, e.g. --timeout fix=20m (steps: seed trigger issue triage
              claim fix outcome reset)
-  --budget   most time from the trigger to the PR or approval request (default 20m)
+  --budget   most time from the trigger to the PR or approval request (default: the
+             sum of the trigger to outcome step limits, 32m at Tier 1, 48m at Tier 2)
   --poll     between database reads (default 3s)
   --runs     play it n times in a row, stopping at the first failure (default 1)
   --keep     skip the reset, to look at the PR and the issue afterwards

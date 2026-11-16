@@ -3,6 +3,7 @@ import type { Tier } from '@page/contracts';
 import { AGENT_BRANCH_PREFIX, type PullRequest } from '@page/toolkit';
 import { describe, expect, it } from 'vitest';
 import {
+  defaultBudget,
   defaultExpectation,
   defaultTimeouts,
   formatMs,
@@ -91,6 +92,7 @@ class FakeClock implements Clock {
 
 const R1 = '00000000-0000-4000-8000-0000000000a1';
 const R2 = '00000000-0000-4000-8000-0000000000b2';
+const R3 = '00000000-0000-4000-8000-0000000000c3';
 const ISSUE = '00000000-0000-4000-8000-000000000001';
 
 /** One change to the fake pipeline, `at` ms after the trigger. */
@@ -109,6 +111,8 @@ class World {
   prs = new Map<string, PullRequest>();
   closed: number[] = [];
   killed: string[] = [];
+  /** Kills and PR closes, in order. */
+  writes: string[] = [];
   triggeredAt: number | null = null;
   readErrors = 0;
   readonly clock: FakeClock;
@@ -161,11 +165,15 @@ class World {
       this.tick();
       return Promise.resolve({ ...this.run(runId) });
     },
+    // The fake has one issue, so every run is its.
+    runIdsForIssue: (id) =>
+      Promise.resolve(this.issues.some((i) => i.id === id) ? [...this.runs.keys()] : []),
   };
 
   readonly control: PipelineControl = {
     killIssue: (id) => {
       this.killed.push(id);
+      this.writes.push(`kill ${id}`);
       const row = this.issues.find((i) => i.id === id);
       if (row !== undefined) row.status = 'killed';
       return Promise.resolve();
@@ -179,6 +187,7 @@ class World {
     },
     closePullRequest: (number) => {
       this.closed.push(number);
+      this.writes.push(`close #${number}`);
       for (const [head, pr] of this.prs) if (pr.number === number) this.prs.delete(head);
       return Promise.resolve();
     },
@@ -339,8 +348,9 @@ describe('runE2E', () => {
     // Only the runs row is missing: nothing records runs yet.
     expect(failedChecks(r)).toEqual(['run.row']);
     expect(r.reset.map((a) => [a.action, a.ok, a.detail])).toEqual([
-      [`close PR of ${R1}`, true, 'none open'],
       [`kill issue ${ISSUE}`, true, 'was awaiting_approval'],
+      [`find the runs of issue ${ISSUE}`, true, '1 runs'],
+      [`close PR of ${R1}`, true, 'none open'],
       ['unseed', true, 'fake'],
     ]);
     expect(h.world.killed).toEqual([ISSUE]);
@@ -362,7 +372,37 @@ describe('runE2E', () => {
     expect(r.prUrl).toBe('https://github.com/atontalapur/page-demo/pull/7');
     expect(stepOf(r, 'fix')?.detail).toBe('issue awaiting_approval, tiers 1 -> 2');
     expect(failedChecks(r)).toEqual(['run.row']);
+    // The kill comes first, so no run opens a PR after the close.
+    expect(h.world.writes).toEqual([`kill ${ISSUE}`, 'close #7']);
+  });
+
+  it('closes the PR of a run the test never saw', async () => {
+    const changes = ladderToPr();
+    // A run that started and gave way between two reads, and still opened a PR.
+    changes.push({ at: 5 * MIN, apply: (w) => w.run(R3) }, pr(5 * MIN, R3, 8));
+    const h = harness(changes);
+    const r = await play(h, scenario(2));
+    expect(r.passed).toBe(true);
+    expect(r.runs.map((run) => run.runId)).toEqual([R1, R2]);
+    expect(h.world.writes).toEqual([`kill ${ISSUE}`, 'close #8', 'close #7']);
+  });
+
+  it('closes the PRs of the runs it saw when the run lookup fails', async () => {
+    const h = harness(ladderToPr());
+    h.world.reader.runIdsForIssue = () => Promise.reject(new Error('relation does not exist'));
+    const r = await play(h, scenario(2));
+    expect(r.failedStep).toBe('reset');
+    expect(r.error).toBe(`find the runs of issue ${ISSUE}: relation does not exist`);
     expect(h.world.closed).toEqual([7]);
+  });
+
+  it('passes a Tier 2 climb that takes longer than 20 minutes', async () => {
+    const changes = ladderToPr().map((c) => (c.at >= 9 * MIN ? { ...c, at: c.at + 16 * MIN } : c));
+    const r = await play(harness(changes), scenario(2));
+    expect(r.error).toBeNull();
+    expect(r.timeToOutcomeMs).toBeGreaterThan(25 * MIN);
+    expect(r.checks.find((c) => c.name === 'time.outcome')).toMatchObject({ ok: true });
+    expect(r.checks.find((c) => c.name === 'time.outcome')?.detail).toContain('budget 48m00s');
   });
 
   it('passes a Tier 3 run waiting on a pending approval request', async () => {
@@ -512,6 +552,27 @@ describe('runE2E', () => {
       expect(r.failedStep).toBe('fix');
       expect(r.error).toBe('issue ended failed at tier 1');
       expect(r.reset.find((a) => a.action.startsWith('kill'))?.detail).toBe('already failed');
+    });
+
+    it('an issue someone approved before the fix step saw it wait', async () => {
+      const changes = tier1Fix();
+      // awaiting_approval, then approved, between two reads.
+      changes[changes.length - 1] = status(6 * MIN + 2 * S, 'resolved');
+      const r = await play(harness(changes), scenario(1));
+      expect(r.failedStep).toBe('fix');
+      expect(r.error).toBe(
+        'issue was resolved at tier 1: someone approved it before the test saw its outcome',
+      );
+      expect(r.reset.find((a) => a.action.startsWith('kill'))?.detail).toBe('already resolved');
+    });
+
+    it('an issue someone approved while the outcome step waited for its PR', async () => {
+      const changes = [...tier1Fix(), status(6 * MIN + 20 * S, 'resolved')];
+      const r = await play(harness(changes), scenario(2));
+      expect(r.failedStep).toBe('outcome');
+      expect(r.error).toBe(
+        'issue was resolved at tier 1: someone approved it before the test saw its outcome',
+      );
     });
 
     it('a run that finished while the issue stayed fixing', async () => {
@@ -700,6 +761,16 @@ describe('helpers', () => {
   it('gives the fix 16 minutes per tier up to the expected one', () => {
     expect(defaultTimeouts(scenario(1)).fix).toBe(16 * MIN);
     expect(defaultTimeouts(scenario(2)).fix).toBe(32 * MIN);
+  });
+
+  it('budgets the sum of the step limits from the trigger to the outcome', () => {
+    expect(defaultBudget(defaultTimeouts(scenario(1)))).toBe(32 * MIN);
+    expect(defaultBudget(defaultTimeouts(scenario(2)))).toBe(48 * MIN);
+    expect(defaultBudget(defaultTimeouts(scenario(3)))).toBe(64 * MIN);
+    // Seed and reset fall outside it.
+    expect(defaultBudget({ ...defaultTimeouts(scenario(1)), seed: 1, reset: 1, fix: MIN })).toBe(
+      17 * MIN,
+    );
   });
 
   it('parses durations and --timeout values', () => {

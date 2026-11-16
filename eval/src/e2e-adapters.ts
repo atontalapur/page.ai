@@ -50,6 +50,7 @@ const runRow = z.object({
 const countRow = z.object({ n: z.number() });
 const jobRow = z.object({ state: z.enum(JOB_STATES) });
 const nowRow = z.object({ now: z.date() });
+const idRow = z.object({ id: z.string() });
 
 const ISSUE_COLUMNS = `id, fingerprint, title, status, class, severity, current_tier,
   current_run_id, occurrences, created_at, last_seen_at`;
@@ -138,6 +139,21 @@ export class PgPipelineReader implements PipelineReader {
       steps: countRow.parse(steps.rows[0]).n,
       pendingApprovals: countRow.parse(approvals.rows[0]).n,
     };
+  }
+
+  async runIdsForIssue(issueId: string): Promise<string[]> {
+    const [jobs, runs] = await Promise.all([
+      this.db.query(
+        `select id::text as id from ${this.jobTable}
+         where name = $1 and data->>'issueId' = $2 order by created_on`,
+        [FIX_QUEUE, issueId],
+      ),
+      this.db.query('select id::text as id from runs where issue_id = $1 order by created_at', [
+        issueId,
+      ]),
+    ]);
+    const ids = [...jobs.rows, ...runs.rows].map((row) => idRow.parse(row).id);
+    return [...new Set(ids)];
   }
 }
 

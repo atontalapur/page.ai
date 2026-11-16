@@ -161,33 +161,42 @@ the orchestrator is a stub. The test is written for the pipeline as designed.
 | `outcome` | an open PR from `pageagents/<runId>`, or `awaiting_approval` or a pending approval | 2m                    |
 | `reset`   | the reset below                                                                    | 10m                   |
 
-Change a limit with `--timeout fix=20m`. A step that runs out names the last state it
-saw, such as `issue triaged at tier -, no run (nothing sent start_fix after triage)`.
-The orchestrator titles an issue with the whole exception, `<type>: <message>`, so the
-`issue` step matches the title's first line against the report's error line (a ZodError
-is `ZodError: [`). Any other issue seen meanwhile is ignored, and if none matches the step
+Change a limit with `--timeout fix=20m`. A step that runs out names the last state it saw,
+such as `issue triaged at tier -, no run (nothing sent start_fix after triage)`. The
+orchestrator titles an issue with the whole exception, `<type>: <message>`, so the `issue`
+step matches the title's first line against the report's error line (a ZodError is
+`ZodError: [`). Any other issue seen meanwhile is ignored, and if none matches the step
 runs out listing the titles it saw. A scenario that can't pass (no error line in its
 report, or `--expect pr` without `GITHUB_TOKEN` and `GITHUB_REPO`) is refused before
 seeding, so there is nothing to reset.
-The `fix` step also fails when the issue ends `failed` or `killed`, and when the run's job
-has finished but the issue is still `fixing` a minute later (its result never reached the
-orchestrator).
+
+The `fix` and `outcome` steps also fail when the issue ends `failed`, `killed` or
+`resolved`, and `fix` when the run's job has finished but the issue is still `fixing` a
+minute later (its result never reached the orchestrator). Only a human's `approve`
+resolves an issue (`apps/orchestrator/src/issues/transitions.ts`), so a resolved issue
+means someone acted before the test saw the outcome, and it can't tell a PR from a patch
+any more.
 
 `--expect pr` waits for a PR; `--expect approval` for a human approval. The default is
-`pr` for a Tier 2 code scenario and `approval` otherwise, since Tier 1 can't push and
-Tier 3 asks before an ops action. The checks after the outcome: the issue's status, its
-class and severity set, the run it ended on, at least one `steps` row, a fix job that
-didn't fail, the `runs` row (when there is one) and its `pr_url` matching the PR, and the
-time from the trigger to the outcome within `--budget` (default 20m). A class or tier
-other than the scenario's, and a missing `runs` row (nothing writes them yet), are warnings.
+`pr` for a Tier 2 code scenario and `approval` otherwise, since Tier 1 can't push and Tier
+3 asks before an ops action. The checks after the outcome: the issue's status, its class
+and severity set, the run it ended on, at least one `steps` row, a fix job that didn't
+fail, the `runs` row (when there is one) and its `pr_url` matching the PR, and the time
+from the trigger to the outcome within `--budget`. The default budget is the sum of the
+limits of the steps it covers, `trigger` through `outcome`, so it follows `fix` up the
+tiers (32m at Tier 1, 48m at Tier 2, 64m at Tier 3) and any `--timeout`; pass `--budget`
+for a tighter bar. A class or tier other than the scenario's, and a missing `runs` row
+(nothing writes them yet), are warnings.
 
-The reset runs after every outcome, a failed step included: it closes any open PR from the
-test's runs, kills the issue through `POST /issues/:id/events` so the next trigger opens a
-new one, and unseeds the target. A failed reset fails the run, since the next one would
-start dirty. `--keep` skips it, to look at the PR or the issue; clean up by hand after.
-Ctrl-C skips it too. `--runs 3` plays the scenario three times and stops at the first
-failure, which is the card's bar. Only dev bugs run, as with `demo-sync.sh`. The exit code
-is 0 when every run passed, 1 when one failed and 2 for bad arguments.
+The reset runs after every outcome, a failed step included: it kills the issue through
+`POST /issues/:id/events`, which cancels its fix job and lets the next trigger open a new
+issue, then closes any open PR from each of the issue's runs (every pg-boss `fix` job for
+the issue and every `runs` row, not only the runs the test saw), and unseeds the target. A
+failed reset fails the run, since the next one would start dirty. `--keep` skips it, to
+look at the PR or the issue; clean up by hand after. Ctrl-C skips it too. `--runs 3` plays
+the scenario three times and stops at the first failure, which is the card's bar. Only dev
+bugs run, as with `demo-sync.sh`. The exit code is 0 when every run passed, 1 when one
+failed and 2 for bad arguments.
 
 ### Targets
 

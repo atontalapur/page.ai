@@ -116,6 +116,18 @@ describe('PgPipelineReader', () => {
     });
   });
 
+  it("lists an issue's runs from its fix jobs and runs rows, once each", async () => {
+    const R2 = '00000000-0000-4000-8000-0000000000b2';
+    const { db, queries } = fakeDb({
+      'from boss.job': [{ id: RUN }, { id: R2 }],
+      'from runs': [{ id: R2 }],
+    });
+    const reader = new PgPipelineReader(db, { pgbossSchema: 'boss' });
+    expect(await reader.runIdsForIssue(issue.id)).toEqual([RUN, R2]);
+    expect(queries.find((q) => q.text.includes('boss.job'))!.params).toEqual(['fix', issue.id]);
+    expect(queries.find((q) => q.text.includes('from runs'))!.params).toEqual([issue.id]);
+  });
+
   it('refuses a pg-boss schema that is not a plain name', () => {
     expect(() => new PgPipelineReader(fakeDb({}).db, { pgbossSchema: 'x; drop' })).toThrow(
       /plain schema name/,

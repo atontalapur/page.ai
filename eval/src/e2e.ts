@@ -52,6 +52,19 @@ export function defaultTimeouts(scenario: Scenario): Timeouts {
   };
 }
 
+/** The steps between the trigger and the outcome, which `--budget` covers. */
+const BUDGET_STEPS = ['trigger', 'issue', 'triage', 'claim', 'fix', 'outcome'] as const;
+
+/**
+ * The default `--budget`: the sum of the limits of the steps it covers, so a run that
+ * passes every step never fails on the budget alone. It grows with the scenario's tier
+ * through `fix`: 32 minutes at Tier 1, 48 at Tier 2 and 64 at Tier 3 with the default
+ * limits, and follows any `--timeout` given.
+ */
+export function defaultBudget(timeouts: Timeouts): number {
+  return BUDGET_STEPS.reduce((sum, step) => sum + timeouts[step], 0);
+}
+
 /**
  * What the run should end on. `pr`: an open PR from `pageagents/<runId>` on the demo repo.
  * `approval`: the issue waits on a human, either with a patch (`awaiting_approval`) or with
@@ -135,6 +148,11 @@ export interface PipelineReader {
   issuesSeenSince(since: Date): Promise<IssueRow[]>;
   issue(id: string): Promise<IssueRow | null>;
   run(runId: string): Promise<RunProgress>;
+  /**
+   * Every fix run the issue had, oldest first: the pg-boss `fix` jobs for it and its
+   * `runs` rows, so the reset finds runs the test never saw.
+   */
+  runIdsForIssue(issueId: string): Promise<string[]>;
 }
 
 /** The orchestrator's write API, for the reset. */
@@ -173,7 +191,7 @@ export interface E2EOptions {
    * counts as lost: its result never reached the orchestrator (default 60 s).
    */
   settleMs?: number;
-  /** Most time from the trigger to the PR or approval request (default 20 min). */
+  /** Most time from the trigger to the PR or approval request (default `defaultBudget`). */
   budgetMs?: number;
   /** Skip the reset, to look at the PR or the issue afterwards. */
   keep?: boolean;
@@ -439,7 +457,7 @@ export async function runE2E(
   const timeouts = { ...defaultTimeouts(scenario), ...options.timeouts };
   const pollMs = options.pollMs ?? 3000;
   const settleMs = options.settleMs ?? MINUTE;
-  const budgetMs = options.budgetMs ?? 20 * MINUTE;
+  const budgetMs = options.budgetMs ?? defaultBudget(timeouts);
   const start = clock.now();
 
   const result: E2EResult = {
@@ -588,8 +606,17 @@ export async function runE2E(
       log(`[fix] run ${run.runId} at tier ${run.tier ?? '-'}`);
       return run;
     };
+    // `resolved` too: only a human's approve gets there (issues/transitions.ts), so the
+    // test can no longer see the outcome it waits for, nor tell a PR from a patch.
     const stopIfEnded = (row: IssueRow, at: E2EStep) => {
-      if (row.status === 'failed' || row.status === 'killed') {
+      if (row.status === 'resolved') {
+        throw new E2EFailure(
+          at,
+          `issue was resolved at tier ${row.currentTier ?? '-'}: someone approved it before ` +
+            'the test saw its outcome',
+        );
+      }
+      if (isTerminal(row.status)) {
         throw new E2EFailure(at, `issue ended ${row.status} at tier ${row.currentTier ?? '-'}`);
       }
     };
@@ -631,7 +658,6 @@ export async function runE2E(
           stopIfEnded(row, 'fix');
           const run = track(row);
           if (row.status === 'awaiting_approval' || row.status === 'pr_open') return row;
-          if (row.status === 'resolved') return row;
           if (run === undefined) return undefined;
           progress = await reader.run(run.runId);
           if (progress.pendingApprovals > 0) return row;
@@ -667,6 +693,7 @@ export async function runE2E(
         pollMs,
         async () => {
           const row = await read();
+          stopIfEnded(row, 'outcome');
           progress = await reader.run(finalRun.runId);
           if (expect === 'pr') {
             pr = await github!.findOpenPullRequest(agentBranch(finalRun.runId));
@@ -745,8 +772,8 @@ export async function runE2E(
 
 /**
  * Puts things back for the next run, each part on its own so one failure doesn't skip
- * the rest: closes the test's PRs, kills the issue so the next trigger opens a new one,
- * and takes the bug off the target.
+ * the rest: kills the issue so the next trigger opens a new one, closes the PRs of all
+ * its runs, and takes the bug off the target.
  */
 async function reset(
   scenario: Scenario,
@@ -766,23 +793,9 @@ async function reset(
     }
   };
 
-  for (const { runId } of result.runs) {
-    if (github === undefined) break;
-    await attempt(`close PR of ${runId}`, async () => {
-      const pr = await github.findOpenPullRequest(agentBranch(runId), signal);
-      if (pr === null) return 'none open';
-      await github.closePullRequest(
-        pr.number,
-        `Closed by the end-to-end test reset: run \`${runId}\` was a test run of ` +
-          `\`${scenario.id}\`.`,
-        signal,
-      );
-      return `closed #${pr.number}`;
-    });
-  }
-
   const issueId = result.issueId;
   if (issueId !== null) {
+    // First, since the kill cancels the fix job: no run opens a PR after the closes below.
     await attempt(`kill issue ${issueId}`, async () => {
       const row = await reader.issue(issueId);
       if (row === null) return 'gone';
@@ -790,6 +803,30 @@ async function reset(
       await control.killIssue(issueId);
       return `was ${row.status}`;
     });
+
+    if (github !== undefined) {
+      // Every run of the issue, not only those the test saw: a run can start and give way
+      // to the next tier between two reads. If the lookup fails, the seen ones still close.
+      let runIds = result.runs.map((r) => r.runId);
+      await attempt(`find the runs of issue ${issueId}`, async () => {
+        const found = await reader.runIdsForIssue(issueId);
+        runIds = [...new Set([...found, ...runIds])];
+        return `${runIds.length} runs`;
+      });
+      for (const runId of runIds) {
+        await attempt(`close PR of ${runId}`, async () => {
+          const pr = await github.findOpenPullRequest(agentBranch(runId), signal);
+          if (pr === null) return 'none open';
+          await github.closePullRequest(
+            pr.number,
+            `Closed by the end-to-end test reset: run \`${runId}\` was a test run of ` +
+              `\`${scenario.id}\`.`,
+            signal,
+          );
+          return `closed #${pr.number}`;
+        });
+      }
+    }
   }
 
   await attempt('unseed', async () => {
@@ -814,9 +851,7 @@ export function assertEndState(
 
   const waitingOnApproval = issue.status === 'fixing' && progress.pendingApprovals > 0;
   const statuses: readonly IssueStatus[] =
-    expect === 'pr'
-      ? ['pr_open', 'awaiting_approval', 'resolved']
-      : ['awaiting_approval', 'resolved'];
+    expect === 'pr' ? ['pr_open', 'awaiting_approval'] : ['awaiting_approval'];
   check(
     'issue.status',
     'error',
