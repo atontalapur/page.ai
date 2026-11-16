@@ -26,7 +26,12 @@ const dotenvx = require('@dotenvx/dotenvx');
 const { decrypt } = require('@dotenvx/primitives');
 
 // Adding a shared secret means adding it here, so the change shows up in review.
-const SHARED_KEYS = ['NODE_SHARED_SECRET', 'POSTHOG_WEBHOOK_SECRET', 'OPENROUTER_API_KEY'];
+const SHARED_KEYS = [
+  'NODE_SHARED_SECRET',
+  'POSTHOG_WEBHOOK_SECRET',
+  'POSTHOG_KEY',
+  'OPENROUTER_API_KEY',
+];
 const ENCRYPTED = 'encrypted:';
 const SHARED = '.env.shared';
 const KEYS = '.env.keys';
