@@ -24,8 +24,15 @@ async function run(
   args: string[],
   env: NodeJS.ProcessEnv,
   signal: AbortSignal,
+  timeoutMs?: number,
 ): Promise<string> {
-  const { code, output } = await runHost(command, args, env, signal);
+  const { code, output } = await runHost(
+    command,
+    args,
+    env,
+    signal,
+    timeoutMs === undefined ? {} : { timeoutMs },
+  );
   if (code !== 0) {
     const tail = output.trim().split('\n').slice(-15).join('\n');
     throw new Error(`${what} exited ${code}${tail === '' ? '' : `:\n${tail}`}`);
@@ -79,6 +86,11 @@ export interface LocalOptions {
   opsApp: TargetEnv;
   /** Skip the image builds and use the page-sandbox:demo already built. */
   build: boolean;
+  /**
+   * The seed step's limit. The image builds get it instead of runHost's 10 minutes for a
+   * script, since a cold build of both images can take longer.
+   */
+  buildTimeoutMs: number;
 }
 
 /**
@@ -112,6 +124,7 @@ export function localTarget(options: LocalOptions): Target {
           ['build', '-q', '-f', 'infra/sandbox/Dockerfile', '-t', 'page-sandbox', '.'],
           {},
           signal,
+          options.buildTimeoutMs,
         );
         await run(
           `build ${DEMO_IMAGE}`,
@@ -129,6 +142,7 @@ export function localTarget(options: LocalOptions): Target {
           ],
           {},
           signal,
+          options.buildTimeoutMs,
         );
       }
       await runHost('docker', ['rm', '-f', LOCAL_CONTAINER], {}, signal);

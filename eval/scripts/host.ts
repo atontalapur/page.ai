@@ -22,19 +22,22 @@ export function liveAppFromEnv(env: NodeJS.ProcessEnv = process.env): LiveApp | 
 
 /**
  * Runs `command args` from the repo root with `env` over this process's env, and resolves
- * with its exit code and output, stdout and stderr together. `signal` kills it.
+ * with its exit code and output, stdout and stderr together. `signal` kills it, and so
+ * does `timeoutMs` (default HOST_SCRIPT_TIMEOUT_MS), for a command that needs longer
+ * than a scenario script, such as a Docker build.
  */
 export function runHost(
   command: string,
   args: string[],
   env: NodeJS.ProcessEnv = {},
   signal?: AbortSignal,
+  { timeoutMs = HOST_SCRIPT_TIMEOUT_MS }: { timeoutMs?: number } = {},
 ): Promise<ExecResult> {
   return new Promise<ExecResult>((resolve, reject) => {
     const child = spawn(command, args, {
       env: { ...process.env, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: HOST_SCRIPT_TIMEOUT_MS,
+      timeout: timeoutMs,
       ...(signal === undefined ? {} : { signal }),
     });
     let output = '';

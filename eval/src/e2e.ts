@@ -52,6 +52,11 @@ export function defaultTimeouts(scenario: Scenario): Timeouts {
   };
 }
 
+/** The step limits for `scenario`, with `overrides` (from `--timeout`) over the defaults. */
+export function stepTimeouts(scenario: Scenario, overrides: Partial<Timeouts> = {}): Timeouts {
+  return { ...defaultTimeouts(scenario), ...overrides };
+}
+
 /** The steps between the trigger and the outcome, which `--budget` covers. */
 const BUDGET_STEPS = ['trigger', 'issue', 'triage', 'claim', 'fix', 'outcome'] as const;
 
@@ -454,7 +459,7 @@ export async function runE2E(
   const { target, reader, github, clock } = deps;
   const log = deps.log ?? (() => {});
   const expect = options.expect ?? defaultExpectation(scenario);
-  const timeouts = { ...defaultTimeouts(scenario), ...options.timeouts };
+  const timeouts = stepTimeouts(scenario, options.timeouts);
   const pollMs = options.pollMs ?? 3000;
   const settleMs = options.settleMs ?? MINUTE;
   const budgetMs = options.budgetMs ?? defaultBudget(timeouts);

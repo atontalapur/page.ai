@@ -193,10 +193,11 @@ The reset runs after every outcome, a failed step included: it kills the issue t
 issue, then closes any open PR from each of the issue's runs (every pg-boss `fix` job for
 the issue and every `runs` row, not only the runs the test saw), and unseeds the target. A
 failed reset fails the run, since the next one would start dirty. `--keep` skips it, to
-look at the PR or the issue; clean up by hand after. Ctrl-C skips it too. `--runs 3` plays
-the scenario three times and stops at the first failure, which is the card's bar. Only dev
-bugs run, as with `demo-sync.sh`. The exit code is 0 when every run passed, 1 when one
-failed and 2 for bad arguments.
+look at the PR or the issue; clean up by hand after. It only goes with one run: `--keep
+--runs 3` is refused, since run 2 would find run 1's issue still open. Ctrl-C skips it
+too. `--runs 3` plays the scenario three times and stops at the first failure, which is
+the card's bar. Only dev bugs run, as with `demo-sync.sh`. The exit code is 0 when every
+run passed, 1 when one failed and 2 for bad arguments.
 
 ### Targets
 
@@ -209,6 +210,8 @@ daemon can be the Railway ones or local ones.
   Dev mode because some bugs, 001 among them, throw while `next build` prerenders. The
   container migrates and seeds the `demo` database of the compose Postgres (`pnpm db:up`)
   first. The unseed removes the container. `--no-build` reuses the images already built.
+  The builds run under the `seed` limit (`--timeout seed=30m` for a cold cache), not the
+  10 minutes a scenario script gets.
 - An ops scenario runs `break-ops.sh` and `fix-ops.sh` against the compose demo app at
   `DEMO_APP_URL` (default `http://localhost:3000`), started with `OPS_SECRET` set.
 

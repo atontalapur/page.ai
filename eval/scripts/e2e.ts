@@ -12,6 +12,7 @@ import {
   parseDuration,
   parseTimeouts,
   runE2E,
+  stepTimeouts,
   summarize,
   type E2EOptions,
   type E2EResult,
@@ -34,7 +35,7 @@ const USAGE = `usage: pnpm e2e <scenario-id> [--target local|staging] [--expect 
              sum of the trigger to outcome step limits, 32m at Tier 1, 48m at Tier 2)
   --poll     between database reads (default 3s)
   --runs     play it n times in a row, stopping at the first failure (default 1)
-  --keep     skip the reset, to look at the PR and the issue afterwards
+  --keep     skip the reset, to look at the PR and the issue afterwards (one run only)
   --no-build local: use the page-sandbox:demo image already built
   --out      write the results as JSON
 
@@ -87,6 +88,12 @@ if (values.expect !== undefined && values.expect !== 'pr' && values.expect !== '
 }
 const runs = Number(values.runs);
 if (!Number.isInteger(runs) || runs < 1) fail('--runs must be a positive integer');
+if (values.keep && runs > 1) {
+  fail(
+    `--keep can't be used with --runs ${runs}: without the reset, run 2 finds run 1's ` +
+      'issue still open and fails',
+  );
+}
 
 const options: E2EOptions = {
   timeouts: parsed('--timeout', () => parseTimeouts(values.timeout)),
@@ -137,6 +144,7 @@ if (values.target === 'staging') {
       env('E2E_DEMO_DATABASE_URL') ?? `postgres://page:page@host.docker.internal:${pgPort}/demo`,
     opsApp: { url: demoAppUrl ?? 'http://localhost:3000', opsSecret },
     build: !values['no-build'],
+    buildTimeoutMs: stepTimeouts(scenario, options.timeouts).seed,
   });
 }
 
@@ -159,6 +167,15 @@ console.log(
 );
 
 const pool = new pg.Pool({ connectionString: databaseUrl, max: 4, query_timeout: 15_000 });
+// An idle connection the server or network drops is an 'error' on the pool, which would
+// crash the process before the reset. The pool has already dropped that client, so the
+// next query opens a new one. Logs the host only: the URL carries the password.
+pool.on('error', (error) => {
+  const message = error.message.replaceAll(databaseUrl, dbHost);
+  console.error(
+    `database ${dbHost}: idle connection lost (${message}); reconnecting on the next read`,
+  );
+});
 const pgbossSchema = env('PGBOSS_SCHEMA');
 const reader = new PgPipelineReader(pool, pgbossSchema === undefined ? {} : { pgbossSchema });
 const control = new OrchestratorControl(orchestratorUrl);

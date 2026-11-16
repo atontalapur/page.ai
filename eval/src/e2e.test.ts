@@ -12,6 +12,7 @@ import {
   parseTimeouts,
   reportErrorLine,
   runE2E,
+  stepTimeouts,
   summarize,
   type Clock,
   type E2EOptions,
@@ -761,6 +762,10 @@ describe('helpers', () => {
   it('gives the fix 16 minutes per tier up to the expected one', () => {
     expect(defaultTimeouts(scenario(1)).fix).toBe(16 * MIN);
     expect(defaultTimeouts(scenario(2)).fix).toBe(32 * MIN);
+    expect(stepTimeouts(scenario(2), { seed: MIN })).toEqual({
+      ...defaultTimeouts(scenario(2)),
+      seed: MIN,
+    });
   });
 
   it('budgets the sum of the step limits from the trigger to the outcome', () => {
