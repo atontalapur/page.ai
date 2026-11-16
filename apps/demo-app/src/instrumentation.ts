@@ -7,25 +7,26 @@ import { safeReportingConfig } from './observability/config.ts';
 const reportingConfig = safeReportingConfig();
 
 /** Exports only purpose-written storefront outcome logs added by this integration. */
-export const posthogLogProvider = reportingConfig.key && reportingConfig.host
-  ? new LoggerProvider({
-      resource: resourceFromAttributes({
-        'service.name': 'page-demo-app',
-        'service.version': reportingConfig.release,
-      }),
-      processors: [
-        new BatchLogRecordProcessor({
-          exporter: new OTLPLogExporter({
-            url: new URL('/i/v1/logs', reportingConfig.host).toString(),
-            headers: {
-              Authorization: `Bearer ${reportingConfig.key}`,
-              'Content-Type': 'application/json',
-            },
-          }),
+export const posthogLogProvider =
+  reportingConfig.key && reportingConfig.host
+    ? new LoggerProvider({
+        resource: resourceFromAttributes({
+          'service.name': 'page-demo-app',
+          'service.version': reportingConfig.release,
         }),
-      ],
-    })
-  : undefined;
+        processors: [
+          new BatchLogRecordProcessor({
+            exporter: new OTLPLogExporter({
+              url: new URL('/i/v1/logs', reportingConfig.host).toString(),
+              headers: {
+                Authorization: `Bearer ${reportingConfig.key}`,
+                'Content-Type': 'application/json',
+              },
+            }),
+          }),
+        ],
+      })
+    : undefined;
 
 if ((!reportingConfig.key || !reportingConfig.host) && process.env.NODE_ENV !== 'production') {
   const missingVariable = reportingConfig.key ? 'POSTHOG_HOST' : 'POSTHOG_KEY';

@@ -6,10 +6,7 @@ import { posthogLogProvider } from '../instrumentation.ts';
 const storefrontLogger = posthogLogProvider?.getLogger('storefront-outcomes');
 
 /** Emits a structured operational outcome after a successful public storefront API mutation. */
-export function logStorefrontOutcome(
-  body: string,
-  attributes: Record<string, number>,
-): void {
+export function logStorefrontOutcome(body: string, attributes: Record<string, number>): void {
   const provider = posthogLogProvider;
   if (!storefrontLogger || !provider) return;
 
