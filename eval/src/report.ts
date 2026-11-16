@@ -6,11 +6,12 @@ import {
   loadResults,
   type EvalConfig,
   type EvalResults,
+  type EvalSummary,
   type ScenarioRun,
 } from './results.ts';
 import { summarize } from './runner.ts';
 
-const CONFIG_ORDER = Object.keys(EVAL_CONFIGS) as EvalConfig[];
+export const CONFIG_ORDER = Object.keys(EVAL_CONFIGS) as EvalConfig[];
 
 /** Bars from the preregistration. Changing one means a new preregistration. */
 export const BARS = {
@@ -32,7 +33,6 @@ export async function loadResultsFile(path: string): Promise<EvalResults> {
   }
 }
 
-/** Every scenario a file planned: played, skipped, errored or not played. */
 /** Every list in a results file that names scenarios. */
 export const SCENARIO_LISTS = [
   'runs',
@@ -41,6 +41,7 @@ export const SCENARIO_LISTS = [
   'notPlayed',
 ] as const satisfies readonly (keyof EvalResults)[];
 
+/** Every scenario a file planned: played, skipped, errored or not played. */
 export function plannedIds(f: EvalResults): string[] {
   const ids = SCENARIO_LISTS.flatMap((field) => f[field].map((r) => r.scenario));
   return [...new Set(ids)].sort();
@@ -78,9 +79,13 @@ export function incomplete(f: EvalResults): string[] {
   ];
 }
 
-function rate(runs: ScenarioRun[]): string {
-  const s = summarize(runs);
+/** `0.94 (51/54)`, or n/a for no runs. */
+export function rateLabel(s: EvalSummary): string {
   return s.runs === 0 ? 'n/a' : `${s.fixRate.toFixed(2)} (${s.fixed}/${s.runs})`;
+}
+
+function rate(runs: ScenarioRun[]): string {
+  return rateLabel(summarize(runs));
 }
 
 export function usd(n: number | null): string {
@@ -110,12 +115,46 @@ export function table(head: string[], rows: string[][]): string {
   return [line(head), line(head.map(() => '---')), ...rows.map(line)].join('\n');
 }
 
-function groupRate(results: EvalResults[], key: (r: ScenarioRun) => string): string {
+export type GroupKey = (r: ScenarioRun) => string;
+export const byClass: GroupKey = (r) => r.class;
+export const byExpectedTier: GroupKey = (r) => `Tier ${r.expectedTier}`;
+
+export interface Cell {
+  config: EvalConfig;
+  summary: EvalSummary;
+}
+
+export interface Group {
+  key: string;
+  /** One cell per results file, in the order given. */
+  cells: Cell[];
+}
+
+/** Runs split by a key, every key any file played, sorted. */
+export function groupSummaries(results: EvalResults[], key: GroupKey): Group[] {
   const keys = [...new Set(results.flatMap((f) => f.runs.map(key)))].sort();
+  return keys.map((k) => ({
+    key: k,
+    cells: results.map((f) => ({
+      config: f.config,
+      summary: summarize(f.runs.filter((r) => key(r) === k)),
+    })),
+  }));
+}
+
+function groupRate(results: EvalResults[], key: GroupKey): string {
   return table(
     ['', ...results.map((f) => f.config)],
-    keys.map((k) => [k, ...results.map((f) => rate(f.runs.filter((r) => key(r) === k)))]),
+    groupSummaries(results, key).map((g) => [g.key, ...g.cells.map((c) => rateLabel(c.summary))]),
   );
+}
+
+/** Time to fix of every fixed run, or time to page of every paged run, in ms. */
+export function times(f: EvalResults, field: 'timeToFixMs' | 'timeToPageMs'): number[] {
+  return f.runs.flatMap((r) => {
+    const ms = r[field];
+    return ms === null ? [] : [ms];
+  });
 }
 
 export interface BarResult {
@@ -269,9 +308,9 @@ export function renderReport(files: EvalResults[]): string {
     ),
   );
   out.push('\nPer class:\n');
-  out.push(groupRate(results, (r) => r.class));
+  out.push(groupRate(results, byClass));
   out.push('\nPer expected tier:\n');
-  out.push(groupRate(results, (r) => `Tier ${r.expectedTier}`));
+  out.push(groupRate(results, byExpectedTier));
   out.push('\nRuns by tier landed (null: every tier gave up and a person was paged):\n');
   const landed = ['1', '2', '3', 'null'];
   out.push(
@@ -289,8 +328,8 @@ export function renderReport(files: EvalResults[]): string {
     table(
       ['config', 'fixed n', 'fix p50', 'fix p90', 'paged n', 'page p50', 'page p90'],
       results.map((f) => {
-        const fix = f.runs.flatMap((r) => (r.timeToFixMs === null ? [] : [r.timeToFixMs]));
-        const page = f.runs.flatMap((r) => (r.timeToPageMs === null ? [] : [r.timeToPageMs]));
+        const fix = times(f, 'timeToFixMs');
+        const page = times(f, 'timeToPageMs');
         return [
           f.config,
           String(fix.length),
