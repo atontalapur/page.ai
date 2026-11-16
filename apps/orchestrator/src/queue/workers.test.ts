@@ -22,7 +22,10 @@ describe('workers', () => {
       },
     });
     await deps.jobs.sendTriage(issueId, 'fp-worker');
-    await deps.jobs.sendNotify({ v: 1, issueId, channel: 'sms', message: 'page' }, 'fp-worker-sms');
+    await deps.jobs.sendNotify(
+      { v: 2, issueId, channel: 'sms', to: '+15550000001', message: 'page' },
+      'fp-worker-sms',
+    );
 
     await expect
       .poll(() => seen.slice().sort(), { timeout: 8_000 })

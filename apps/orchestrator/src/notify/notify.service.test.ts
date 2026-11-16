@@ -1,114 +1,68 @@
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
-import type { Config } from '../config.ts';
 import { testConfig } from '../db/test-utils.ts';
 import { NotifyService } from './notify.service.ts';
 import { buildPager, FakePager, TwilioPager } from './pager.ts';
 
 const logger = pino({ enabled: false });
-
-function service(pager: FakePager, notifyTo = ['+15551110000']) {
-  const config: Config = { ...testConfig, notifyTo };
-  return new NotifyService(pager, config, logger);
-}
+const issueId = '00000000-0000-4000-8000-000000000001';
+const to = '+15551110000';
+const callJob = { v: 2, issueId, channel: 'call', to, message: 'page' } as const;
+const first = { retryCount: 0, retryLimit: 3 };
+const last = { retryCount: 3, retryLimit: 3 };
 
 describe('NotifyService', () => {
-  it('calls and then texts', async () => {
+  it("calls and then texts the job's phone", async () => {
     const pager = new FakePager();
-    await service(pager).deliver(
-      { v: 1, issueId: '00000000-0000-4000-8000-000000000001', channel: 'call', message: 'page' },
-      { retryCount: 0, retryLimit: 3 },
-    );
-    expect(pager.calls).toEqual([{ to: '+15551110000', message: 'page' }]);
-    expect(pager.texts).toEqual([{ to: '+15551110000', message: 'page' }]);
+    await new NotifyService(pager, logger).deliver(callJob, first);
+    expect(pager.calls).toEqual([{ to, message: 'page' }]);
+    expect(pager.texts).toEqual([{ to, message: 'page' }]);
   });
 
   it('retries a failed call without sending SMS yet', async () => {
     const pager = new FakePager();
     pager.failCalls = 1;
-    await expect(
-      service(pager).deliver(
-        { v: 1, issueId: '00000000-0000-4000-8000-000000000001', channel: 'call', message: 'page' },
-        { retryCount: 0, retryLimit: 3 },
-      ),
-    ).rejects.toThrow('call failed');
+    await expect(new NotifyService(pager, logger).deliver(callJob, first)).rejects.toThrow(
+      'call failed',
+    );
     expect(pager.texts).toEqual([]);
   });
 
-  it('completes without calling again when a follow-up SMS fails', async () => {
+  it('completes without calling again when the follow-up SMS fails', async () => {
     const pager = new FakePager();
     pager.failTexts = 1;
-    await service(pager, ['+15551110000', '+15551110001']).deliver(
-      { v: 1, issueId: '00000000-0000-4000-8000-000000000001', channel: 'call', message: 'page' },
-      { retryCount: 0, retryLimit: 3 },
-    );
-    expect(pager.calls.map((c) => c.to)).toEqual(['+15551110000', '+15551110001']);
-    expect(pager.texts).toEqual([{ to: '+15551110001', message: 'page' }]);
-  });
-
-  it('completes without calling again when one of several calls fails', async () => {
-    const pager = new FakePager();
-    pager.failCalls = 1;
-    await service(pager, ['+15551110000', '+15551110001']).deliver(
-      { v: 1, issueId: '00000000-0000-4000-8000-000000000001', channel: 'call', message: 'page' },
-      { retryCount: 0, retryLimit: 3 },
-    );
-    expect(pager.calls.map((c) => c.to)).toEqual(['+15551110001']);
-    expect(pager.texts.map((t) => t.to)).toEqual(['+15551110000', '+15551110001']);
-  });
-
-  it('fails the job when nothing reaches anyone on the last try', async () => {
-    const pager = new FakePager();
-    pager.failCalls = 1;
-    pager.failTexts = 1;
-    await expect(
-      service(pager).deliver(
-        { v: 1, issueId: '00000000-0000-4000-8000-000000000001', channel: 'call', message: 'page' },
-        { retryCount: 3, retryLimit: 3 },
-      ),
-    ).rejects.toThrow('sms failed');
-  });
-
-  it('still throws when an SMS-only page fails, so it retries', async () => {
-    const pager = new FakePager();
-    pager.failTexts = 1;
-    await expect(
-      service(pager).deliver(
-        { v: 1, issueId: '00000000-0000-4000-8000-000000000001', channel: 'sms', message: 'page' },
-        { retryCount: 0, retryLimit: 3 },
-      ),
-    ).rejects.toThrow('sms failed');
+    await new NotifyService(pager, logger).deliver(callJob, first);
+    expect(pager.calls).toEqual([{ to, message: 'page' }]);
+    expect(pager.texts).toEqual([]);
   });
 
   it('sends SMS when the last call attempt fails', async () => {
     const pager = new FakePager();
     pager.failCalls = 1;
-    await service(pager).deliver(
-      { v: 1, issueId: '00000000-0000-4000-8000-000000000001', channel: 'call', message: 'page' },
-      { retryCount: 3, retryLimit: 3 },
-    );
+    await new NotifyService(pager, logger).deliver(callJob, last);
     expect(pager.calls).toEqual([]);
-    expect(pager.texts).toEqual([{ to: '+15551110000', message: 'page' }]);
+    expect(pager.texts).toEqual([{ to, message: 'page' }]);
   });
 
-  it('does nothing when no numbers are configured', async () => {
+  it('fails the job when neither the last call nor its SMS goes through', async () => {
     const pager = new FakePager();
-    await service(pager, []).deliver(
-      { v: 1, issueId: '00000000-0000-4000-8000-000000000001', channel: 'call', message: 'page' },
-      { retryCount: 0, retryLimit: 3 },
+    pager.failCalls = 1;
+    pager.failTexts = 1;
+    await expect(new NotifyService(pager, logger).deliver(callJob, last)).rejects.toThrow(
+      'sms failed',
     );
-    expect(pager.calls).toEqual([]);
-    expect(pager.texts).toEqual([]);
   });
 
-  it('sends only SMS when the job says so', async () => {
+  it('sends only SMS when the job says so, and throws so a failed text retries', async () => {
     const pager = new FakePager();
-    await service(pager).deliver(
-      { v: 1, issueId: '00000000-0000-4000-8000-000000000001', channel: 'sms', message: 'page' },
-      { retryCount: 0, retryLimit: 3 },
-    );
+    const service = new NotifyService(pager, logger);
+    await service.deliver({ ...callJob, channel: 'sms' }, first);
     expect(pager.calls).toEqual([]);
-    expect(pager.texts).toEqual([{ to: '+15551110000', message: 'page' }]);
+    expect(pager.texts).toEqual([{ to, message: 'page' }]);
+    pager.failTexts = 1;
+    await expect(service.deliver({ ...callJob, channel: 'sms' }, first)).rejects.toThrow(
+      'sms failed',
+    );
   });
 });
 

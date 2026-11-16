@@ -29,10 +29,16 @@ export const fixJobSchema = z.strictObject({
 
 export const NOTIFY_CHANNELS = ['call', 'sms'] as const;
 
+/**
+ * One phone's page. v2 (#127) added `to`: each phone gets its own job, so a pg-boss retry
+ * pages only the phone that missed it.
+ */
 export const notifyJobSchema = z.strictObject({
-  v: z.literal(1),
+  v: z.literal(2),
   issueId: idSchema,
   channel: z.enum(NOTIFY_CHANNELS),
+  // One NOTIFY_TO_NUMBERS entry.
+  to: z.string().min(1),
   message: z.string().min(1),
 });
 

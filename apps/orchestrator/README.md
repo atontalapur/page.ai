@@ -16,7 +16,7 @@ Ingest, triage and notify are wired. The other four are still stubs.
 | `RunsModule`      | Steps, diffs and results the node daemon streams back per run (#8). Stub. |
 | `TiersModule`     | Escalation after a run: up a tier, or to failed past Tier 3. Stub.        |
 | `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions. Stub.       |
-| `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint            |
+| `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone  |
 | `GatewayModule`   | Socket.IO events to and from the UI and node daemons (#34). Stub.         |
 
 ## Issue lifecycle
@@ -39,8 +39,10 @@ transaction as the status change. The job's `runId` is also its pg-boss job id a
 on the issue as `current_run_id`. Entering a new tier or a terminal status cancels the job it
 replaces, so a killed issue's job is never claimed and a superseded job is never retried. The
 `triage`, `fix` and `notify` queues use pg-boss's `exclusive` policy keyed on `fingerprint`,
-so each has at most one open job per issue. `triage` and `notify` retry 3 times with backoff.
-`fix` does not retry. A call that still fails on its last try sends SMS.
+so each has at most one open job per issue. `notify` is keyed on `fingerprint` and phone:
+triage queues one job per `NOTIFY_TO_NUMBERS` entry, so a retry pages only the phone that
+missed it. `triage` and `notify` retry 3 times with backoff. `fix` does not retry. A call that
+still fails on its last try sends SMS.
 
 The daemon's events (`patch_ready`, `escalate`) carry the `runId` of the job they report on.
 An event for any run other than the current one returns 409, so a retried `escalate` cannot

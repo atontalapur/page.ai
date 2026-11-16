@@ -117,7 +117,13 @@ export const jobFixtures: { [Q in QueueName]: JobPayload<Q> } = {
     fingerprint,
     report: 'POST /api/cart/total 500\nTypeError: Cannot read properties of undefined',
   },
-  notify: { v: 1, issueId, channel: 'call', message: 'New high severity backend-api issue.' },
+  notify: {
+    v: 2,
+    issueId,
+    channel: 'call',
+    to: '+15550000001',
+    message: 'New high severity backend-api issue.',
+  },
 };
 
 export const serverToUiEventFixtures: Payloads<ServerToUiEvents> = {

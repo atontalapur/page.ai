@@ -16,7 +16,7 @@ export interface JobQueues {
     fingerprint: string,
     trx?: Transaction<Database>,
   ): Promise<string | null>;
-  /** Queues the on-call page. A second send for the fingerprint returns null. */
+  /** Queues one phone's page. A second send for the fingerprint and phone returns null. */
   sendNotify(
     job: JobPayload<'notify'>,
     fingerprint: string,
@@ -30,7 +30,8 @@ function dbOpt(trx?: Transaction<Database>) {
 
 /** Creates the triage and notify queues if needed and returns senders bound to them. */
 export async function createJobQueues(boss: PgBoss): Promise<JobQueues> {
-  // exclusive + singletonKey: one created or active job per fingerprint.
+  // exclusive + singletonKey: one created or active job per fingerprint, and for notify per
+  // fingerprint and phone, so each phone retries on its own.
   await boss.createQueue(TRIAGE_QUEUE, { policy: 'exclusive', ...RETRIES });
   await boss.createQueue(NOTIFY_QUEUE, { policy: 'exclusive', ...RETRIES });
   return {
@@ -40,7 +41,8 @@ export async function createJobQueues(boss: PgBoss): Promise<JobQueues> {
     },
     sendNotify(job, fingerprint, trx) {
       const data = notifyJobSchema.parse(job);
-      return boss.send(NOTIFY_QUEUE, data, { singletonKey: fingerprint, ...dbOpt(trx) });
+      const singletonKey = `${fingerprint}:${data.to}`;
+      return boss.send(NOTIFY_QUEUE, data, { singletonKey, ...dbOpt(trx) });
     },
   };
 }
