@@ -17,23 +17,12 @@ export interface PostHogBrowserClient {
 let reporter: ErrorReporter = new FakeErrorReporter();
 let serverRenderFailed = false;
 
-/**
- * Starts posthog-js with exception autocapture (window errors and unhandled rejections).
- * Does nothing without a key, so local dev and tests keep the fake.
- */
-export function initClientReporting(
+/** Configures error reporting after the browser client has been initialized. */
+export function configureClientReporting(
   config: ReportingConfig,
   client: PostHogBrowserClient = posthog,
 ): void {
   if (!config.key) return;
-  client.init(config.key, {
-    api_host: config.host,
-    capture_exceptions: true,
-    // Error tracking only. The demo app doesn't need analytics or recordings.
-    autocapture: false,
-    capture_pageview: false,
-    disable_session_recording: true,
-  });
   // A super property, so autocaptured window errors carry the release too.
   client.register({ release: config.release });
   reporter = {
@@ -46,6 +35,23 @@ export function initClientReporting(
       return Promise.resolve();
     },
   };
+}
+
+/**
+ * Starts posthog-js for callers that do not use instrumentation-client.ts directly.
+ * Does nothing without a key, so local dev and tests keep the fake.
+ */
+export function initClientReporting(
+  config: ReportingConfig,
+  client: PostHogBrowserClient = posthog,
+): void {
+  if (!config.key) return;
+  client.init(config.key, {
+    api_host: config.host,
+    defaults: '2026-08-30',
+    capture_exceptions: true,
+  });
+  configureClientReporting(config, client);
 }
 
 export function clientReporter(): ErrorReporter {

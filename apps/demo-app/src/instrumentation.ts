@@ -1,4 +1,42 @@
+import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { BatchLogRecordProcessor, LoggerProvider } from '@opentelemetry/sdk-logs';
 import type { Instrumentation } from 'next';
+import { safeReportingConfig } from './observability/config.ts';
+
+const reportingConfig = safeReportingConfig();
+
+/** Exports only purpose-written storefront outcome logs added by this integration. */
+export const posthogLogProvider = reportingConfig.key && reportingConfig.host
+  ? new LoggerProvider({
+      resource: resourceFromAttributes({
+        'service.name': 'page-demo-app',
+        'service.version': reportingConfig.release,
+      }),
+      processors: [
+        new BatchLogRecordProcessor({
+          exporter: new OTLPLogExporter({
+            url: new URL('/i/v1/logs', reportingConfig.host).toString(),
+            headers: {
+              Authorization: `Bearer ${reportingConfig.key}`,
+              'Content-Type': 'application/json',
+            },
+          }),
+        }),
+      ],
+    })
+  : undefined;
+
+if ((!reportingConfig.key || !reportingConfig.host) && process.env.NODE_ENV !== 'production') {
+  const missingVariable = reportingConfig.key ? 'POSTHOG_HOST' : 'POSTHOG_KEY';
+  console.warn(
+    `${missingVariable} variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once ${missingVariable} is configured`,
+  );
+}
+
+export function register() {
+  // The dedicated logger is taken from this provider directly, so it works across OTel versions.
+}
 
 /**
  * Reports every unhandled server error (pages, route handlers, server actions) so a

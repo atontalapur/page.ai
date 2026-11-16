@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { browserReportingEnv, loadReportingConfig, safeReportingConfig } from './config.ts';
 
 describe('loadReportingConfig', () => {
-  it('defaults to no key, the US cloud host and a dev release', () => {
+  it('defaults to no reporting configuration and a dev release', () => {
     expect(loadReportingConfig({})).toEqual({
       key: undefined,
-      host: 'https://us.i.posthog.com',
+      host: '',
       release: 'dev',
     });
   });
@@ -24,17 +24,17 @@ describe('loadReportingConfig', () => {
     ).toEqual({ key: 'phc_test', host: 'https://eu.i.posthog.com', release: 'abc123' });
   });
 
-  it('rejects a host that is not a URL', () => {
-    expect(() => loadReportingConfig({ POSTHOG_HOST: 'posthog' })).toThrow();
+  it('passes the configured host through without validating its format', () => {
+    expect(loadReportingConfig({ POSTHOG_HOST: 'posthog' }).host).toBe('posthog');
   });
 });
 
 describe('safeReportingConfig', () => {
-  it('turns reporting off instead of throwing on a bad value', () => {
+  it('turns reporting off instead of throwing on a bad release', () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(
-      safeReportingConfig({ POSTHOG_KEY: 'phc_test', POSTHOG_HOST: 'nope' }).key,
-    ).toBeUndefined();
+    expect(safeReportingConfig({ POSTHOG_KEY: 'phc_test', RAILWAY_GIT_COMMIT_SHA: '' }).key).toBe(
+      undefined,
+    );
     expect(log).toHaveBeenCalledOnce();
     log.mockRestore();
   });
@@ -47,10 +47,14 @@ describe('safeReportingConfig', () => {
 describe('browserReportingEnv', () => {
   it('maps the config to the values next.config.ts inlines', () => {
     expect(
-      browserReportingEnv({ POSTHOG_KEY: 'phc_test', RAILWAY_GIT_COMMIT_SHA: 'abc123' }),
+      browserReportingEnv({
+        POSTHOG_KEY: 'phc_test',
+        POSTHOG_HOST: 'posthog',
+        RAILWAY_GIT_COMMIT_SHA: 'abc123',
+      }),
     ).toEqual({
       NEXT_PUBLIC_POSTHOG_KEY: 'phc_test',
-      NEXT_PUBLIC_POSTHOG_HOST: 'https://us.i.posthog.com',
+      NEXT_PUBLIC_POSTHOG_HOST: 'posthog',
       NEXT_PUBLIC_RELEASE: 'abc123',
     });
   });

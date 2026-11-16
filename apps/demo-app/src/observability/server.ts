@@ -42,8 +42,15 @@ export class PostHogErrorReporter implements ErrorReporter {
 }
 
 export function createServerReporter(config: ReportingConfig): ErrorReporter {
-  if (!config.key) return new FakeErrorReporter(config.release);
-  return new PostHogErrorReporter(new PostHog(config.key, { host: config.host }), config.release);
+  if (!config.key || !config.host) return new FakeErrorReporter(config.release);
+  return new PostHogErrorReporter(
+    new PostHog(config.key, {
+      host: config.host,
+      requestTimeout: 2000,
+      fetchRetryCount: 0,
+    }),
+    config.release,
+  );
 }
 
 let reporter: ErrorReporter | undefined;
