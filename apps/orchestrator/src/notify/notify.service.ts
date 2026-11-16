@@ -21,7 +21,7 @@ export class NotifyService {
    * Triage queues one job per phone, so a retry never rings another phone. Once the call is
    * placed, a failed follow-up text is logged and the job completes: throwing would retry
    * the job and ring this phone again. A Twilio trial account rejects every custom SMS body,
-   * so that case is the norm on trial (docs/twilio.md).
+   * so without TWILIO_TRIAL that case is the norm on trial (docs/twilio.md).
    */
   async deliver(job: JobPayload<'notify'>, attempt: NotifyAttempt): Promise<void> {
     const context = { issueId: job.issueId, to: maskNumber(job.to) };

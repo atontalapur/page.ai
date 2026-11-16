@@ -9,15 +9,17 @@ From Twilio's [trial restrictions](https://www.twilio.com/docs/usage/trials):
 
 - Calls and texts reach verified numbers only, five at most. The number you sign up with is
   verified automatically.
-- An SMS body must be one of Twilio's template names, such as `sms_internal_alerts`. The
-  orchestrator's own page text (class and dashboard link) is rejected, so on trial a page
-  arrives as a call only. Each phone has its own notify job: a failed call retries that phone
-  alone, and once its call goes through, a failed text is logged without calling it again.
-- Calls can speak custom text with `<Say>`, so the call still names the class.
-- Answering machine detection works on trial. The orchestrator turns it on, so a call that
-  voicemail picks up counts as not answered and that phone is called again. The message
-  plays after the beep, so the voicemail holds all of it. On a paid account Twilio bills each
-  detection; set `TWILIO_MACHINE_DETECTION=false` to turn it off, or if Twilio rejects it.
+- Calls and texts use Twilio's templates only. A create-call request may carry just `To` and
+  one of Twilio's template URLs, and a text one of its template bodies such as
+  `sms_internal_alerts` ("Try out Voice" and "Try out SMS" in Twilio's docs). Anything else,
+  such as our own spoken message (`Twiml`), a `From` number or `MachineDetection`, fails with
+  `400 ... trial accounts have limited parameter access`. So set `TWILIO_TRIAL=true` on a
+  trial account: the call plays Twilio's sample speech and the text is its alert template.
+  The phone still rings and gets a text, but neither names the issue; open the dashboard.
+- Answering machine detection needs a paid account, so it stays off on trial. After an
+  upgrade, set `TWILIO_MACHINE_DETECTION=true`: voicemail then counts as not answered and
+  that phone is called again, with the message played after the beep. Twilio bills each
+  detection.
 - The trial ends 30 days after sign-up. Voice has 75 minutes in total, 10 per call.
 - Calls and texts stay inside the sign-up country.
 - Twilio assigns the trial number, and it can differ between voice and SMS. If the test call
@@ -45,13 +47,14 @@ entries.
 
 Set these on the `orchestrator` service in the `extraordinary-presence` project:
 
-| Variable             | Value                    |
-| -------------------- | ------------------------ |
-| `TWILIO_ACCOUNT_SID` | Account SID              |
-| `TWILIO_AUTH_TOKEN`  | Auth Token               |
-| `TWILIO_FROM_NUMBER` | Trial number, E.164      |
-| `NOTIFY_TO_NUMBERS`  | The sign-up phone, E.164 |
-| `USE_FAKE_ADAPTERS`  | `false`                  |
+| Variable             | Value                     |
+| -------------------- | ------------------------- |
+| `TWILIO_ACCOUNT_SID` | Account SID               |
+| `TWILIO_AUTH_TOKEN`  | Auth Token                |
+| `TWILIO_FROM_NUMBER` | Trial number, E.164       |
+| `NOTIFY_TO_NUMBERS`  | The sign-up phone, E.164  |
+| `TWILIO_TRIAL`       | `true` while on the trial |
+| `USE_FAKE_ADAPTERS`  | `false`                   |
 
 The orchestrator keeps the fake pager, which records pages instead of sending them, while
 `USE_FAKE_ADAPTERS` is on, while the three Twilio settings are unset, or while
@@ -68,7 +71,7 @@ Run it with Railway's values, so it tests exactly what the orchestrator uses and
 lands in a local file (needs the Railway CLI, logged in and linked to the project):
 
 ```sh
-railway run --service orchestrator pnpm --filter @page/orchestrator page:test --sms-body sms_internal_alerts
+railway run --service orchestrator pnpm --filter @page/orchestrator page:test
 ```
 
 Without the CLI, put the four values in the repo's `.env` and drop the `railway run
@@ -78,8 +81,11 @@ This places one call and sends one SMS to every number in `NOTIFY_TO_NUMBERS` th
 same adapter and config parser the orchestrator uses. It prints one line per phone and
 channel, with only the last four digits of any number, and exits 1 if Twilio rejected any
 of them. A call line says `sent` only once a person picks up; busy or no answer shows as
-`FAILED call no-answer`, and voicemail as `FAILED call answered by machine_end_beep`. Calls
-go one phone at a time, so answer each as it rings. #127 is done when both lines say `sent`
-and the phone got the text. Paste the output into the issue.
+`FAILED call no-answer`. With detection on (paid accounts), voicemail shows as `FAILED call
+answered by machine_end_beep`. Calls go one phone at a time, so answer each as it rings.
+#127 is done when both lines say `sent` and the phone got the text. Paste the output into
+the issue.
 
-After an upgrade, drop `--sms-body` to send the script's own text instead of a template.
+With `TWILIO_TRIAL=true` the call and the text are Twilio's templates. After an upgrade, turn
+it off: the call then speaks the script's own message and `--sms-body <text>` sets the
+text.

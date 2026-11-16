@@ -46,6 +46,12 @@ function escapeXml(value: string): string {
     .replaceAll("'", '&apos;');
 }
 
+// A trial account's create-call request may carry only To and one of Twilio's template URLs
+// (Url), and a text only one of its template bodies. See Twilio's "Try out Voice" and
+// "Try out SMS" docs.
+const TRIAL_CALL_URL = 'https://webhooks.twilio.com/v1/Voice/Template/voice_text_to_speech';
+const TRIAL_SMS_BODY = 'sms_internal_alerts';
+
 // Twilio's CallStatus values. in-progress and completed mean the phone was picked up.
 const ANSWERED = new Set(['in-progress', 'completed']);
 const NOT_ANSWERED = new Set(['busy', 'no-answer', 'failed', 'canceled']);
@@ -99,12 +105,16 @@ export class TwilioPager implements Pager {
    * the whole message after the beep. `unknown` counts as a person: often someone who
    * answered and stayed quiet. Twilio's create response only says the call was queued, so
    * the status is polled. A call still unresolved after maxWaitMs resolves, since a retry
-   * then could ring a phone that is about to pick up.
+   * then could ring a phone that is about to pick up. On a trial account the call plays
+   * Twilio's sample speech instead of the message, and detection is never sent.
    */
   async call(to: string, message: string): Promise<void> {
     const twiml = `<Response><Say>${escapeXml(message)}</Say></Response>`;
-    const fields: Record<string, string> = { To: to, From: this.creds.from, Twiml: twiml };
-    if (this.creds.machineDetection) fields.MachineDetection = 'DetectMessageEnd';
+    const fields: Record<string, string> = this.creds.trial
+      ? { To: to, Url: TRIAL_CALL_URL }
+      : { To: to, From: this.creds.from, Twiml: twiml };
+    const detect = this.creds.machineDetection && !this.creds.trial;
+    if (detect) fields.MachineDetection = 'DetectMessageEnd';
     const placed = callSchema.safeParse(parseJson(await this.request('Calls.json', fields)));
     // Twilio accepted the call. Without its sid it can't be watched, and throwing would ring
     // the phone again, so count it as placed.
@@ -113,8 +123,7 @@ export class TwilioPager implements Pager {
     let call = placed.data;
     // While the call is in progress, detection may still be listening.
     const settled = () =>
-      FINAL.has(call.status) &&
-      !(this.creds.machineDetection && call.status === 'in-progress' && !call.answered_by);
+      FINAL.has(call.status) && !(detect && call.status === 'in-progress' && !call.answered_by);
     for (let waited = 0; !settled() && waited < maxWaitMs; waited += pollMs) {
       await this.wait.sleep(pollMs);
       try {
@@ -128,8 +137,10 @@ export class TwilioPager implements Pager {
     if (machineAnswered(call.answered_by)) throw new Error(`call answered by ${call.answered_by}`);
   }
 
+  /** On a trial account the text is Twilio's alert template, since custom bodies are refused. */
   async sms(to: string, message: string): Promise<void> {
-    await this.request('Messages.json', { To: to, From: this.creds.from, Body: message });
+    const body = this.creds.trial ? TRIAL_SMS_BODY : message;
+    await this.request('Messages.json', { To: to, From: this.creds.from, Body: body });
   }
 
   /** POSTs the fields as a form, or GETs when there are none, and returns the body. */

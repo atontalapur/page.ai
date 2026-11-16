@@ -66,13 +66,19 @@ describe('NotifyService', () => {
   });
 });
 
-const creds = { accountSid: 'AC', authToken: 't', from: '+1', machineDetection: true };
+const creds = {
+  accountSid: 'AC',
+  authToken: 't',
+  from: '+1',
+  machineDetection: true,
+  trial: false,
+};
 
 /**
  * Answers the call POST with the first state and each status check with the next. A state is
  * a CallStatus, `status:answeredBy`, or `error` for a failed check.
  */
-function fakeTwilio(states: string[], machineDetection = true) {
+function fakeTwilio(states: string[], machineDetection = true, trial = false) {
   const urls: string[] = [];
   const posted: URLSearchParams[] = [];
   let next = 0;
@@ -87,7 +93,7 @@ function fakeTwilio(states: string[], machineDetection = true) {
     return Promise.resolve(Response.json(body, { status: 201 }));
   };
   const wait = { pollMs: 1_000, maxWaitMs: 5_000, sleep: () => Promise.resolve() };
-  const pager = new TwilioPager({ ...creds, machineDetection }, fetchFn, wait);
+  const pager = new TwilioPager({ ...creds, machineDetection, trial }, fetchFn, wait);
   return {
     pager,
     urls,
@@ -153,6 +159,15 @@ describe('TwilioPager', () => {
   it('counts an unknown verdict as a person', async () => {
     const twilio = fakeTwilio(['queued', 'completed:unknown']);
     await expect(twilio.pager.call('+2000', 'page')).resolves.toBeUndefined();
+  });
+
+  it('sends only To and the speech template on a trial account', async () => {
+    const twilio = fakeTwilio(['queued', 'in-progress'], true, true);
+    await twilio.pager.call('+2000', 'page');
+    expect([...(twilio.posted[0]?.keys() ?? [])]).toEqual(['To', 'Url']);
+    expect(twilio.posted[0]?.get('Url')).toMatch(/Voice\/Template\/voice_text_to_speech$/);
+    await twilio.pager.sms('+2000', 'high backend-api: Boom');
+    expect(twilio.posted[1]?.get('Body')).toBe('sms_internal_alerts');
   });
 
   it('skips detection when it is off', async () => {
