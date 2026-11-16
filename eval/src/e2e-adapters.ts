@@ -1,14 +1,27 @@
-import { BUG_CLASSES, ISSUE_STATUSES, RUN_STATUSES, SEVERITIES, tierSchema } from '@page/contracts';
+import {
+  BUG_CLASSES,
+  ISSUE_STATUSES,
+  RUN_STATUSES,
+  SEVERITIES,
+  tierSchema,
+  type QueueName,
+} from '@page/contracts';
 import type { SqlClient } from '@page/toolkit';
 import { z } from 'zod';
-import type { Clock, IssueRow, PipelineControl, PipelineReader, RunProgress } from './e2e.ts';
+import {
+  JOB_STATES,
+  type Clock,
+  type IssueRow,
+  type PipelineControl,
+  type PipelineReader,
+  type RunProgress,
+} from './e2e.ts';
 
 // The real adapters behind the end-to-end test's database and orchestrator ports. They
 // only read the database, through any `pg` Pool or Client; the one write, the reset's
 // kill, goes through the orchestrator's API like any other client's.
 
-const FIX_QUEUE = 'fix';
-const JOB_STATES = ['created', 'retry', 'active', 'completed', 'cancelled', 'failed'] as const;
+const FIX_QUEUE = 'fix' satisfies QueueName;
 const SCHEMA_NAME = /^[a-z_][a-z0-9_]*$/;
 
 const issueRow = z.object({

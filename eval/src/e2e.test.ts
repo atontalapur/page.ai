@@ -1,5 +1,5 @@
 import type { Tier } from '@page/contracts';
-import type { PullRequest } from '@page/toolkit';
+import { AGENT_BRANCH_PREFIX, type PullRequest } from '@page/toolkit';
 import { describe, expect, it } from 'vitest';
 import {
   defaultExpectation,
@@ -226,7 +226,7 @@ const status = (at: number, value: IssueRow['status']): Change => ({
 const pr = (at: number, runId: string, number: number): Change => ({
   at,
   apply: (w) =>
-    w.prs.set(`pageagents/${runId}`, {
+    w.prs.set(`${AGENT_BRANCH_PREFIX}${runId}`, {
       number,
       url: `https://github.com/atontalapur/page-demo/pull/${number}`,
     }),

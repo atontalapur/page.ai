@@ -1,5 +1,12 @@
-import type { BugClass, IssueStatus, Run, Severity, Tier } from '@page/contracts';
-import type { GitHub, PullRequest } from '@page/toolkit';
+import {
+  TERMINAL_ISSUE_STATUSES,
+  type BugClass,
+  type IssueStatus,
+  type Run,
+  type Severity,
+  type Tier,
+} from '@page/contracts';
+import { AGENT_BRANCH_PREFIX, type GitHub, type PullRequest } from '@page/toolkit';
 import type { Scenario } from './scenario.ts';
 
 // The end-to-end test of the live pipeline (#14). It seeds a scenario's bug on a target demo
@@ -86,8 +93,16 @@ export interface IssueRow {
   lastSeenAt: Date;
 }
 
-/** pg-boss job states (pg-boss `states`). */
-export type JobState = 'created' | 'retry' | 'active' | 'completed' | 'cancelled' | 'failed';
+/** pg-boss job states (pg-boss `states`), as the `job` table's `state` column holds them. */
+export const JOB_STATES = [
+  'created',
+  'retry',
+  'active',
+  'completed',
+  'cancelled',
+  'failed',
+] as const;
+export type JobState = (typeof JOB_STATES)[number];
 
 /** A `runs` row. The orchestrator writes these once RunsModule lands (#8). */
 export interface RunRow {
@@ -291,11 +306,12 @@ export function reportErrorLine(report: string): string | null {
   return lines.slice(blank + 1).find((line) => line.trim() !== '') ?? null;
 }
 
-const TERMINAL: readonly IssueStatus[] = ['resolved', 'failed', 'killed'];
+const isTerminal = (status: IssueStatus) =>
+  (TERMINAL_ISSUE_STATUSES as readonly IssueStatus[]).includes(status);
 const JOB_DONE: readonly JobState[] = ['completed', 'failed', 'cancelled'];
 const RUN_DONE: readonly Run['status'][] = ['succeeded', 'escalated', 'failed', 'killed'];
 
-const agentBranch = (runId: string) => `pageagents/${runId}`;
+const agentBranch = (runId: string) => `${AGENT_BRANCH_PREFIX}${runId}`;
 
 function describeIssue(issue: IssueRow | null): string {
   if (issue === null) return 'issue row gone';
@@ -748,7 +764,7 @@ async function reset(
     await attempt(`kill issue ${issueId}`, async () => {
       const row = await reader.issue(issueId);
       if (row === null) return 'gone';
-      if (TERMINAL.includes(row.status)) return `already ${row.status}`;
+      if (isTerminal(row.status)) return `already ${row.status}`;
       await control.killIssue(issueId);
       return `was ${row.status}`;
     });
