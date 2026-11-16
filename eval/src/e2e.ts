@@ -234,6 +234,55 @@ export function formatMs(ms: number): string {
   return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s`;
 }
 
+const UNITS = { ms: 1, s: 1000, m: MINUTE, h: 60 * MINUTE } as const;
+
+/** `90s`, `20m`, `1.5h` or `500ms` in milliseconds. Throws on anything else. */
+export function parseDuration(text: string): number {
+  const match = /^(\d+(?:\.\d+)?)(ms|s|m|h)$/.exec(text.trim());
+  if (match === null) throw new Error(`${JSON.stringify(text)} is not a duration like 90s or 20m`);
+  const ms = Number(match[1]) * UNITS[match[2] as keyof typeof UNITS];
+  if (!(ms > 0)) throw new Error(`${JSON.stringify(text)} must be longer than 0`);
+  return ms;
+}
+
+/** `--timeout` values, `fix=20m` each, as step limits. */
+export function parseTimeouts(values: readonly string[]): Partial<Timeouts> {
+  const steps: readonly string[] = E2E_STEPS.filter((s) => s !== 'assert');
+  const timeouts: Partial<Timeouts> = {};
+  for (const value of values) {
+    const [name, duration, ...rest] = value.split('=');
+    if (name === undefined || duration === undefined || rest.length > 0 || !steps.includes(name)) {
+      throw new Error(
+        `${JSON.stringify(value)}: want <step>=<duration>, step one of ${steps.join(', ')}`,
+      );
+    }
+    timeouts[name as TimedStep] = parseDuration(duration);
+  }
+  return timeouts;
+}
+
+/** The result as a few lines for the terminal. */
+export function summarize(r: E2EResult): string {
+  const lines = [
+    `${r.passed ? 'PASS' : 'FAIL'} ${r.scenario} on ${r.target} (expect ${r.expect})` +
+      (r.error === null ? '' : `: ${r.failedStep} ${r.error}`),
+  ];
+  for (const s of r.steps) {
+    const mark = s.ok ? 'ok  ' : 'FAIL';
+    lines.push(`  ${mark} ${s.step.padEnd(8)} ${formatMs(s.durationMs).padStart(7)}  ${s.detail}`);
+  }
+  if (r.timeToOutcomeMs !== null) {
+    lines.push(`  trigger to outcome: ${formatMs(r.timeToOutcomeMs)}`);
+  }
+  for (const c of r.checks.filter((c) => !c.ok)) {
+    lines.push(`  ${c.level} ${c.name}: ${c.detail}`);
+  }
+  for (const a of r.reset.filter((a) => !a.ok)) {
+    lines.push(`  reset ${a.action} failed: ${a.detail}`);
+  }
+  return lines.join('\n');
+}
+
 /** The error line of a scenario's report: the first line after the request line. */
 export function reportErrorLine(report: string): string | null {
   const lines = report.split('\n');

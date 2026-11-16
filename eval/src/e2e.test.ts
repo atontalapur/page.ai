@@ -5,8 +5,11 @@ import {
   defaultExpectation,
   defaultTimeouts,
   formatMs,
+  parseDuration,
+  parseTimeouts,
   reportErrorLine,
   runE2E,
+  summarize,
   type Clock,
   type E2EOptions,
   type E2EResult,
@@ -654,5 +657,40 @@ describe('helpers', () => {
   it('gives the fix 16 minutes per tier up to the expected one', () => {
     expect(defaultTimeouts(scenario(1)).fix).toBe(16 * MIN);
     expect(defaultTimeouts(scenario(2)).fix).toBe(32 * MIN);
+  });
+
+  it('parses durations and --timeout values', () => {
+    expect(parseDuration('500ms')).toBe(500);
+    expect(parseDuration('90s')).toBe(90 * S);
+    expect(parseDuration('1.5h')).toBe(90 * MIN);
+    expect(() => parseDuration('20')).toThrow('is not a duration');
+    expect(() => parseDuration('0s')).toThrow('longer than 0');
+    expect(parseTimeouts(['fix=20m', 'issue=90s'])).toEqual({ fix: 20 * MIN, issue: 90 * S });
+    expect(() => parseTimeouts(['assert=1m'])).toThrow('want <step>=<duration>');
+    expect(() => parseTimeouts(['fix'])).toThrow('want <step>=<duration>');
+    expect(() => parseTimeouts(['fix=1m=2'])).toThrow('want <step>=<duration>');
+  });
+
+  it('summarizes a result', async () => {
+    const changes = tier1Fix();
+    changes[1] = {
+      at: 45 * S,
+      apply: (w) =>
+        Object.assign(w.issue(), { status: 'triaged', class: 'database', severity: 'low' }),
+    };
+    const h = harness(changes);
+    h.world.control.killIssue = () => Promise.reject(new Error('409'));
+    const text = summarize(await play(h, scenario(1)));
+    expect(text.split('\n')[0]).toBe(
+      `FAIL 001-bad-currency-code on fake (expect approval): reset kill issue ${ISSUE}: 409`,
+    );
+    expect(text).toContain('  ok   seed       20.0s  001-bad-currency-code on fake');
+    expect(text).toContain('  FAIL reset ');
+    expect(text).toMatch(/trigger to outcome: 6m0\ds/);
+    expect(text).toContain('  warn issue.class: database, scenario says frontend');
+    expect(text).toContain(`  reset kill issue ${ISSUE} failed: 409`);
+
+    const passed = summarize(await play(harness(tier1Fix()), scenario(1)));
+    expect(passed.split('\n')[0]).toBe('PASS 001-bad-currency-code on fake (expect approval)');
   });
 });

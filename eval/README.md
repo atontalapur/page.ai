@@ -131,3 +131,96 @@ pnpm eval:tune eval/results/<dev-run>-*.json
   none, it compares `threshold.ts` at the file's `gitSha` with the working tree. It
   refuses the same run passed twice (a copy, a symlink, or a checkpoint next to its
   resume), but pools two runs of one config (say a rerun after a provider stop).
+
+## End-to-end test (#14)
+
+```sh
+pnpm e2e 001-bad-currency-code --target local
+pnpm e2e 001-bad-currency-code --target staging --runs 3
+```
+
+`pnpm e2e` plays one scenario through the live pipeline: it seeds the bug, runs
+`trigger.sh`, then waits on the orchestrator's database for each step and checks the end
+state. It loads `.env` if there is one (`--env-file-if-exists`). It talks to real
+PostHog, the orchestrator, the node daemon and GitHub, so the daemon has to be up with a
+model key. `src/e2e.ts` has the steps, behind ports that the unit tests fake;
+`src/e2e-adapters.ts` and `scripts/e2e-targets.ts` are the real adapters.
+
+Until the rest of the pipeline lands, a run stops at `claim`: nothing applies `start_fix`
+after triage, and the gateway that would carry the daemon's `node.run.finished` back to
+the orchestrator is a stub. The test is written for the pipeline as designed.
+
+| Step      | Waits for                                                                          | Default limit         |
+| --------- | ---------------------------------------------------------------------------------- | --------------------- |
+| `seed`    | the bug live on the target (see below)                                             | 20m                   |
+| `trigger` | `trigger.sh` to exit 0                                                             | 2m                    |
+| `issue`   | an `issues` row opened after the trigger, titled like the report's error           | 5m                    |
+| `triage`  | the issue to leave `new`                                                           | 2m                    |
+| `claim`   | a fix run on the issue that a daemon picked up (pg-boss job, steps or row)         | 5m                    |
+| `fix`     | the issue to wait on a human, following each tier of a ladder climb                | 16m per expected tier |
+| `outcome` | an open PR from `pageagents/<runId>`, or `awaiting_approval` or a pending approval | 2m                    |
+| `reset`   | the reset below                                                                    | 10m                   |
+
+Change a limit with `--timeout fix=20m`. A step that runs out names the last state it
+saw, such as `issue triaged at tier -, no run (nothing sent start_fix after triage)`.
+The `fix` step also fails when the issue ends `failed` or `killed`, and when the run's job
+has finished but the issue is still `fixing` a minute later (its result never reached the
+orchestrator).
+
+`--expect pr` waits for a PR; `--expect approval` for a human approval. The default is
+`pr` for a Tier 2 code scenario and `approval` otherwise, since Tier 1 can't push and
+Tier 3 asks before an ops action. The checks after the outcome: the issue's status, its
+class and severity set, the run it ended on, at least one `steps` row, a fix job that
+didn't fail, the `runs` row (when there is one) and its `pr_url` matching the PR, and the
+time from the trigger to the outcome within `--budget` (default 20m). A class or tier
+other than the scenario's, and a missing `runs` row (nothing writes them yet), are warnings.
+
+The reset runs after every outcome, a failed step included: it closes any open PR from the
+test's runs, kills the issue through `POST /issues/:id/events` so the next trigger opens a
+new one, and unseeds the target. A failed reset fails the run, since the next one would
+start dirty. `--keep` skips it, to look at the PR or the issue; clean up by hand after.
+Ctrl-C skips it too. `--runs 3` plays the scenario three times and stops at the first
+failure, which is the card's bar. Only dev bugs run, as with `demo-sync.sh`. The exit code
+is 0 when every run passed, 1 when one failed and 2 for bad arguments.
+
+### Targets
+
+`--target local` (the default) runs the demo app on this machine; the orchestrator and
+daemon can be the Railway ones or local ones.
+
+- A code scenario builds `page-sandbox` and `page-sandbox:demo` with the scenario seeded,
+  then serves the demo app from that image with `next dev` in a container named
+  `page-e2e-demo-app`, on `E2E_DEMO_APP_PORT` (default 3100, so the compose app keeps 3000).
+  Dev mode because some bugs, 001 among them, throw while `next build` prerenders. The
+  container migrates and seeds the `demo` database of the compose Postgres (`pnpm db:up`)
+  first. The unseed removes the container. `--no-build` reuses the images already built.
+- An ops scenario runs `break-ops.sh` and `fix-ops.sh` against the compose demo app at
+  `DEMO_APP_URL` (default `http://localhost:3000`), started with `OPS_SECRET` set.
+
+`--target staging` runs against the deployed app at `DEMO_APP_URL`. The test never deploys,
+so a code scenario's bug must already be live there: staging serves the seeded demo baseline
+(`infra/sandbox/demo-sync.sh <id>`, `docs/demo-repo.md`). Seeding only waits for
+`/api/health`, and since the reset closes the agent's PR, `main` keeps the bug for the next
+run. An ops scenario runs `break-ops.sh` and `fix-ops.sh` there. A bad deploy (024) needs
+the compose stand-in and is refused.
+
+On both targets, the daemon has to run `SANDBOX_IMAGE=page-sandbox:demo` built for the same
+scenario, and page-demo `main` has to hold the same tree (`demo-sync.sh <id>`), or the PR's
+diff carries more than the fix.
+
+### Environment
+
+| Variable                                        | For                                                                      |
+| ----------------------------------------------- | ------------------------------------------------------------------------ |
+| `E2E_DATABASE_URL`, else `DATABASE_URL`         | The orchestrator's database, read only. Railway's public URL for staging |
+| `E2E_ORCHESTRATOR_URL`, else `ORCHESTRATOR_URL` | The orchestrator API, for the reset's kill                               |
+| `GITHUB_TOKEN`, `GITHUB_REPO`                   | Finding and closing the PR. Needed for `--expect pr`                     |
+| `DEMO_APP_URL`                                  | Staging's app; the compose app for local ops scenarios                   |
+| `OPS_SECRET`                                    | Ops scenarios                                                            |
+| `PGBOSS_SCHEMA`                                 | The orchestrator's pg-boss schema (default `pgboss`)                     |
+| `POSTHOG_KEY`, `POSTHOG_HOST`                   | Local code scenarios: passed to the demo app container                   |
+| `E2E_DEMO_APP_PORT`, `E2E_DEMO_DATABASE_URL`    | Local code scenarios (defaults 3100 and the compose Postgres's `demo`)   |
+
+The run prints the database's host, never its URL. If Railway's Postgres wants TLS, add
+`?sslmode=require` to the URL. The PostHog webhook has to point at the same orchestrator
+whose database the test reads, with `POSTHOG_WEBHOOK_SECRET` set there.
