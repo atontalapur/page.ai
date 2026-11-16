@@ -35,6 +35,51 @@ describe('NotifyService', () => {
     expect(pager.texts).toEqual([]);
   });
 
+  it('completes without calling again when a follow-up SMS fails', async () => {
+    const pager = new FakePager();
+    pager.failTexts = 1;
+    await service(pager, ['+15551110000', '+15551110001']).deliver(
+      { v: 1, issueId: '00000000-0000-4000-8000-000000000001', channel: 'call', message: 'page' },
+      { retryCount: 0, retryLimit: 3 },
+    );
+    expect(pager.calls.map((c) => c.to)).toEqual(['+15551110000', '+15551110001']);
+    expect(pager.texts).toEqual([{ to: '+15551110001', message: 'page' }]);
+  });
+
+  it('completes without calling again when one of several calls fails', async () => {
+    const pager = new FakePager();
+    pager.failCalls = 1;
+    await service(pager, ['+15551110000', '+15551110001']).deliver(
+      { v: 1, issueId: '00000000-0000-4000-8000-000000000001', channel: 'call', message: 'page' },
+      { retryCount: 0, retryLimit: 3 },
+    );
+    expect(pager.calls.map((c) => c.to)).toEqual(['+15551110001']);
+    expect(pager.texts.map((t) => t.to)).toEqual(['+15551110000', '+15551110001']);
+  });
+
+  it('fails the job when nothing reaches anyone on the last try', async () => {
+    const pager = new FakePager();
+    pager.failCalls = 1;
+    pager.failTexts = 1;
+    await expect(
+      service(pager).deliver(
+        { v: 1, issueId: '00000000-0000-4000-8000-000000000001', channel: 'call', message: 'page' },
+        { retryCount: 3, retryLimit: 3 },
+      ),
+    ).rejects.toThrow('sms failed');
+  });
+
+  it('still throws when an SMS-only page fails, so it retries', async () => {
+    const pager = new FakePager();
+    pager.failTexts = 1;
+    await expect(
+      service(pager).deliver(
+        { v: 1, issueId: '00000000-0000-4000-8000-000000000001', channel: 'sms', message: 'page' },
+        { retryCount: 0, retryLimit: 3 },
+      ),
+    ).rejects.toThrow('sms failed');
+  });
+
   it('sends SMS when the last call attempt fails', async () => {
     const pager = new FakePager();
     pager.failCalls = 1;

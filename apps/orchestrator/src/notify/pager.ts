@@ -17,6 +17,8 @@ export class FakePager implements Pager {
   readonly texts: { to: string; message: string }[] = [];
   /** The next N calls throw, then calls succeed. */
   failCalls = 0;
+  /** The next N texts throw, then texts succeed. */
+  failTexts = 0;
 
   call(to: string, message: string): Promise<void> {
     if (this.failCalls > 0) {
@@ -28,6 +30,10 @@ export class FakePager implements Pager {
   }
 
   sms(to: string, message: string): Promise<void> {
+    if (this.failTexts > 0) {
+      this.failTexts -= 1;
+      return Promise.reject(new Error('sms failed'));
+    }
     this.texts.push({ to, message });
     return Promise.resolve();
   }
