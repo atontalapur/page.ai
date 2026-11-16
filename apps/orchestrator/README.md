@@ -105,7 +105,9 @@ A missing or bad `DATABASE_URL` stops startup with exit code 1 and one log line 
 problem, e.g. `invalid config: DATABASE_URL is required`. As in `apps/node`, a blank var
 counts as unset, so a copied `.env.example` boots. `USE_FAKE_ADAPTERS` skips OpenRouter and
 Twilio. With it off, a missing key still boots: triage uses the rules and pages are recorded
-instead of sent. The three Twilio vars are set together or not at all.
+instead of sent. The three Twilio vars are set together or not at all. Account setup, trial
+limits and the `page:test` check that pages every phone are in
+[docs/twilio.md](../../docs/twilio.md).
 
 ## Logs
 

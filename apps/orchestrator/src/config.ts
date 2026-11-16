@@ -5,6 +5,14 @@ type Env = Record<string, string | undefined>;
 
 export type LogLevel = z.infer<typeof baseConfigSchema.shape.LOG_LEVEL>;
 
+/** NOTIFY_TO_NUMBERS: comma-separated, blanks dropped. */
+export function splitNumbers(list = ''): string[] {
+  return list
+    .split(',')
+    .map((number) => number.trim())
+    .filter((number) => number.length > 0);
+}
+
 // envSchema drops blank vars first, as the node daemon's does, so a copied .env.example
 // behaves like an unset var.
 const schema = envSchema(
@@ -29,15 +37,7 @@ const schema = envSchema(
     TWILIO_ACCOUNT_SID: z.string().min(1).optional(),
     TWILIO_AUTH_TOKEN: z.string().min(1).optional(),
     TWILIO_FROM_NUMBER: z.string().min(1).optional(),
-    NOTIFY_TO_NUMBERS: z
-      .string()
-      .optional()
-      .transform((list) =>
-        (list ?? '')
-          .split(',')
-          .map((number) => number.trim())
-          .filter((number) => number.length > 0),
-      ),
+    NOTIFY_TO_NUMBERS: z.string().optional().transform(splitNumbers),
     DASHBOARD_URL: z.string().min(1).default('http://localhost:3000'),
   }),
 );
