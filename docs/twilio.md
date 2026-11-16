@@ -72,7 +72,9 @@ Without the CLI, put the four values in the repo's `.env` and drop the `railway 
 This places one call and sends one SMS to every number in `NOTIFY_TO_NUMBERS` through the
 same adapter and config parser the orchestrator uses. It prints one line per phone and
 channel, with only the last four digits of any number, and exits 1 if Twilio rejected any
-of them. #127 is done when all eight lines say `sent` and every phone rang and got the
-text. Paste the output into the issue.
+of them. A call line says `sent` only once that phone picks up; busy or no answer shows as
+`FAILED call no-answer`. Calls go one phone at a time, so answer each as it rings. #127 is
+done when all eight lines say `sent` and every phone got the text. Paste the output into the
+issue.
 
 After an upgrade, drop `--sms-body` to send the script's own text instead of a template.

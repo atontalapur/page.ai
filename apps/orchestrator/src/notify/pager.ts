@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from 'node:timers/promises';
+import { z } from 'zod';
 import type { Config } from '../config.ts';
 
 export interface Pager {
@@ -48,40 +50,89 @@ function escapeXml(value: string): string {
     .replaceAll("'", '&apos;');
 }
 
-/** Twilio REST adapter. A non-2xx response throws so the notify job can retry. */
+// Twilio's CallStatus values. in-progress and completed mean the phone was picked up.
+const ANSWERED = new Set(['in-progress', 'completed']);
+const NOT_ANSWERED = new Set(['busy', 'no-answer', 'failed', 'canceled']);
+const FINAL = new Set([...ANSWERED, ...NOT_ANSWERED]);
+
+const callSchema = z.object({ sid: z.string().min(1), status: z.string().min(1) });
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+export interface CallWait {
+  /** Between status checks. */
+  pollMs: number;
+  /** Longest wait for an answer. Twilio stops ringing after 60 s by default. */
+  maxWaitMs: number;
+  sleep: (ms: number) => Promise<unknown>;
+}
+
+const defaultCallWait: CallWait = { pollMs: 2_000, maxWaitMs: 120_000, sleep };
+
+/** Twilio REST adapter. A non-2xx response, or a call nobody answers, throws so the job retries. */
 export class TwilioPager implements Pager {
   constructor(
     private readonly creds: TwilioCreds,
     private readonly fetchFn: typeof fetch = fetch,
+    private readonly wait: CallWait = defaultCallWait,
   ) {}
 
-  call(to: string, message: string): Promise<void> {
+  /**
+   * Places the call and waits until the phone picks up. Busy, no answer, failed or canceled
+   * throws, so the notify job retries this phone. Twilio's create response only says the
+   * call was queued, so the status is polled. A call still unresolved after maxWaitMs
+   * resolves, since a retry then could ring a phone that is about to pick up. Voicemail
+   * counts as answered: telling it apart needs Twilio's answering machine detection.
+   */
+  async call(to: string, message: string): Promise<void> {
     const twiml = `<Response><Say>${escapeXml(message)}</Say></Response>`;
-    return this.form('Calls.json', { To: to, From: this.creds.from, Twiml: twiml });
+    const fields = { To: to, From: this.creds.from, Twiml: twiml };
+    const placed = callSchema.safeParse(parseJson(await this.request('Calls.json', fields)));
+    // Twilio accepted the call. Without its sid it can't be watched, and throwing would ring
+    // the phone again, so count it as placed.
+    if (!placed.success) return;
+    const { sid } = placed.data;
+    const { pollMs, maxWaitMs } = this.wait;
+    let status = placed.data.status;
+    for (let waited = 0; !FINAL.has(status) && waited < maxWaitMs; waited += pollMs) {
+      await this.wait.sleep(pollMs);
+      try {
+        const path = `Calls/${encodeURIComponent(sid)}.json`;
+        status = callSchema.parse(parseJson(await this.request(path))).status;
+      } catch {
+        // A failed status check is not a failed call. Keep waiting until the deadline.
+      }
+    }
+    if (NOT_ANSWERED.has(status)) throw new Error(`call ${status}`);
   }
 
-  sms(to: string, message: string): Promise<void> {
-    return this.form('Messages.json', { To: to, From: this.creds.from, Body: message });
+  async sms(to: string, message: string): Promise<void> {
+    await this.request('Messages.json', { To: to, From: this.creds.from, Body: message });
   }
 
-  private async form(path: string, fields: Record<string, string>): Promise<void> {
+  /** POSTs the fields as a form, or GETs when there are none, and returns the body. */
+  private async request(path: string, fields?: Record<string, string>): Promise<string> {
     const { accountSid, authToken } = this.creds;
     const authorization = `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`;
     const response = await this.fetchFn(
       `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/${path}`,
-      {
-        method: 'POST',
-        headers: {
-          authorization,
-          'content-type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams(fields),
-      },
+      fields
+        ? {
+            method: 'POST',
+            headers: { authorization, 'content-type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(fields),
+          }
+        : { method: 'GET', headers: { authorization } },
     );
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`twilio ${response.status}: ${text.slice(0, 300)}`);
-    }
+    const text = await response.text();
+    if (!response.ok) throw new Error(`twilio ${response.status}: ${text.slice(0, 300)}`);
+    return text;
   }
 }
 

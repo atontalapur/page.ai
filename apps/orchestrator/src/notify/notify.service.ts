@@ -14,9 +14,9 @@ export class NotifyService {
   ) {}
 
   /**
-   * Pages one phone: a call, then the same message by SMS. A failed call throws so pg-boss
-   * retries this job, and a call that still fails on its last try sends the SMS instead, so
-   * the page is not lost.
+   * Pages one phone: a call, then the same message by SMS. A call that fails or that nobody
+   * answers (busy, no answer) throws so pg-boss retries this job, and one that still fails on
+   * its last try sends the SMS instead, so the page is not lost.
    *
    * Triage queues one job per phone, so a retry never rings another phone. Once the call is
    * placed, a failed follow-up text is logged and the job completes: throwing would retry
