@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
+import { escapeXml } from '@page/contracts';
 import { z } from 'zod';
 import type { Config, TwilioCreds } from '../config.ts';
 
@@ -35,15 +36,6 @@ export class FakePager implements Pager {
     this.texts.push({ to, message });
     return Promise.resolve();
   }
-}
-
-function escapeXml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;');
 }
 
 // A trial account's create-call request may carry only To and one of Twilio's template URLs

@@ -7,3 +7,4 @@ export * from './jobs.ts';
 export * from './scenario.ts';
 export * from './issue.ts';
 export * from './webhook.ts';
+export * from './xml.ts';

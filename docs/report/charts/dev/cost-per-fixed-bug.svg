@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="252" viewBox="0 0 760 252" role="img" aria-labelledby="cost-per-fixed-bug-title cost-per-fixed-bug-desc" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif">
+<title id="cost-per-fixed-bug-title">Cost per fixed bug</title>
+<desc id="cost-per-fixed-bug-desc">deepseek/deepseek-v4.1-flash, 18 of 20 planned bugs played, commit b862244</desc>
+<rect x="0.5" y="0.5" width="759" height="251" rx="8" fill="#fcfcfb" stroke="#e1e0d9"/>
+<text x="20" y="36" font-size="16" fill="#0b0b0b" font-weight="600">Cost per fixed bug</text>
+<text x="20" y="56" font-size="12" fill="#52514e">deepseek/deepseek-v4.1-flash, 18 of 20 planned bugs played, commit b862244</text>
+<rect x="20" y="72" width="12" height="12" rx="2" fill="#2a78d6"/>
+<text x="38" y="82" font-size="12" fill="#0b0b0b">tier1-only</text>
+<rect x="126" y="72" width="12" height="12" rx="2" fill="#eb6834"/>
+<text x="144" y="82" font-size="12" fill="#0b0b0b">tier3-start</text>
+<rect x="239" y="72" width="12" height="12" rx="2" fill="#1baf7a"/>
+<text x="257" y="82" font-size="12" fill="#0b0b0b">ladder</text>
+<line x1="88" y1="104" x2="88" y2="172" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="209.1" y1="104" x2="209.1" y2="172" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="330.2" y1="104" x2="330.2" y2="172" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="451.3" y1="104" x2="451.3" y2="172" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="572.4" y1="104" x2="572.4" y2="172" stroke="#e1e0d9" stroke-width="1"/>
+<text x="88" y="188" font-size="11" fill="#52514e" text-anchor="middle">$0.0000</text>
+<text x="209.1" y="188" font-size="11" fill="#52514e" text-anchor="middle">$0.0025</text>
+<text x="330.2" y="188" font-size="11" fill="#52514e" text-anchor="middle">$0.0050</text>
+<text x="451.3" y="188" font-size="11" fill="#52514e" text-anchor="middle">$0.0075</text>
+<text x="572.4" y="188" font-size="11" fill="#52514e" text-anchor="middle">$0.0100</text>
+<text x="330.2" y="208" font-size="12" fill="#52514e" text-anchor="middle">USD of kept runs per fixed run</text>
+<text x="76" y="142" font-size="12" fill="#0b0b0b" text-anchor="end">all bugs</text>
+<path d="M88,112h413a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-413z" fill="#2a78d6"><title>tier1-only, all bugs: $0.0086 (51 fixed)</title></path>
+<text x="511" y="124" font-size="12" fill="#0b0b0b">$0.0086 (51 fixed)<tspan fill="#52514e">  tier1-only</tspan></text>
+<path d="M88,130h330.4a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-330.4z" fill="#eb6834"><title>tier3-start, all bugs: $0.0069 (51 fixed)</title></path>
+<text x="428.4" y="142" font-size="12" fill="#0b0b0b">$0.0069 (51 fixed)<tspan fill="#52514e">  tier3-start</tspan></text>
+<path d="M88,148h460a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-460z" fill="#1baf7a"><title>ladder, all bugs: $0.0096 (51 fixed)</title></path>
+<text x="558" y="160" font-size="12" fill="#0b0b0b">$0.0096 (51 fixed)<tspan fill="#52514e">  ladder</tspan></text>
+<text x="20" y="232" font-size="11" fill="#52514e">Incomplete: tier1-only 2 scenarios skipped; tier3-start 2 scenarios skipped; ladder 2 scenarios skipped.</text>
+</svg>

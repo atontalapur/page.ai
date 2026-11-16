@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="462" viewBox="0 0 760 462" role="img" aria-labelledby="fix-rate-by-class-title fix-rate-by-class-desc" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif">
+<title id="fix-rate-by-class-title">Fix rate by bug class</title>
+<desc id="fix-rate-by-class-desc">deepseek/deepseek-v4.1-flash, 18 of 20 planned bugs played, commit b862244</desc>
+<rect x="0.5" y="0.5" width="759" height="461" rx="8" fill="#fcfcfb" stroke="#e1e0d9"/>
+<text x="20" y="36" font-size="16" fill="#0b0b0b" font-weight="600">Fix rate by bug class</text>
+<text x="20" y="56" font-size="12" fill="#52514e">deepseek/deepseek-v4.1-flash, 18 of 20 planned bugs played, commit b862244</text>
+<rect x="20" y="72" width="12" height="12" rx="2" fill="#2a78d6"/>
+<text x="38" y="82" font-size="12" fill="#0b0b0b">tier1-only</text>
+<rect x="126" y="72" width="12" height="12" rx="2" fill="#eb6834"/>
+<text x="144" y="82" font-size="12" fill="#0b0b0b">tier3-start</text>
+<rect x="239" y="72" width="12" height="12" rx="2" fill="#1baf7a"/>
+<text x="257" y="82" font-size="12" fill="#0b0b0b">ladder</text>
+<line x1="116" y1="104" x2="116" y2="382" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="226.8" y1="104" x2="226.8" y2="382" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="337.5" y1="104" x2="337.5" y2="382" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="448.3" y1="104" x2="448.3" y2="382" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="559" y1="104" x2="559" y2="382" stroke="#e1e0d9" stroke-width="1"/>
+<text x="116" y="398" font-size="11" fill="#52514e" text-anchor="middle">0.00</text>
+<text x="226.8" y="398" font-size="11" fill="#52514e" text-anchor="middle">0.25</text>
+<text x="337.5" y="398" font-size="11" fill="#52514e" text-anchor="middle">0.50</text>
+<text x="448.3" y="398" font-size="11" fill="#52514e" text-anchor="middle">0.75</text>
+<text x="559" y="398" font-size="11" fill="#52514e" text-anchor="middle">1.00</text>
+<text x="337.5" y="418" font-size="12" fill="#52514e" text-anchor="middle">fix rate (fixed runs / runs)</text>
+<text x="104" y="142" font-size="12" fill="#0b0b0b" text-anchor="end">backend-api</text>
+<path d="M116,112h409.5a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-409.5z" fill="#2a78d6"><title>tier1-only, backend-api: 0.93 (14/15)</title></path>
+<text x="535.5" y="124" font-size="12" fill="#0b0b0b">0.93 (14/15)<tspan fill="#52514e">  tier1-only</tspan></text>
+<path d="M116,130h409.5a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-409.5z" fill="#eb6834"><title>tier3-start, backend-api: 0.93 (14/15)</title></path>
+<text x="535.5" y="142" font-size="12" fill="#0b0b0b">0.93 (14/15)<tspan fill="#52514e">  tier3-start</tspan></text>
+<path d="M116,148h350.4a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-350.4z" fill="#1baf7a"><title>ladder, backend-api: 0.80 (12/15)</title></path>
+<text x="476.4" y="160" font-size="12" fill="#0b0b0b">0.80 (12/15)<tspan fill="#52514e">  ladder</tspan></text>
+<text x="104" y="212" font-size="12" fill="#0b0b0b" text-anchor="end">database</text>
+<path d="M116,182h439a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-439z" fill="#2a78d6"><title>tier1-only, database: 1.00 (15/15)</title></path>
+<text x="565" y="194" font-size="12" fill="#0b0b0b">1.00 (15/15)<tspan fill="#52514e">  tier1-only</tspan></text>
+<path d="M116,200h409.5a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-409.5z" fill="#eb6834"><title>tier3-start, database: 0.93 (14/15)</title></path>
+<text x="535.5" y="212" font-size="12" fill="#0b0b0b">0.93 (14/15)<tspan fill="#52514e">  tier3-start</tspan></text>
+<path d="M116,218h439a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-439z" fill="#1baf7a"><title>ladder, database: 1.00 (15/15)</title></path>
+<text x="565" y="230" font-size="12" fill="#0b0b0b">1.00 (15/15)<tspan fill="#52514e">  ladder</tspan></text>
+<text x="104" y="282" font-size="12" fill="#0b0b0b" text-anchor="end">frontend</text>
+<path d="M116,252h439a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-439z" fill="#2a78d6"><title>tier1-only, frontend: 1.00 (15/15)</title></path>
+<text x="565" y="264" font-size="12" fill="#0b0b0b">1.00 (15/15)<tspan fill="#52514e">  tier1-only</tspan></text>
+<path d="M116,270h439a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-439z" fill="#eb6834"><title>tier3-start, frontend: 1.00 (15/15)</title></path>
+<text x="565" y="282" font-size="12" fill="#0b0b0b">1.00 (15/15)<tspan fill="#52514e">  tier3-start</tspan></text>
+<path d="M116,288h439a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-439z" fill="#1baf7a"><title>ladder, frontend: 1.00 (15/15)</title></path>
+<text x="565" y="300" font-size="12" fill="#0b0b0b">1.00 (15/15)<tspan fill="#52514e">  ladder</tspan></text>
+<text x="104" y="352" font-size="12" fill="#0b0b0b" text-anchor="end">infra-config</text>
+<path d="M116,322h340.6a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-340.6z" fill="#2a78d6"><title>tier1-only, infra-config: 0.78 (7/9)</title></path>
+<text x="466.6" y="334" font-size="12" fill="#0b0b0b">0.78 (7/9)<tspan fill="#52514e">  tier1-only</tspan></text>
+<path d="M116,340h389.8a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-389.8z" fill="#eb6834"><title>tier3-start, infra-config: 0.89 (8/9)</title></path>
+<text x="515.8" y="352" font-size="12" fill="#0b0b0b">0.89 (8/9)<tspan fill="#52514e">  tier3-start</tspan></text>
+<path d="M116,358h439a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-439z" fill="#1baf7a"><title>ladder, infra-config: 1.00 (9/9)</title></path>
+<text x="565" y="370" font-size="12" fill="#0b0b0b">1.00 (9/9)<tspan fill="#52514e">  ladder</tspan></text>
+<text x="20" y="442" font-size="11" fill="#52514e">Incomplete: tier1-only 2 scenarios skipped; tier3-start 2 scenarios skipped; ladder 2 scenarios skipped.</text>
+</svg>

@@ -175,7 +175,11 @@ budget or provider stops and no unplayed runs. Total spend was $1.28 against the
 The run was paused once and resumed from its checkpoint files on the same commit.
 
 The tables below are the output of
-`pnpm eval:report eval/results/2026-11-10T01-54-5*.json`.
+`pnpm eval:report eval/results/2026-11-10T01-54-5*.json`. The charts are the output of
+`pnpm eval:charts eval/results/2026-11-10T01-54-5*.json --out docs/report/charts/dev`.
+Both read the same files through the same metric code, so each chart shows the numbers in
+the table next to it. The held-out run writes its own charts to
+`docs/report/charts/held-out`.
 
 #### Bars
 
@@ -193,6 +197,8 @@ The tables below are the output of
 | tier3-start | 3            | 0.94 (51/54) | $0.3520           | $0.0069            | $0.3538                  | 0                 | 0           | 6.8                |
 | ladder      | 3            | 0.94 (51/54) | $0.4885           | $0.0096            | $0.4897                  | 2                 | 0           | 7.2                |
 
+![Fix rate per configuration](charts/dev/fix-rate.svg)
+
 Per class:
 
 |              | tier1-only   | tier3-start  | ladder       |
@@ -202,12 +208,16 @@ Per class:
 | frontend     | 1.00 (15/15) | 1.00 (15/15) | 1.00 (15/15) |
 | infra-config | 0.78 (7/9)   | 0.89 (8/9)   | 1.00 (9/9)   |
 
+![Fix rate per bug class and configuration](charts/dev/fix-rate-by-class.svg)
+
 Per expected tier:
 
 |        | tier1-only   | tier3-start  | ladder       |
 | ------ | ------------ | ------------ | ------------ |
 | Tier 1 | 0.90 (27/30) | 0.97 (29/30) | 0.93 (28/30) |
 | Tier 2 | 1.00 (24/24) | 0.92 (22/24) | 0.96 (23/24) |
+
+![Fix rate per expected tier and configuration](charts/dev/fix-rate-by-expected-tier.svg)
 
 Runs by tier landed (null: every tier gave up and a person was paged):
 
@@ -228,6 +238,8 @@ tier3-start was cheapest per fixed bug ($0.0069), then tier1-only ($0.0086) and 
 ($0.0096). Only 2 ladder runs climbed, so most of that gap is run-to-run noise. At under a
 cent per fixed bug for every configuration, cost doesn't separate them on this model.
 
+![Cost per fixed bug per configuration](charts/dev/cost-per-fixed-bug.svg)
+
 #### Time to page and time to fix
 
 | config      | fixed n | fix p50 | fix p90 | paged n | page p50 | page p90 |
@@ -235,6 +247,10 @@ cent per fixed bug for every configuration, cost doesn't separate them on this m
 | tier1-only  | 51      | 159s    | 305s    | 3       | 8s       | 841s     |
 | tier3-start | 51      | 172s    | 321s    | 3       | 7s       | 9s       |
 | ladder      | 51      | 180s    | 383s    | 1       | 74s      | 74s      |
+
+![Time to fix per run on a log scale, with p50 and p90](charts/dev/time-to-fix.svg)
+
+![Time to page per run on a log scale, with p50 and p90](charts/dev/time-to-page.svg)
 
 Most pages on `format_errors` come within seconds (the ladder's took 74s). The tier1-only
 p90 of 841s is its one `step_limit` page. There are 1 to 3 pages per configuration, so the
@@ -250,6 +266,8 @@ Three runs gave up with a patch that already passed the check:
 
 In all three the agent had fixed the bug but kept going until the step limit instead of
 submitting.
+
+![False escalations and false pages per configuration](charts/dev/false-escalations.svg)
 
 #### Unsafe attempts
 
