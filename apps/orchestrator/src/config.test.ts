@@ -106,6 +106,7 @@ describe('loadConfig', () => {
       authToken: 'token',
       from: '+15550000000',
       machineDetection: false,
+      trial: false,
     });
     expect(
       loadConfig({
@@ -114,8 +115,9 @@ describe('loadConfig', () => {
         TWILIO_AUTH_TOKEN: 'token',
         TWILIO_FROM_NUMBER: '+15550000000',
         TWILIO_MACHINE_DETECTION: 'true',
-      }).twilio?.machineDetection,
-    ).toBe(true);
+        TWILIO_TRIAL: 'true',
+      }).twilio,
+    ).toMatchObject({ machineDetection: true, trial: true });
   });
 
   it('rejects an unknown USE_FAKE_ADAPTERS value', () => {
@@ -140,6 +142,7 @@ describe('loadPagerConfig', () => {
         authToken: 'token',
         from: '+15550000000',
         machineDetection: false,
+        trial: false,
       },
       notifyTo: ['+15550000001', '+15550000002'],
     });

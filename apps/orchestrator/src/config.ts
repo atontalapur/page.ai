@@ -23,6 +23,9 @@ const pagerShape = {
   // Twilio answering machine detection, so a call voicemail picks up is retried. Off by
   // default: a trial account rejects the parameter, failing every call (docs/twilio.md).
   TWILIO_MACHINE_DETECTION: z.stringbool().default(false),
+  // A trial account takes only Twilio's templates: a call plays its sample speech and a text
+  // its alert template, not our message (docs/twilio.md).
+  TWILIO_TRIAL: z.stringbool().default(false),
 };
 const pagerSchema = envSchema(z.object(pagerShape));
 
@@ -58,6 +61,8 @@ export interface TwilioCreds {
   from: string;
   /** Answering machine detection: voicemail counts as not answered. */
   machineDetection: boolean;
+  /** Trial account: calls and texts use Twilio's templates instead of our message. */
+  trial: boolean;
 }
 
 export interface Config {
@@ -118,6 +123,7 @@ function pagerConfig(config: z.infer<typeof pagerSchema>): PagerConfig {
             authToken: token,
             from,
             machineDetection: config.TWILIO_MACHINE_DETECTION,
+            trial: config.TWILIO_TRIAL,
           }
         : undefined,
     notifyTo: config.NOTIFY_TO_NUMBERS,

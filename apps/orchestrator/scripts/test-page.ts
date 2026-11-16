@@ -1,8 +1,8 @@
 // Usage: pnpm --filter @page/orchestrator page:test [--sms-body <text>]
 // Places one test call and sends one test SMS to every NOTIFY_TO_NUMBERS phone through the
 // real Twilio adapter, with the TWILIO_* settings in the repo's .env (or Railway's, under
-// `railway run`). Exits 1 if any page failed. A trial account only sends template bodies,
-// so on trial pass `--sms-body sms_internal_alerts` (docs/twilio.md).
+// `railway run`). Exits 1 if any page failed. With TWILIO_TRIAL=true the call and the text
+// are Twilio's templates, and --sms-body is ignored (docs/twilio.md).
 import process from 'node:process';
 import { parseArgs } from 'node:util';
 import { ConfigError, loadPagerConfig, type PagerConfig } from '../src/config.ts';
