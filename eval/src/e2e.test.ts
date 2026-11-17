@@ -27,7 +27,7 @@ import {
   type Target,
   type TimedStep,
 } from './e2e.ts';
-import { containerStopped, waitHealthy } from './e2e-app.ts';
+import { containerStopped, localAppUrl, waitHealthy } from './e2e-app.ts';
 import { loadScenario, type Scenario } from './scenario.ts';
 import { loadSplit } from './split.ts';
 
@@ -1050,6 +1050,44 @@ describe('containerStopped', () => {
     );
     expect(containerStopped('app', { code: 1, output: 'Error: No such object: app\n' })).toBe(
       'container app is gone: Error: No such object: app',
+    );
+  });
+});
+
+describe('localAppUrl', () => {
+  it('defaults to the compose app on DEMO_APP_PORT', () => {
+    expect(localAppUrl({})).toBe('http://localhost:3000');
+    expect(localAppUrl({ DEMO_APP_PORT: '3200' })).toBe('http://localhost:3200');
+    expect(() => localAppUrl({ DEMO_APP_PORT: 'web' })).toThrow(
+      'DEMO_APP_PORT must be a port number, not web',
+    );
+  });
+
+  it('takes E2E_LOCAL_APP_URL on this machine, and never DEMO_APP_URL', () => {
+    const staging = 'https://demo-app-staging.up.railway.app';
+    expect(localAppUrl({ DEMO_APP_URL: staging })).toBe('http://localhost:3000');
+    expect(localAppUrl({ E2E_LOCAL_APP_URL: 'http://127.0.0.1:3000/' })).toBe(
+      'http://127.0.0.1:3000',
+    );
+    expect(localAppUrl({ E2E_LOCAL_APP_URL: 'http://[::1]:3000' })).toBe('http://[::1]:3000');
+    expect(localAppUrl({ E2E_LOCAL_APP_URL: 'http://LOCALHOST:3000' })).toBe(
+      'http://LOCALHOST:3000',
+    );
+  });
+
+  it('refuses a host off this machine, or no URL at all', () => {
+    expect(() => localAppUrl({ E2E_LOCAL_APP_URL: 'https://demo.example.com' })).toThrow(
+      'E2E_LOCAL_APP_URL must be on this machine (localhost, 127.0.0.1 or ::1), not ' +
+        'demo.example.com',
+    );
+    expect(() => localAppUrl({ E2E_LOCAL_APP_URL: 'http://10.0.0.5:3000' })).toThrow(
+      'not 10.0.0.5',
+    );
+    expect(() => localAppUrl({ E2E_LOCAL_APP_URL: 'localhost:3000' })).toThrow(
+      'E2E_LOCAL_APP_URL must be an http(s) URL, not localhost:3000',
+    );
+    expect(() => localAppUrl({ E2E_LOCAL_APP_URL: '::' })).toThrow(
+      'E2E_LOCAL_APP_URL is not a URL: ::',
     );
   });
 });

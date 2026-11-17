@@ -212,7 +212,8 @@ look at the PR or the issue; clean up by hand after. It only goes with one run: 
 --runs 3` is refused, since run 2 would find run 1's issue still open. Ctrl-C skips it
 too. `--runs 3` plays the scenario three times and stops at the first failure, which is
 the card's bar. Only dev bugs run, as with `demo-sync.sh`. The exit code is 0 when every
-run passed, 1 when one failed and 2 for bad arguments. `--out <file>` writes the target's
+run passed, 1 when one failed and 2 for bad arguments, a malformed variable such as
+`GITHUB_REPO` or `PGBOSS_SCHEMA` included. `--out <file>` writes the target's
 one-time preparation (`prepare`, below) and every run's result as JSON.
 
 ### Targets
@@ -231,9 +232,14 @@ daemon can be the Railway ones or local ones.
   container migrates and seeds the `demo` database of the compose Postgres (`pnpm db:up`)
   first. If it exits before `/api/health` answers, the seed fails at once instead of
   waiting out its limit. After any failed seed, the summary shows the last 50 lines of the
-  container's log, read before the unseed removes the container.
+  container's log, read before the unseed removes the container. Without `POSTHOG_KEY` the
+  app keeps its errors in memory and no issue can open, so the run is refused before
+  seeding.
 - An ops scenario runs `break-ops.sh` and `fix-ops.sh` against the compose demo app at
-  `DEMO_APP_URL` (default `http://localhost:3000`), started with `OPS_SECRET` set.
+  `E2E_LOCAL_APP_URL` (default `http://localhost:${DEMO_APP_PORT:-3000}`, where
+  `docker-compose.yml` publishes it), started with `OPS_SECRET` set. It never reads
+  `DEMO_APP_URL`, which is staging's, and refuses a URL whose host isn't `localhost`,
+  `127.0.0.1` or `::1`, so a local run can't break a deployed app.
 
 `--target staging` runs against the deployed app at `DEMO_APP_URL`. The test never deploys,
 so a code scenario's bug must already be live there: staging serves the seeded demo baseline
@@ -253,12 +259,14 @@ diff carries more than the fix.
 | `E2E_DATABASE_URL`, else `DATABASE_URL`         | The orchestrator's database, read only. Railway's public URL for staging |
 | `E2E_ORCHESTRATOR_URL`, else `ORCHESTRATOR_URL` | The orchestrator API, for the reset's kill                               |
 | `GITHUB_TOKEN`, `GITHUB_REPO`                   | Finding and closing the PR. Needed for `--expect pr`                     |
-| `DEMO_APP_URL`                                  | Staging's app; the compose app for local ops scenarios                   |
+| `DEMO_APP_URL`                                  | Staging's app, for `--target staging` only                               |
+| `E2E_LOCAL_APP_URL`                             | Local ops scenarios' compose app (default localhost on `DEMO_APP_PORT`)  |
 | `OPS_SECRET`                                    | Ops scenarios                                                            |
 | `PGBOSS_SCHEMA`                                 | The orchestrator's pg-boss schema (default `pgboss`)                     |
-| `POSTHOG_KEY`, `POSTHOG_HOST`                   | Local code scenarios: passed to the demo app container                   |
+| `POSTHOG_KEY`, `POSTHOG_HOST`                   | Local code scenarios: passed to the demo app container. Key required     |
 | `E2E_DEMO_APP_PORT`, `E2E_DEMO_DATABASE_URL`    | Local code scenarios (defaults 3100 and the compose Postgres's `demo`)   |
 
-The run prints the database's host, never its URL. If Railway's Postgres wants TLS, add
-`?sslmode=require` to the URL. The PostHog webhook has to point at the same orchestrator
-whose database the test reads, with `POSTHOG_WEBHOOK_SECRET` set there.
+The run's header names the app URL the scenario's scripts run against, and the database's
+host, never its URL. If Railway's Postgres wants TLS, add `?sslmode=require` to the URL.
+The PostHog webhook has to point at the same orchestrator whose database the test reads,
+with `POSTHOG_WEBHOOK_SECRET` set there.

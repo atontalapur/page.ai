@@ -2,7 +2,8 @@ import type { Clock } from './e2e.ts';
 import type { ExecResult } from './selftest.ts';
 
 // The demo app an end-to-end test target serves or points at (scripts/e2e-targets.ts):
-// waiting for it to come up, and telling when its container never will.
+// where the local one is, waiting for it to come up, and telling when its container never
+// will.
 
 export interface HealthOptions {
   clock: Clock;
@@ -53,4 +54,37 @@ export function containerStopped(name: string, { code, output }: ExecResult): st
   const [status, exitCode] = text.split(/\s+/);
   if (status !== 'exited' && status !== 'dead') return null;
   return `container ${name} ${status} with code ${exitCode ?? '?'} before /api/health answered`;
+}
+
+const LOOPBACK_HOSTS: readonly string[] = ['localhost', '127.0.0.1', '[::1]'];
+
+/**
+ * The compose demo app the local target plays ops scenarios against: E2E_LOCAL_APP_URL,
+ * else localhost on DEMO_APP_PORT (default 3000), where docker-compose.yml publishes it.
+ * Throws for a host off this machine, so a local run can't break a deployed app: the
+ * DEMO_APP_URL in .env is staging's.
+ */
+export function localAppUrl(env: Record<string, string | undefined>): string {
+  let raw = env.E2E_LOCAL_APP_URL?.trim();
+  if (!raw) {
+    const port = env.DEMO_APP_PORT?.trim() || '3000';
+    if (!/^\d+$/.test(port)) throw new Error(`DEMO_APP_PORT must be a port number, not ${port}`);
+    raw = `http://localhost:${port}`;
+  }
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`E2E_LOCAL_APP_URL is not a URL: ${raw}`);
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`E2E_LOCAL_APP_URL must be an http(s) URL, not ${raw}`);
+  }
+  if (!LOOPBACK_HOSTS.includes(url.hostname)) {
+    throw new Error(
+      `E2E_LOCAL_APP_URL must be on this machine (localhost, 127.0.0.1 or ::1), not ` +
+        `${url.hostname}: --target local never runs a scenario against a deployed app`,
+    );
+  }
+  return raw.replace(/\/+$/, '');
 }

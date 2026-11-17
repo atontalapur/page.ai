@@ -23,6 +23,7 @@ import {
   type Target,
 } from '../src/e2e.ts';
 import { OrchestratorControl, PgPipelineReader, realClock } from '../src/e2e-adapters.ts';
+import { localAppUrl } from '../src/e2e-app.ts';
 import { loadScenario, ScenarioError, type Scenario } from '../src/scenario.ts';
 import { loadSplit } from '../src/split.ts';
 import { localTarget, stagingTarget } from './e2e-targets.ts';
@@ -47,9 +48,10 @@ const USAGE = `usage: pnpm e2e <scenario-id> [--target local|staging] [--expect 
   --out      write the results as JSON: { prepare, runs }
 
 Env: E2E_DATABASE_URL (or DATABASE_URL), E2E_ORCHESTRATOR_URL (or ORCHESTRATOR_URL),
-GITHUB_TOKEN and GITHUB_REPO, DEMO_APP_URL (staging, and local ops scenarios), OPS_SECRET
-(ops scenarios), PGBOSS_SCHEMA, and for the local demo app POSTHOG_KEY, POSTHOG_HOST,
-E2E_DEMO_APP_PORT, E2E_DEMO_DATABASE_URL.`;
+GITHUB_TOKEN and GITHUB_REPO, DEMO_APP_URL (staging only), E2E_LOCAL_APP_URL (local ops
+scenarios, default http://localhost:\${DEMO_APP_PORT:-3000}), OPS_SECRET (ops scenarios),
+PGBOSS_SCHEMA, and for local code scenarios POSTHOG_KEY, POSTHOG_HOST, E2E_DEMO_APP_PORT,
+E2E_DEMO_DATABASE_URL.`;
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -134,30 +136,43 @@ if (orchestratorUrl === undefined) fail('E2E_ORCHESTRATOR_URL is not set');
 
 const token = env('GITHUB_TOKEN');
 const repo = env('GITHUB_REPO');
-const github = token && repo ? new RestGitHub({ token, repo }) : undefined;
+const github =
+  token && repo ? parsed('GITHUB_REPO', () => new RestGitHub({ token, repo })) : undefined;
 if (github === undefined && (options.expect ?? defaultExpectation(scenario)) === 'pr') {
   fail(`expecting a PR from ${id} needs GITHUB_TOKEN and GITHUB_REPO`);
 }
 
 const opsSecret = env('OPS_SECRET');
 const seedLimit = stepTimeouts(scenario, options.timeouts).seed;
-const demoAppUrl = env('DEMO_APP_URL')?.replace(/\/+$/, '');
 let target: Target;
+// The app the scenario's scripts run against, for the header.
+let appUrl: string;
 if (values.target === 'staging') {
+  const demoAppUrl = env('DEMO_APP_URL')?.replace(/\/+$/, '');
   if (demoAppUrl === undefined) fail('--target staging needs DEMO_APP_URL');
   target = stagingTarget({ url: demoAppUrl, opsSecret });
+  appUrl = demoAppUrl;
 } else {
+  // Never DEMO_APP_URL, which is staging's: a local ops scenario breaks the compose app.
+  const opsAppUrl = parsed('--target local', () => localAppUrl(process.env));
   const port = Number(env('E2E_DEMO_APP_PORT') ?? '3100');
   if (!Number.isInteger(port) || port < 1) fail('E2E_DEMO_APP_PORT must be a port number');
+  if (scenario.kind === 'code' && env('POSTHOG_KEY') === undefined) {
+    fail(
+      `--target local with code scenario ${id} needs POSTHOG_KEY: without it the demo app ` +
+        'keeps its errors in memory, so no issue can open',
+    );
+  }
   const pgPort = env('POSTGRES_PORT') ?? '5432';
   target = localTarget({
     port,
     databaseUrl:
       env('E2E_DEMO_DATABASE_URL') ?? `postgres://page:page@host.docker.internal:${pgPort}/demo`,
-    opsApp: { url: demoAppUrl ?? 'http://localhost:3000', opsSecret },
+    opsApp: { url: opsAppUrl, opsSecret },
     build: !values['no-build'],
     buildTimeoutMs: seedLimit,
   });
+  appUrl = scenario.kind === 'ops' ? opsAppUrl : `http://localhost:${port}`;
 }
 
 // Only the host: the URL carries the password.
@@ -171,7 +186,8 @@ const dbHost = (() => {
 console.log(
   [
     `scenario     ${scenario.id} (${scenario.kind}, tier ${scenario.meta.expectedTier})`,
-    `target       ${target.name}${values.target === 'staging' ? ` ${demoAppUrl}` : ''}`,
+    `target       ${target.name}`,
+    `app          ${appUrl}`,
     `database     ${dbHost}`,
     `orchestrator ${orchestratorUrl}`,
     `github       ${github === undefined ? 'none (no PR lookup or close)' : repo}`,
@@ -189,7 +205,14 @@ pool.on('error', (error) => {
   );
 });
 const pgbossSchema = env('PGBOSS_SCHEMA');
-const reader = new PgPipelineReader(pool, pgbossSchema === undefined ? {} : { pgbossSchema });
+let reader: PgPipelineReader;
+try {
+  reader = new PgPipelineReader(pool, pgbossSchema === undefined ? {} : { pgbossSchema });
+} catch (error) {
+  // A bad schema name is a bad argument (exit 2), and the pool goes first.
+  await pool.end();
+  fail(error instanceof Error ? error.message : String(error));
+}
 const control = new OrchestratorControl(orchestratorUrl);
 
 // Once, before the first run and outside its seed step, so every run's seed time compares.
