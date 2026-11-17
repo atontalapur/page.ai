@@ -94,6 +94,17 @@ export interface Target {
   trigger(scenario: Scenario, signal: AbortSignal): Promise<string>;
   /** Takes the bug back out, as far as `seed` got. */
   unseed(scenario: Scenario, signal: AbortSignal): Promise<void>;
+  /**
+   * Work done once before the first run, outside every step so the seed times of a batch
+   * compare: the local target's image builds. Resolves with what it did, or null when
+   * there was nothing to do.
+   */
+  prepare?(scenario: Scenario, signal: AbortSignal): Promise<string | null>;
+  /**
+   * The target's own logs after a failed seed, read before the reset takes the bug back
+   * out: the tail of the local demo app container's. Null when there are none.
+   */
+  logs?(scenario: Scenario, signal: AbortSignal): Promise<string | null>;
 }
 
 /** An `issues` row, with the columns the API leaves out. */
@@ -257,6 +268,22 @@ export interface E2EResult {
   timeToOutcomeMs: number | null;
   checks: CheckResult[];
   reset: ResetAction[];
+  /** The target's logs when the seed failed, read before the reset (Target.logs). */
+  seedLogs: string | null;
+}
+
+/** The target's one-time preparation before the runs (Target.prepare). */
+export interface SetupRecord {
+  ok: boolean;
+  durationMs: number;
+  detail: string;
+}
+
+/** The `--out` file: the one-time preparation, if any, then every run. */
+export interface E2EReport {
+  v: 1;
+  prepare: SetupRecord | null;
+  runs: E2EResult[];
 }
 
 /** A step that failed or ran out of time. */
@@ -328,6 +355,9 @@ export function summarize(r: E2EResult): string {
   }
   for (const a of r.reset.filter((a) => !a.ok)) {
     lines.push(`  reset ${a.action} failed: ${a.detail}`);
+  }
+  if (r.seedLogs !== null) {
+    lines.push(`  ${r.target} logs:`, ...r.seedLogs.split('\n').map((line) => `    ${line}`));
   }
   return lines.join('\n');
 }
@@ -456,6 +486,60 @@ async function waitFor<T>(
   }
 }
 
+// A target's logs are a few lines from a local command; past this, the reset goes ahead.
+const LOGS_MS = 30_000;
+
+/** Target.logs, bounded, with a note in place of the logs when they couldn't be read. */
+async function targetLogs(
+  scenario: Scenario,
+  target: Target,
+  clock: Clock,
+): Promise<string | null> {
+  if (target.logs === undefined) return null;
+  const logs = target.logs.bind(target);
+  try {
+    return await withTimeout(clock, 'seed', LOGS_MS, (signal) => logs(scenario, signal));
+  } catch (error) {
+    return `(could not read them: ${error instanceof Error ? error.message : String(error)})`;
+  }
+}
+
+/**
+ * Runs the target's one-time preparation (Target.prepare), such as building images, under
+ * `timeoutMs`. Null when the target has none or there was nothing to do.
+ */
+export async function prepareTarget(
+  scenario: Scenario,
+  target: Target,
+  {
+    clock,
+    timeoutMs,
+    log = () => {},
+  }: { clock: Clock; timeoutMs: number; log?: (line: string) => void },
+): Promise<SetupRecord | null> {
+  if (target.prepare === undefined) return null;
+  const prepare = target.prepare.bind(target);
+  const began = clock.now();
+  log('[prepare] ...');
+  try {
+    const detail = await withTimeout(clock, 'seed', timeoutMs, (signal) =>
+      prepare(scenario, signal),
+    );
+    const durationMs = clock.now() - began;
+    if (detail === null) {
+      log('[prepare] nothing to do');
+      return null;
+    }
+    log(`[prepare] ok in ${formatMs(durationMs)}: ${detail}`);
+    return { ok: true, durationMs, detail };
+  } catch (error) {
+    const durationMs = clock.now() - began;
+    const detail = error instanceof Error ? error.message : String(error);
+    log(`[prepare] FAILED after ${formatMs(durationMs)}: ${detail}`);
+    return { ok: false, durationMs, detail };
+  }
+}
+
 // ---- The test --------------------------------------------------------------------------
 
 /**
@@ -492,6 +576,7 @@ export async function runE2E(
     timeToOutcomeMs: null,
     checks: [],
     reset: [],
+    seedLogs: null,
   };
 
   /** Runs one step, records its time, and passes its detail on to the log. */
@@ -552,7 +637,13 @@ export async function runE2E(
   let issue: IssueRow | null = null;
   try {
     await step('seed', async () => {
-      await withTimeout(clock, 'seed', timeouts.seed, (signal) => target.seed(scenario, signal));
+      try {
+        await withTimeout(clock, 'seed', timeouts.seed, (signal) => target.seed(scenario, signal));
+      } catch (error) {
+        // Now, while the target still has them: the reset's unseed may remove them.
+        result.seedLogs = await targetLogs(scenario, target, clock);
+        throw error;
+      }
       return { value: undefined, detail: `${scenario.id} on ${target.name}` };
     });
 

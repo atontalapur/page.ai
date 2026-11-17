@@ -11,6 +11,7 @@ import {
   parseDrain,
   parseDuration,
   parseTimeouts,
+  prepareTarget,
   reportErrorLine,
   runE2E,
   stepTimeouts,
@@ -26,6 +27,7 @@ import {
   type Target,
   type TimedStep,
 } from './e2e.ts';
+import { containerStopped, waitHealthy } from './e2e-app.ts';
 import { loadScenario, type Scenario } from './scenario.ts';
 import { loadSplit } from './split.ts';
 
@@ -878,6 +880,177 @@ describe('runE2E', () => {
     const r = await play(h, scenario(1));
     expect(r.failedStep).toBe('trigger');
     expect(r.error).toBe('trigger.sh exited 7');
+  });
+
+  describe("the target's logs after a failed seed", () => {
+    const logs = (text: string | null) => (calls: string[]) => () => {
+      calls.push('logs');
+      return Promise.resolve(text);
+    };
+
+    it('are read before the reset unseeds, and summarized', async () => {
+      const h = harness([], {
+        seed: () => Promise.reject(new Error('container page-e2e-demo-app exited with code 1')),
+      });
+      h.target.logs = logs('migrating\nError: relation "products" does not exist')(h.calls);
+      const r = await play(h, scenario(1));
+      expect(r.failedStep).toBe('seed');
+      expect(r.error).toBe('container page-e2e-demo-app exited with code 1');
+      expect(r.seedLogs).toBe('migrating\nError: relation "products" does not exist');
+      expect(h.calls).toEqual(['logs', 'unseed']);
+      expect(summarize(r)).toContain(
+        '  fake logs:\n    migrating\n    Error: relation "products" does not exist',
+      );
+    });
+
+    it('are read when the seed runs out of time too', async () => {
+      const h = harness([], {
+        seed: (_s, signal) =>
+          new Promise<never>((_resolve, reject) =>
+            signal.addEventListener('abort', () => reject(signal.reason as Error)),
+          ),
+      });
+      h.target.logs = logs('compiling...')(h.calls);
+      const r = await play(h, scenario(1), { timeouts: { seed: MIN } });
+      expect(r.error).toBe('timed out after 1m00s');
+      expect(r.seedLogs).toBe('compiling...');
+      expect(h.calls).toEqual(['logs', 'unseed']);
+    });
+
+    it("note logs that couldn't be read, and aren't asked for after a good seed", async () => {
+      const h = harness([], { seed: () => Promise.reject(new Error('no image')) });
+      h.target.logs = () => Promise.reject(new Error('docker gone'));
+      const r = await play(h, scenario(1));
+      expect(r.seedLogs).toBe('(could not read them: docker gone)');
+
+      const good = harness(tier1Fix());
+      good.target.logs = logs('unused')(good.calls);
+      const passed = await play(good, scenario(1));
+      expect(passed.seedLogs).toBeNull();
+      expect(good.calls).not.toContain('logs');
+    });
+  });
+});
+
+describe('prepareTarget', () => {
+  const target = (prepare?: Target['prepare']): Target => ({
+    name: 'fake',
+    seed: () => Promise.resolve(),
+    trigger: () => Promise.resolve(''),
+    unseed: () => Promise.resolve(),
+    ...(prepare === undefined ? {} : { prepare }),
+  });
+
+  it('times the preparation once, apart from any step', async () => {
+    const clock = new FakeClock();
+    const lines: string[] = [];
+    const built = await prepareTarget(
+      scenario(1),
+      target(async (s) => {
+        await clock.sleep(3 * MIN);
+        return `built for ${s.id}`;
+      }),
+      { clock, timeoutMs: 20 * MIN, log: (line) => lines.push(line) },
+    );
+    expect(built).toEqual({
+      ok: true,
+      durationMs: 3 * MIN,
+      detail: 'built for 001-bad-currency-code',
+    });
+    expect(lines).toEqual([
+      '[prepare] ...',
+      '[prepare] ok in 3m00s: built for 001-bad-currency-code',
+    ]);
+  });
+
+  it('is null with nothing to prepare', async () => {
+    const clock = new FakeClock();
+    expect(await prepareTarget(scenario(1), target(), { clock, timeoutMs: MIN })).toBeNull();
+    const nothing = target(() => Promise.resolve(null));
+    expect(await prepareTarget(scenario(1), nothing, { clock, timeoutMs: MIN })).toBeNull();
+  });
+
+  it('records a failure or a timeout', async () => {
+    const clock = new FakeClock();
+    const failing = target(() => Promise.reject(new Error('build page-sandbox exited 1')));
+    expect(await prepareTarget(scenario(1), failing, { clock, timeoutMs: MIN })).toEqual({
+      ok: false,
+      durationMs: 0,
+      detail: 'build page-sandbox exited 1',
+    });
+    const hanging = target(
+      (_s, signal) =>
+        new Promise<never>((_resolve, reject) =>
+          signal.addEventListener('abort', () => reject(signal.reason as Error)),
+        ),
+    );
+    expect(await prepareTarget(scenario(1), hanging, { clock, timeoutMs: MIN })).toEqual({
+      ok: false,
+      durationMs: MIN,
+      detail: 'timed out after 1m00s',
+    });
+  });
+});
+
+describe('waitHealthy', () => {
+  const answers = (...codes: (number | Error)[]) => {
+    const seen: string[] = [];
+    const fake: typeof fetch = (input) => {
+      seen.push(typeof input === 'string' ? input : 'not a string');
+      const next = codes.shift() ?? 200;
+      return next instanceof Error
+        ? Promise.reject(next)
+        : Promise.resolve(new Response(null, { status: next }));
+    };
+    return { seen, fetch: fake };
+  };
+
+  it('polls /api/health until it answers 200', async () => {
+    const clock = new FakeClock();
+    const { seen, fetch } = answers(new Error('ECONNREFUSED'), 503, 200);
+    const began = clock.now();
+    await waitHealthy('http://localhost:3100', new AbortController().signal, { clock, fetch });
+    expect(seen).toEqual(Array(3).fill('http://localhost:3100/api/health'));
+    expect(clock.now() - began).toBe(4 * S);
+  });
+
+  it('fails at once when the app is gone', async () => {
+    const clock = new FakeClock();
+    const { seen, fetch } = answers(new Error('ECONNREFUSED'), new Error('ECONNREFUSED'));
+    let checks = 0;
+    const gone = () => {
+      checks += 1;
+      return Promise.resolve(checks < 2 ? null : 'container x exited with code 1');
+    };
+    await expect(
+      waitHealthy('http://localhost:3100', new AbortController().signal, { clock, fetch, gone }),
+    ).rejects.toThrow('container x exited with code 1');
+    expect(seen).toHaveLength(2);
+  });
+
+  it('stops when its signal aborts', async () => {
+    const clock = new FakeClock();
+    const stop = new AbortController();
+    const { fetch } = answers(...Array<number>(10).fill(503));
+    const waiting = waitHealthy('http://localhost:3100', stop.signal, { clock, fetch });
+    stop.abort(new Error('timed out'));
+    await expect(waiting).rejects.toThrow('timed out');
+  });
+});
+
+describe('containerStopped', () => {
+  it('reads docker inspect', () => {
+    expect(containerStopped('app', { code: 0, output: 'running 0\n' })).toBeNull();
+    expect(containerStopped('app', { code: 0, output: 'created 0' })).toBeNull();
+    expect(containerStopped('app', { code: 0, output: 'exited 1\n' })).toBe(
+      'container app exited with code 1 before /api/health answered',
+    );
+    expect(containerStopped('app', { code: 0, output: 'dead 137' })).toBe(
+      'container app dead with code 137 before /api/health answered',
+    );
+    expect(containerStopped('app', { code: 1, output: 'Error: No such object: app\n' })).toBe(
+      'container app is gone: Error: No such object: app',
+    );
   });
 });
 

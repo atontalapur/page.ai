@@ -9,13 +9,16 @@ import { RestGitHub } from '@page/toolkit';
 import pg from 'pg';
 import {
   defaultExpectation,
+  formatMs,
   parseDrain,
   parseDuration,
   parseTimeouts,
+  prepareTarget,
   runE2E,
   stepTimeouts,
   summarize,
   type E2EOptions,
+  type E2EReport,
   type E2EResult,
   type Target,
 } from '../src/e2e.ts';
@@ -39,8 +42,9 @@ const USAGE = `usage: pnpm e2e <scenario-id> [--target local|staging] [--expect 
              late PR to close (default: what is left of its 16m per tier; 0 skips it)
   --runs     play it n times in a row, stopping at the first failure (default 1)
   --keep     skip the reset, to look at the PR and the issue afterwards (one run only)
-  --no-build local: use the page-sandbox:demo image already built
-  --out      write the results as JSON
+  --no-build local: use the page-sandbox:demo image already built, instead of building
+             it once before the first run
+  --out      write the results as JSON: { prepare, runs }
 
 Env: E2E_DATABASE_URL (or DATABASE_URL), E2E_ORCHESTRATOR_URL (or ORCHESTRATOR_URL),
 GITHUB_TOKEN and GITHUB_REPO, DEMO_APP_URL (staging, and local ops scenarios), OPS_SECRET
@@ -136,6 +140,7 @@ if (github === undefined && (options.expect ?? defaultExpectation(scenario)) ===
 }
 
 const opsSecret = env('OPS_SECRET');
+const seedLimit = stepTimeouts(scenario, options.timeouts).seed;
 const demoAppUrl = env('DEMO_APP_URL')?.replace(/\/+$/, '');
 let target: Target;
 if (values.target === 'staging') {
@@ -151,7 +156,7 @@ if (values.target === 'staging') {
       env('E2E_DEMO_DATABASE_URL') ?? `postgres://page:page@host.docker.internal:${pgPort}/demo`,
     opsApp: { url: demoAppUrl ?? 'http://localhost:3000', opsSecret },
     build: !values['no-build'],
-    buildTimeoutMs: stepTimeouts(scenario, options.timeouts).seed,
+    buildTimeoutMs: seedLimit,
   });
 }
 
@@ -187,9 +192,17 @@ const pgbossSchema = env('PGBOSS_SCHEMA');
 const reader = new PgPipelineReader(pool, pgbossSchema === undefined ? {} : { pgbossSchema });
 const control = new OrchestratorControl(orchestratorUrl);
 
+// Once, before the first run and outside its seed step, so every run's seed time compares.
+// It resolves with a record whatever happens.
+const prepared = await prepareTarget(scenario, target, {
+  clock: realClock,
+  timeoutMs: seedLimit,
+  log: (line) => console.log(line),
+});
+
 const results: E2EResult[] = [];
 try {
-  for (let n = 1; n <= runs; n += 1) {
+  for (let n = 1; prepared?.ok !== false && n <= runs; n += 1) {
     if (runs > 1) console.log(`\nrun ${n} of ${runs}`);
     const result = await runE2E(
       scenario,
@@ -212,9 +225,14 @@ try {
 }
 
 if (values.out !== undefined) {
-  await writeFile(values.out, `${JSON.stringify(runs === 1 ? results[0] : results, null, 2)}\n`);
+  const report: E2EReport = { v: 1, prepare: prepared, runs: results };
+  await writeFile(values.out, `${JSON.stringify(report, null, 2)}\n`);
   console.log(`\nwrote ${values.out}`);
 }
+if (prepared?.ok === false) console.log(`\nFAIL ${scenario.id}: preparing ${target.name} failed`);
 const passed = results.filter((r) => r.passed).length;
-if (runs > 1) console.log(`\n${passed} of ${runs} runs passed in a row`);
+if (runs > 1) {
+  const before = prepared === null ? '' : `, after ${formatMs(prepared.durationMs)} preparing`;
+  console.log(`\n${passed} of ${runs} runs passed in a row${before}`);
+}
 process.exit(passed === runs ? 0 : 1);

@@ -2,7 +2,8 @@
 // machine) and `staging` (the deployed one). Both run the scenario's scripts on the host.
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
-import { setTimeout as sleep } from 'node:timers/promises';
+import { realClock } from '../src/e2e-adapters.ts';
+import { containerStopped, waitHealthy } from '../src/e2e-app.ts';
 import type { Target } from '../src/e2e.ts';
 import type { Scenario } from '../src/scenario.ts';
 import { runHost } from './host.ts';
@@ -52,21 +53,6 @@ function scenarioScript(s: Scenario, name: string, app: TargetEnv, signal: Abort
   return run(`${s.id}/${name}`, 'sh', [script(s, name)], env, signal);
 }
 
-/** Waits for GET /api/health to answer 200, until `signal` (the step's timeout) aborts. */
-export async function waitHealthy(url: string, signal: AbortSignal): Promise<void> {
-  for (;;) {
-    try {
-      const res = await fetch(`${url}/api/health`, {
-        signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
-      });
-      if (res.ok) return;
-    } catch {
-      // Not up yet.
-    }
-    await sleep(2000, undefined, { signal });
-  }
-}
-
 // The scenario is a bad deploy that only the compose stand-in for Railway can play (024).
 async function needsCompose(s: Scenario): Promise<boolean> {
   try {
@@ -84,7 +70,7 @@ export interface LocalOptions {
   databaseUrl: string;
   /** The compose demo app, for ops scenarios (DEMO_APP_URL, default localhost:3000). */
   opsApp: TargetEnv;
-  /** Skip the image builds and use the page-sandbox:demo already built. */
+  /** Build the images once before the runs; false uses the page-sandbox:demo already built. */
   build: boolean;
   /**
    * The seed step's limit. The image builds get it instead of runHost's 10 minutes for a
@@ -93,14 +79,19 @@ export interface LocalOptions {
   buildTimeoutMs: number;
 }
 
+// How much of the container's log a failed seed reports.
+const LOG_LINES = 50;
+
 /**
  * A demo app on this machine.
  *
- * A code scenario builds `page-sandbox:demo` with the scenario's break.sh folded in, the
- * image the node daemon must run with (SANDBOX_IMAGE), and serves the demo app from it with
- * `next dev` in a container of its own. Dev mode because some bugs (001) throw while
- * `next build` prerenders, so no production build of them exists. The container migrates
- * and seeds the compose Postgres's `demo` database first. Unseeding removes it.
+ * For a code scenario, `prepare` builds `page-sandbox:demo` once with the scenario's
+ * break.sh folded in, the image the node daemon must run with (SANDBOX_IMAGE). Each seed
+ * serves the demo app from it with `next dev` in a container of its own. Dev mode because
+ * some bugs (001) throw while `next build` prerenders, so no production build of them
+ * exists. The container migrates and seeds the compose Postgres's `demo` database first.
+ * A container that exits fails the seed at once, and a failed seed reports the tail of its
+ * log before unseeding removes it.
  *
  * An ops scenario runs break-ops.sh and fix-ops.sh against the compose demo app.
  */
@@ -110,40 +101,12 @@ export function localTarget(options: LocalOptions): Target {
     opsSecret: options.opsApp.opsSecret,
   };
   const appFor = (s: Scenario) => (s.kind === 'ops' ? options.opsApp : codeApp);
-  return {
+  const target: Target = {
     name: 'local',
     async seed(s, signal) {
       if (s.kind === 'ops') {
         await scenarioScript(s, 'break-ops.sh', options.opsApp, signal);
         return;
-      }
-      if (options.build) {
-        await run(
-          'build page-sandbox',
-          'docker',
-          ['build', '-q', '-f', 'infra/sandbox/Dockerfile', '-t', 'page-sandbox', '.'],
-          {},
-          signal,
-          options.buildTimeoutMs,
-        );
-        await run(
-          `build ${DEMO_IMAGE}`,
-          'docker',
-          [
-            'build',
-            '-q',
-            '-f',
-            'infra/sandbox/demo.Dockerfile',
-            '--build-arg',
-            `SCENARIO=${s.id}`,
-            '-t',
-            DEMO_IMAGE,
-            '.',
-          ],
-          {},
-          signal,
-          options.buildTimeoutMs,
-        );
       }
       await runHost('docker', ['rm', '-f', LOCAL_CONTAINER], {}, signal);
       // Values pass through the environment, so secrets stay out of `ps`.
@@ -180,7 +143,18 @@ export function localTarget(options: LocalOptions): Target {
         { DATABASE_URL: options.databaseUrl },
         signal,
       );
-      await waitHealthy(codeApp.url, signal);
+      // A container that exits on startup (a failed migration, a crash) never answers.
+      const gone = async () =>
+        containerStopped(
+          LOCAL_CONTAINER,
+          await runHost(
+            'docker',
+            ['inspect', '-f', '{{.State.Status}} {{.State.ExitCode}}', LOCAL_CONTAINER],
+            {},
+            signal,
+          ),
+        );
+      await waitHealthy(codeApp.url, signal, { clock: realClock, gone });
     },
     trigger: (s, signal) => scenarioScript(s, 'trigger.sh', appFor(s), signal),
     async unseed(s, signal) {
@@ -190,7 +164,51 @@ export function localTarget(options: LocalOptions): Target {
       }
       await run('remove the demo app', 'docker', ['rm', '-f', LOCAL_CONTAINER], {}, signal);
     },
+    async logs(s, signal) {
+      if (s.kind === 'ops') return null;
+      const { code, output } = await runHost(
+        'docker',
+        ['logs', '--tail', String(LOG_LINES), LOCAL_CONTAINER],
+        {},
+        signal,
+      );
+      // No container to read: `docker run` itself failed, and its error is the seed's.
+      return code === 0 && output.trim() !== '' ? output.trimEnd() : null;
+    },
   };
+  if (options.build) {
+    target.prepare = async (s, signal) => {
+      if (s.kind === 'ops') return null;
+      await run(
+        'build page-sandbox',
+        'docker',
+        ['build', '-q', '-f', 'infra/sandbox/Dockerfile', '-t', 'page-sandbox', '.'],
+        {},
+        signal,
+        options.buildTimeoutMs,
+      );
+      await run(
+        `build ${DEMO_IMAGE}`,
+        'docker',
+        [
+          'build',
+          '-q',
+          '-f',
+          'infra/sandbox/demo.Dockerfile',
+          '--build-arg',
+          `SCENARIO=${s.id}`,
+          '-t',
+          DEMO_IMAGE,
+          '.',
+        ],
+        {},
+        signal,
+        options.buildTimeoutMs,
+      );
+      return `built page-sandbox and ${DEMO_IMAGE} for ${s.id}`;
+    };
+  }
+  return target;
 }
 
 /**
@@ -209,7 +227,7 @@ export function stagingTarget(app: TargetEnv): Target {
           `${s.id} deploys through compose (compose-deploy.sh); run it --target local`,
         );
       }
-      await waitHealthy(app.url, signal);
+      await waitHealthy(app.url, signal, { clock: realClock });
       if (s.kind === 'ops') await scenarioScript(s, 'break-ops.sh', app, signal);
     },
     trigger: (s, signal) => scenarioScript(s, 'trigger.sh', app, signal),

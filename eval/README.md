@@ -212,21 +212,26 @@ look at the PR or the issue; clean up by hand after. It only goes with one run: 
 --runs 3` is refused, since run 2 would find run 1's issue still open. Ctrl-C skips it
 too. `--runs 3` plays the scenario three times and stops at the first failure, which is
 the card's bar. Only dev bugs run, as with `demo-sync.sh`. The exit code is 0 when every
-run passed, 1 when one failed and 2 for bad arguments.
+run passed, 1 when one failed and 2 for bad arguments. `--out <file>` writes the target's
+one-time preparation (`prepare`, below) and every run's result as JSON.
 
 ### Targets
 
 `--target local` (the default) runs the demo app on this machine; the orchestrator and
 daemon can be the Railway ones or local ones.
 
-- A code scenario builds `page-sandbox` and `page-sandbox:demo` with the scenario seeded,
+- A code scenario builds `page-sandbox` and `page-sandbox:demo` with the scenario seeded
+  once, before the first run and outside the `seed` step, so seed times compare across
+  `--runs`. The build prints as `[prepare]` with its own time and goes in `--out` as
+  `prepare`. It gets the `seed` limit (`--timeout seed=30m` for a cold cache), not the 10
+  minutes a scenario script gets. `--no-build` reuses the images already built. Each seed
   then serves the demo app from that image with `next dev` in a container named
   `page-e2e-demo-app`, on `E2E_DEMO_APP_PORT` (default 3100, so the compose app keeps 3000).
   Dev mode because some bugs, 001 among them, throw while `next build` prerenders. The
   container migrates and seeds the `demo` database of the compose Postgres (`pnpm db:up`)
-  first. The unseed removes the container. `--no-build` reuses the images already built.
-  The builds run under the `seed` limit (`--timeout seed=30m` for a cold cache), not the
-  10 minutes a scenario script gets.
+  first. If it exits before `/api/health` answers, the seed fails at once instead of
+  waiting out its limit. After any failed seed, the summary shows the last 50 lines of the
+  container's log, read before the unseed removes the container.
 - An ops scenario runs `break-ops.sh` and `fix-ops.sh` against the compose demo app at
   `DEMO_APP_URL` (default `http://localhost:3000`), started with `OPS_SECRET` set.
 
