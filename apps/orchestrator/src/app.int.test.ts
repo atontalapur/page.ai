@@ -1,7 +1,7 @@
 import { fixJobSchema, type Issue } from '@page/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
-import { createSchemaDeps } from './db/test-utils.ts';
+import { createSchemaDeps, testConfig } from './db/test-utils.ts';
 import { FIX_QUEUE } from './queue/fix-jobs.ts';
 
 const deps = await createSchemaDeps();
@@ -13,11 +13,14 @@ afterAll(async () => {
   await deps.close();
 });
 
+const headers = { authorization: `Bearer ${testConfig.apiToken ?? ''}` };
+
 describe('orchestrator on real Postgres', () => {
   it('queues a fix job that a node daemon can claim', async () => {
     const reported = await app.inject({
       method: 'POST',
       url: '/issues',
+      headers,
       payload: { fingerprint: 'int-1', title: 'relation "orders" does not exist' },
     });
     const { issue } = reported.json<{ issue: Issue }>();
@@ -26,7 +29,12 @@ describe('orchestrator on real Postgres', () => {
       { type: 'triage', class: 'database', severity: 'critical' },
       { type: 'start_fix' },
     ]) {
-      const res = await app.inject({ method: 'POST', url: `/issues/${issue.id}/events`, payload });
+      const res = await app.inject({
+        method: 'POST',
+        url: `/issues/${issue.id}/events`,
+        payload,
+        headers,
+      });
       expect(res.statusCode).toBe(200);
     }
 
@@ -39,8 +47,12 @@ describe('orchestrator on real Postgres', () => {
     // at once, and a retry of the same escalate is refused.
     const escalate = { type: 'escalate', runId: claimed.runId, reason: 'tests still fail' };
     const url = `/issues/${issue.id}/events`;
-    expect((await app.inject({ method: 'POST', url, payload: escalate })).statusCode).toBe(200);
-    expect((await app.inject({ method: 'POST', url, payload: escalate })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'POST', url, payload: escalate, headers })).statusCode).toBe(
+      200,
+    );
+    expect((await app.inject({ method: 'POST', url, payload: escalate, headers })).statusCode).toBe(
+      409,
+    );
 
     const [next] = await deps.boss.fetch(FIX_QUEUE);
     expect(fixJobSchema.parse(next?.data)).toMatchObject({ issueId: issue.id, tier: 2 });
@@ -52,6 +64,7 @@ describe('orchestrator on real Postgres', () => {
     const reported = await app.inject({
       method: 'POST',
       url: '/issues',
+      headers,
       payload: { fingerprint: 'int-2', title: 'boom' },
     });
     const { issue } = reported.json<{ issue: Issue }>();
@@ -60,7 +73,7 @@ describe('orchestrator on real Postgres', () => {
       { type: 'start_fix' },
       { type: 'kill' },
     ]) {
-      await app.inject({ method: 'POST', url: `/issues/${issue.id}/events`, payload });
+      await app.inject({ method: 'POST', url: `/issues/${issue.id}/events`, payload, headers });
     }
     const jobs = await deps.boss.findJobs(FIX_QUEUE, { data: { issueId: issue.id } });
     expect(jobs.map((j) => j.state)).toEqual(['cancelled']);

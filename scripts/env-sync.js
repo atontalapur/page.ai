@@ -28,6 +28,7 @@ const { decrypt } = require('@dotenvx/primitives');
 // Adding a shared secret means adding it here, so the change shows up in review.
 const SHARED_KEYS = [
   'NODE_SHARED_SECRET',
+  'ORCHESTRATOR_API_TOKEN',
   'POSTHOG_WEBHOOK_SECRET',
   'POSTHOG_KEY',
   'OPENROUTER_API_KEY',
