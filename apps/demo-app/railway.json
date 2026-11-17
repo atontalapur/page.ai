@@ -13,7 +13,7 @@
     ]
   },
   "deploy": {
-    "preDeployCommand": "node scripts/db.ts migrate && node scripts/db.ts seed",
+    "preDeployCommand": "node scripts/db.ts migrate seed",
     "healthcheckPath": "/api/health",
     "restartPolicyType": "ALWAYS"
   }
