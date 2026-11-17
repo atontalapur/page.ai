@@ -20,21 +20,37 @@ export function liveAppFromEnv(env: NodeJS.ProcessEnv = process.env): LiveApp | 
   return url && opsSecret ? { url: url.replace(/\/+$/, ''), opsSecret } : undefined;
 }
 
+/**
+ * Runs `command args` from the repo root with `env` over this process's env, and resolves
+ * with its exit code and output, stdout and stderr together. `signal` kills it, and so
+ * does `timeoutMs` (default HOST_SCRIPT_TIMEOUT_MS), for a command that needs longer
+ * than a scenario script, such as a Docker build.
+ */
+export function runHost(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = {},
+  signal?: AbortSignal,
+  { timeoutMs = HOST_SCRIPT_TIMEOUT_MS }: { timeoutMs?: number } = {},
+): Promise<ExecResult> {
+  return new Promise<ExecResult>((resolve, reject) => {
+    const child = spawn(command, args, {
+      env: { ...process.env, ...env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: timeoutMs,
+      ...(signal === undefined ? {} : { signal }),
+    });
+    let output = '';
+    child.stdout.on('data', (chunk: Buffer) => (output += chunk.toString()));
+    child.stderr.on('data', (chunk: Buffer) => (output += chunk.toString()));
+    child.on('error', reject);
+    child.on('close', (code, killed) =>
+      resolve({ code: code ?? 1, output: killed ? `${output}\nkilled by ${killed}` : output }),
+    );
+  });
+}
+
 /** Runs each script with `sh <path>` from the repo root, with the app in its env. */
 export function hostShell(app: LiveApp): HostShell {
-  return (path) =>
-    new Promise<ExecResult>((resolve, reject) => {
-      const child = spawn('sh', [path], {
-        env: { ...process.env, DEMO_APP_URL: app.url, OPS_SECRET: app.opsSecret },
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: HOST_SCRIPT_TIMEOUT_MS,
-      });
-      let output = '';
-      child.stdout.on('data', (chunk: Buffer) => (output += chunk.toString()));
-      child.stderr.on('data', (chunk: Buffer) => (output += chunk.toString()));
-      child.on('error', reject);
-      child.on('close', (code, signal) =>
-        resolve({ code: code ?? 1, output: signal ? `${output}\nkilled by ${signal}` : output }),
-      );
-    });
+  return (path) => runHost('sh', [path], { DEMO_APP_URL: app.url, OPS_SECRET: app.opsSecret });
 }

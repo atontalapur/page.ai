@@ -27,7 +27,8 @@
     "eval:run": "node eval/scripts/eval-run.ts",
     "eval:report": "node eval/scripts/eval-report.ts",
     "eval:charts": "node eval/scripts/eval-charts.ts",
-    "eval:tune": "node eval/scripts/eval-tune.ts"
+    "eval:tune": "node eval/scripts/eval-tune.ts",
+    "e2e": "node --env-file-if-exists=.env eval/scripts/e2e.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",
