@@ -1,8 +1,11 @@
 import { Controller, Get, Inject, ServiceUnavailableException } from '@nestjs/common';
 import { sql } from 'kysely';
+import { SkipApiToken } from '../auth/api-token.guard.ts';
 import type { Db } from '../db/database.ts';
 import { DB } from '../tokens.ts';
 
+// Railway's health check sends no token.
+@SkipApiToken()
 @Controller('health')
 export class HealthController {
   constructor(@Inject(DB) private readonly db: Db) {}

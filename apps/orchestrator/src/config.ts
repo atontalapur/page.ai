@@ -45,6 +45,9 @@ const schema = envSchema(
     // The node daemon's parser (true/1/yes/on, false/0/no/off).
     USE_FAKE_ADAPTERS: baseConfigSchema.shape.USE_FAKE_ADAPTERS,
     LOG_LEVEL: baseConfigSchema.shape.LOG_LEVEL,
+    // Bearer token for every route but /health and /ingest. Blank is unset: those routes
+    // then return 401, and the service still boots so the deploy health check passes.
+    ORCHESTRATOR_API_TOKEN: z.string().min(1).optional(),
     // Blank is unset. The webhook then rejects every request.
     POSTHOG_WEBHOOK_SECRET: z.string().min(1).optional(),
     OPENROUTER_API_KEY: z.string().min(1).optional(),
@@ -72,6 +75,7 @@ export interface Config {
   pgbossSchema: string;
   useFakeAdapters: boolean;
   logLevel: LogLevel;
+  apiToken: string | undefined;
   posthogWebhookSecret: string | undefined;
   openRouterApiKey: string | undefined;
   triageModel: string;
@@ -145,6 +149,7 @@ export function loadConfig(env: Env = process.env): Config {
     pgbossSchema: config.PGBOSS_SCHEMA,
     useFakeAdapters: config.USE_FAKE_ADAPTERS,
     logLevel: config.LOG_LEVEL,
+    apiToken: config.ORCHESTRATOR_API_TOKEN,
     posthogWebhookSecret: config.POSTHOG_WEBHOOK_SECRET,
     openRouterApiKey: config.OPENROUTER_API_KEY,
     triageModel: config.TRIAGE_MODEL,

@@ -1,8 +1,11 @@
 import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { posthogWebhookSchema, type PosthogWebhook } from '@page/contracts';
+import { SkipApiToken } from '../auth/api-token.guard.ts';
 import { IngestService } from './ingest.service.ts';
 import { PosthogWebhookGuard } from './webhook.guard.ts';
 
+// PostHog sends POSTHOG_WEBHOOK_SECRET, checked by PosthogWebhookGuard, not the API token.
+@SkipApiToken()
 @Controller('ingest')
 export class IngestController {
   constructor(private readonly ingest: IngestService) {}

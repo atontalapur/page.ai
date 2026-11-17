@@ -62,6 +62,13 @@ new one.
 | POST   | `/issues/:id/events` | an `issueEvent`, e.g. `{ "type": "kill" }` |
 | POST   | `/ingest/posthog`    | a PostHog `$exception` webhook             |
 
+Every route but `/health` and `/ingest/posthog` needs `Authorization: Bearer
+<ORCHESTRATOR_API_TOKEN>` and returns 401 without it. With the token unset they all return 401,
+and boot logs a warning, so a service without it is closed rather than open. `/health` stays
+open for Railway's health check, and `/ingest/posthog` checks `POSTHOG_WEBHOOK_SECRET` instead.
+`POST /issues` has no rate limit: only token holders reach it, and a repeat report with the same
+fingerprint bumps `occurrences` instead of adding a row.
+
 Bodies are validated against the zod contracts (400). Unknown ids return 404. Events the
 current status doesn't allow, and daemon events for a stale run, return 409. `GET /issues`
 returns at most 200 issues, most recently updated first; a repeat report counts as an update.

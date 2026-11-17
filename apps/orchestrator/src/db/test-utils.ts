@@ -21,6 +21,7 @@ export const testConfig: Config = {
   pgbossSchema: 'pgboss',
   useFakeAdapters: true,
   logLevel: 'info',
+  apiToken: 'test-api-token',
   posthogWebhookSecret: 'test-webhook-secret',
   openRouterApiKey: undefined,
   triageModel: 'openai/gpt-4o-mini',

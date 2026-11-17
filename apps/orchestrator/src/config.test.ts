@@ -12,6 +12,7 @@ describe('loadConfig', () => {
       pgbossSchema: 'pgboss',
       useFakeAdapters: false,
       logLevel: 'info',
+      apiToken: undefined,
       posthogWebhookSecret: undefined,
       openRouterApiKey: undefined,
       triageModel: 'openai/gpt-4o-mini',
@@ -82,11 +83,13 @@ describe('loadConfig', () => {
     expect(
       loadConfig({
         DATABASE_URL,
+        ORCHESTRATOR_API_TOKEN: ' ',
         POSTHOG_WEBHOOK_SECRET: ' ',
         OPENROUTER_API_KEY: '',
         NOTIFY_TO_NUMBERS: ' +15550000001, +15550000002 ',
       }),
     ).toMatchObject({
+      apiToken: undefined,
       posthogWebhookSecret: undefined,
       openRouterApiKey: undefined,
       notifyTo: ['+15550000001', '+15550000002'],

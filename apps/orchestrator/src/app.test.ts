@@ -2,7 +2,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { Issue } from '@page/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
-import { createTestDeps } from './db/test-utils.ts';
+import { createTestDeps, testConfig } from './db/test-utils.ts';
 
 const deps = await createTestDeps();
 const app: NestFastifyApplication = await createApp(deps, false);
@@ -13,8 +13,9 @@ afterAll(async () => {
   await deps.close();
 });
 
+const headers = { authorization: `Bearer ${testConfig.apiToken ?? ''}` };
 const http = (method: 'GET' | 'POST', url: string, payload?: object) =>
-  app.inject({ method, url, payload });
+  app.inject({ method, url, payload, headers });
 
 describe('orchestrator HTTP API', () => {
   it('reports healthy', async () => {

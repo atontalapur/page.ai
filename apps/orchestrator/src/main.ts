@@ -56,6 +56,9 @@ try {
   const applied = await migrate(db, await loadMigrations());
   logger.info(applied.length ? `applied ${applied.join(', ')}` : 'migrations up to date');
   await boss.start();
+  if (!config.apiToken) {
+    logger.warn('ORCHESTRATOR_API_TOKEN is unset; every route but /health and /ingest returns 401');
+  }
   if (!config.useFakeAdapters && !config.openRouterApiKey) {
     logger.warn('OPENROUTER_API_KEY is unset; triage uses the rule fallback');
   }

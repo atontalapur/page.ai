@@ -68,6 +68,7 @@ describe('TriageClassifier', () => {
       pgbossSchema: 'pgboss',
       useFakeAdapters: false,
       logLevel: 'info' as const,
+      apiToken: undefined,
       posthogWebhookSecret: undefined,
       triageModel: 'openai/gpt-4o-mini',
       triageTimeoutMs: 1000,
