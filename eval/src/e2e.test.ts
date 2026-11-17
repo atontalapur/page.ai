@@ -8,6 +8,7 @@ import {
   defaultTimeouts,
   formatMs,
   issueTitleMatches,
+  parseDrain,
   parseDuration,
   parseTimeouts,
   reportErrorLine,
@@ -433,6 +434,14 @@ describe('runE2E', () => {
     expect(r.passed).toBe(true);
     expect(stepOf(r, 'outcome')?.detail).toBe('1 pending approval');
     expect(failedChecks(r)).toEqual([]);
+    // Its run waits on an approval that nothing grants after the kill, so no drain.
+    expect(r.reset.map((a) => a.action)).toEqual([
+      `kill issue ${ISSUE}`,
+      `find the runs of issue ${ISSUE}`,
+      `close PR of ${R1}`,
+      'unseed',
+    ]);
+    expect(h.lines.some((l) => l.includes('WARNING'))).toBe(false);
   });
 
   describe('fails at the step that ran out of time, and still resets', () => {
@@ -475,6 +484,9 @@ describe('runE2E', () => {
       expect(failed.durationMs).toBeLessThan(31 * S);
       expect(h.calls.at(-1)).toBe('unseed');
       expect(stepOf(r, 'reset')?.ok).toBe(true);
+      // Only a trigger that ran can have opened an issue the test didn't pick up.
+      const lookedLate = r.reset.some((a) => a.action === 'look for a late issue');
+      expect(lookedLate).toBe(name === 'trigger' || name === 'issue');
     });
 
     it('says why the issue never came', async () => {
@@ -505,8 +517,9 @@ describe('runE2E', () => {
       const r = await play(h, scenario(1));
       expect(r.failedStep).toBe('issue');
       expect(r.error).toContain('was already open (awaiting_approval)');
-      // The reset doesn't touch an issue the test didn't open.
+      // The reset doesn't touch an issue the test didn't open, not even as a late one.
       expect(h.world.killed).toEqual([]);
+      expect(r.reset.find((a) => a.action === 'look for a late issue')?.detail).toBe('none');
     });
 
     it('several new issues and none with the report title', async () => {
@@ -736,6 +749,130 @@ describe('runE2E', () => {
     expect(h.calls).toEqual([]);
   });
 
+  describe('reset drain', () => {
+    // Someone kills the issue at 3 minutes, but the daemon goes on and opens its PR at 8.
+    const killedMidRun = (withPr = true): Change[] => [
+      opened(5 * S),
+      triaged(6 * S),
+      fixing(7 * S, R1, 1),
+      progress(8 * S, R1, { jobState: 'active', steps: 3 }),
+      status(3 * MIN, 'killed'),
+      ...(withPr ? [pr(8 * MIN, R1, 9)] : []),
+    ];
+    const drained = (r: E2EResult) => r.reset.find((a) => a.action === `drain PRs of ${R1}`);
+    const warning = (h: Harness) => h.lines.find((l) => l.startsWith('[reset] WARNING'));
+
+    it('watches a run still in flight and closes the PR it opens after the kill', async () => {
+      const h = harness(killedMidRun());
+      const r = await play(h, scenario(1));
+      expect(r.failedStep).toBe('fix');
+      expect(r.error).toBe('issue ended killed at tier 1');
+      expect(r.reset.map((a) => [a.action, a.ok, a.detail])).toEqual([
+        [`kill issue ${ISSUE}`, true, 'already killed'],
+        [`find the runs of issue ${ISSUE}`, true, '1 runs'],
+        [`close PR of ${R1}`, true, 'none open'],
+        [`drain PRs of ${R1}`, true, expect.stringMatching(/^closed #9, 5m\d\ds into the drain$/)],
+        ['unseed', true, 'fake'],
+      ]);
+      expect(h.world.closed).toEqual([9]);
+      expect(warning(h)).toContain(
+        `[reset] WARNING: run ${R1} still in flight. The orchestrator can't stop a run`,
+      );
+      expect(warning(h)).toMatch(/Watching for a PR for up to 13m\d\ds \(--drain to change\)/);
+      expect(stepOf(r, 'reset')?.ok).toBe(true);
+    });
+
+    it('fails the reset when the PR is still open at the end', async () => {
+      const h = harness(killedMidRun());
+      h.world.github.closePullRequest = () => Promise.reject(new Error('403 forbidden'));
+      const r = await play(h, scenario(1), { drainMs: 10 * MIN });
+      expect(r.failedStep).toBe('fix');
+      expect(stepOf(r, 'reset')).toMatchObject({
+        ok: false,
+        detail: `drain PRs of ${R1}: PR #9 still open after the drain: 403 forbidden`,
+        durationMs: 10 * MIN,
+      });
+    });
+
+    it("watches for what is left of the run's share of the fix limit, or --drain", async () => {
+      const r = await play(harness(killedMidRun(false)), scenario(1));
+      // Claimed seconds after the trigger and killed at 3 minutes, of 16.
+      expect(drained(r)?.ok).toBe(true);
+      expect(drained(r)?.detail).toMatch(/^none opened in 13m\d\ds$/);
+      expect(stepOf(r, 'reset')!.durationMs).toBeGreaterThan(13 * MIN);
+
+      const short = await play(harness(killedMidRun(false)), scenario(1), { drainMs: 2 * MIN });
+      expect(drained(short)?.detail).toBe('none opened in 2m00s');
+    });
+
+    it('only warns with --drain 0, or without GitHub', async () => {
+      const h = harness(killedMidRun());
+      const r = await play(h, scenario(1), { drainMs: 0 });
+      expect(drained(r)).toBeUndefined();
+      expect(stepOf(r, 'reset')).toMatchObject({ ok: true, durationMs: 0 });
+      expect(warning(h)).toContain('Not watching for a PR: --drain 0');
+
+      const bare = harness(killedMidRun());
+      const unwatched = await play(bare, scenario(1), {}, false);
+      expect(drained(unwatched)).toBeUndefined();
+      expect(warning(bare)).toContain('With no GitHub reader, the reset cannot close');
+    });
+
+    it('goes on the last read when the database fails at the reset', async () => {
+      const h = harness(killedMidRun());
+      const failed = () => h.lines.some((l) => l.startsWith('[fix] FAILED'));
+      const real = { ...h.world.reader };
+      h.world.reader.issue = (id) =>
+        failed() ? Promise.reject(new Error('connection refused')) : real.issue(id);
+      h.world.reader.run = (id) =>
+        failed() ? Promise.reject(new Error('connection refused')) : real.run(id);
+      const r = await play(h, scenario(1));
+      expect(r.reset.find((a) => a.action.startsWith('kill'))).toMatchObject({
+        ok: false,
+        detail: 'connection refused',
+      });
+      expect(drained(r)?.detail).toMatch(/^closed #9/);
+    });
+  });
+
+  describe('a late issue', () => {
+    it('is killed and its PRs closed when it opened after the issue step gave up', async () => {
+      const h = harness([
+        opened(20 * S),
+        triaged(21 * S),
+        fixing(22 * S, R1, 1),
+        progress(23 * S, R1, { jobState: 'active', steps: 1 }),
+        pr(24 * S, R1, 9),
+      ]);
+      // The issue step never sees it, as if it opened just after the step gave up.
+      const real = { ...h.world.reader };
+      h.world.reader.issuesSeenSince = (since) =>
+        h.lines.some((l) => l.startsWith('[issue] FAILED'))
+          ? real.issuesSeenSince(since)
+          : Promise.resolve([]);
+      const r = await play(h, scenario(1), { timeouts: { issue: 30 * S }, drainMs: MIN });
+
+      expect(r.failedStep).toBe('issue');
+      expect(r.issueId).toBeNull();
+      expect(r.reset.map((a) => [a.action, a.ok, a.detail])).toEqual([
+        ['look for a late issue', true, `${ISSUE} fixing, opened 2026-11-15T00:00:50.000Z`],
+        [`kill issue ${ISSUE}`, true, 'was fixing'],
+        [`find the runs of issue ${ISSUE}`, true, '1 runs'],
+        [`close PR of ${R1}`, true, 'closed #9'],
+        // Its run was claimed, so the drain watches it too.
+        [`drain PRs of ${R1}`, true, 'none opened in 1m00s'],
+        ['unseed', true, 'fake'],
+      ]);
+      expect(h.world.writes).toEqual([`kill ${ISSUE}`, 'close #9']);
+    });
+
+    it('is not looked for when the trigger never ran', async () => {
+      const h = harness([], { seed: () => Promise.reject(new Error('no docker')) });
+      const r = await play(h, scenario(1));
+      expect(r.reset.map((a) => a.action)).toEqual(['unseed']);
+    });
+  });
+
   it('fails a trigger script that exits non-zero', async () => {
     const h = harness([], { trigger: () => Promise.reject(new Error('trigger.sh exited 7')) });
     const r = await play(h, scenario(1));
@@ -801,6 +938,13 @@ describe('helpers', () => {
     expect(() => parseTimeouts(['assert=1m'])).toThrow('want <step>=<duration>');
     expect(() => parseTimeouts(['fix'])).toThrow('want <step>=<duration>');
     expect(() => parseTimeouts(['fix=1m=2'])).toThrow('want <step>=<duration>');
+  });
+
+  it('parses --drain, where 0 skips the watch', () => {
+    expect(parseDrain('0')).toBe(0);
+    expect(parseDrain('0s')).toBe(0);
+    expect(parseDrain('5m')).toBe(5 * MIN);
+    expect(() => parseDrain('soon')).toThrow('is not a duration');
   });
 
   it('summarizes a result', async () => {

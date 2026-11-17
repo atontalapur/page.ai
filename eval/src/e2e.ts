@@ -200,6 +200,12 @@ export interface E2EOptions {
   budgetMs?: number;
   /** Skip the reset, to look at the PR or the issue afterwards. */
   keep?: boolean;
+  /**
+   * How long the reset watches a run a daemon is still on for a PR after the kill, closing
+   * any that opens. Default: what is left of the run's share of the `fix` limit (16 minutes
+   * per tier) since the test first saw it claimed. 0 skips the watch.
+   */
+  drainMs?: number;
 }
 
 // ---- Result ----------------------------------------------------------------------------
@@ -281,6 +287,11 @@ export function parseDuration(text: string): number {
   const ms = Number(match[1]) * UNITS[match[2] as keyof typeof UNITS];
   if (!(ms > 0)) throw new Error(`${JSON.stringify(text)} must be longer than 0`);
   return ms;
+}
+
+/** `--drain`: a duration, or `0` to skip the watch. */
+export function parseDrain(text: string): number {
+  return /^0+(?:\.0+)?(?:ms|s|m|h)?$/.test(text.trim()) ? 0 : parseDuration(text);
 }
 
 /** `--timeout` values, `fix=20m` each, as step limits. */
@@ -528,6 +539,16 @@ export async function runE2E(
     return result;
   }
 
+  // Every run the test read, for the reset: which ones a daemon may still be on.
+  const watched: Watched = new Map();
+  const observe = (p: RunProgress): RunProgress => {
+    const claimedAt = watched.get(p.runId)?.claimedAt ?? (runClaimed(p) ? clock.now() : null);
+    watched.set(p.runId, { claimedAt, progress: p });
+    return p;
+  };
+  // The database's clock when the trigger ran: an issue it opened was created after it.
+  let triggeredSince: Date | null = null;
+
   let issue: IssueRow | null = null;
   try {
     await step('seed', async () => {
@@ -535,15 +556,14 @@ export async function runE2E(
       return { value: undefined, detail: `${scenario.id} on ${target.name}` };
     });
 
-    // The database's clock: an issue opened by this trigger was created after it.
-    let since = new Date(0);
     const triggeredAt = clock.now();
-    await step('trigger', async () => {
-      since = await reader.now();
+    const since = await step('trigger', async () => {
+      const at = await reader.now();
+      triggeredSince = at;
       const output = await withTimeout(clock, 'trigger', timeouts.trigger, (signal) =>
         target.trigger(scenario, signal),
       );
-      return { value: undefined, detail: output.trim().split('\n').slice(-3).join(' | ') };
+      return { value: at, detail: output.trim().split('\n').slice(-3).join(' | ') };
     });
 
     // Only an issue titled like the report counts. Another one seen meanwhile is some
@@ -638,7 +658,7 @@ export async function runE2E(
           stopIfEnded(row, 'claim');
           const run = track(row);
           if (run === undefined) return undefined;
-          progress = await reader.run(run.runId);
+          progress = observe(await reader.run(run.runId));
           return runClaimed(progress) ? run : undefined;
         },
         () => {
@@ -664,7 +684,7 @@ export async function runE2E(
           const run = track(row);
           if (row.status === 'awaiting_approval' || row.status === 'pr_open') return row;
           if (run === undefined) return undefined;
-          progress = await reader.run(run.runId);
+          progress = observe(await reader.run(run.runId));
           if (progress.pendingApprovals > 0) return row;
           if (!runFinished(progress)) return undefined;
           // The run is over; the orchestrator should move the issue on any moment.
@@ -707,7 +727,7 @@ export async function runE2E(
               "tier 1 ended on a patch awaiting approval; Tier 1 can't push, so no PR can open",
             );
           }
-          progress = await reader.run(finalRun.runId);
+          progress = observe(await reader.run(finalRun.runId));
           if (expect === 'pr') {
             pr = await github!.findOpenPullRequest(agentBranch(finalRun.runId));
             if (pr === null) return undefined;
@@ -729,7 +749,7 @@ export async function runE2E(
 
     await step('assert', async () => {
       const row = await read();
-      const final = await reader.run(finalRun.runId);
+      const final = observe(await reader.run(finalRun.runId));
       result.checks = assertEndState(scenario, expect, row, final, finalRun, pr, {
         timeToOutcomeMs: result.timeToOutcomeMs!,
         budgetMs,
@@ -760,10 +780,25 @@ export async function runE2E(
     });
     log('[reset] skipped: keep');
   } else {
+    // A run's share of the fix limit: a ladder climb gets `fix` over its expected tiers.
+    const runFixMs = timeouts.fix / scenario.meta.expectedTier;
+    const drainLimit = options.drainMs ?? runFixMs;
     try {
       await step('reset', async () => {
-        await withTimeout(clock, 'reset', timeouts.reset, (signal) =>
-          reset(scenario, deps, result, signal),
+        // The drain may watch for up to its window on top of the reset's own work.
+        await withTimeout(clock, 'reset', timeouts.reset + drainLimit, (signal) =>
+          reset({
+            scenario,
+            deps,
+            result,
+            signal,
+            watched,
+            observe,
+            late: triggeredSince === null ? null : { since: triggeredSince, title },
+            pollMs,
+            runFixMs,
+            drainMs: options.drainMs,
+          }),
         );
         const failed = result.reset.filter((a) => !a.ok);
         if (failed.length > 0) {
@@ -783,18 +818,61 @@ export async function runE2E(
   return result;
 }
 
+/** What the test last read about each run, and when it first saw a daemon on it. */
+type Watched = Map<string, { claimedAt: number | null; progress: RunProgress }>;
+
+interface ResetContext {
+  scenario: Scenario;
+  deps: E2EDeps;
+  result: E2EResult;
+  signal: AbortSignal;
+  watched: Watched;
+  /** Records a run read, as the steps do. */
+  observe: (p: RunProgress) => RunProgress;
+  /** For an issue the trigger opened after the `issue` step gave up. Null if it never ran. */
+  late: { since: Date; title: string } | null;
+  pollMs: number;
+  /** A run's share of the `fix` limit, for its default drain window. */
+  runFixMs: number;
+  drainMs: number | undefined;
+}
+
+type Attempt = (action: string, work: () => Promise<string>) => Promise<void>;
+
+/** A run a daemon was still on when the reset began, first seen claimed at `claimedAt`. */
+interface InFlightRun {
+  runId: string;
+  claimedAt: number;
+}
+
+/** One run's branch the drain watches until `until`, and what it last saw there. */
+interface DrainWatch {
+  runId: string;
+  until: number;
+  /** The PR last seen open and not closed yet. */
+  open: PullRequest | null;
+  /** The last lookup or close error, cleared by a lookup that works. */
+  error: string | null;
+  /** The detail once its PR is closed. */
+  closed: string | null;
+}
+
+// The drain polls GitHub, not the database: a PR closed ten seconds late is as good.
+const DRAIN_POLL_MS = 10_000;
+
+const closeComment = (scenario: Scenario, runId: string) =>
+  `Closed by the end-to-end test reset: run \`${runId}\` was a test run of \`${scenario.id}\`.`;
+
 /**
  * Puts things back for the next run, each part on its own so one failure doesn't skip
  * the rest: kills the issue so the next trigger opens a new one, closes the PRs of all
- * its runs, and takes the bug off the target.
+ * its runs, watches the runs still in flight for a late PR, and takes the bug off the
+ * target.
  */
-async function reset(
-  scenario: Scenario,
-  { target, reader, control, github }: E2EDeps,
-  result: E2EResult,
-  signal: AbortSignal,
-): Promise<void> {
-  const attempt = async (action: string, work: () => Promise<string>) => {
+async function reset(ctx: ResetContext): Promise<void> {
+  const { scenario, result, signal, late } = ctx;
+  const { target, reader, control, github } = ctx.deps;
+  const attempt: Attempt = async (action, work) => {
     try {
       result.reset.push({ action, ok: true, detail: await work() });
     } catch (error) {
@@ -806,14 +884,35 @@ async function reset(
     }
   };
 
-  const issueId = result.issueId;
+  let issueId = result.issueId;
+  if (issueId === null && late !== null) {
+    // The trigger ran, but the test never picked up its issue: the `issue` step ran out
+    // first, or trigger.sh failed after its request went out. An issue opened since then
+    // is the test's, and left open it fails the next run as already open.
+    await attempt('look for a late issue', async () => {
+      const seen = await reader.issuesSeenSince(late.since);
+      const found = seen.find(
+        (i) => issueTitleMatches(i.title, late.title) && i.createdAt >= late.since,
+      );
+      if (found === undefined) return 'none';
+      issueId = found.id;
+      return `${found.id} ${found.status}, opened ${found.createdAt.toISOString()}`;
+    });
+  }
+
   if (issueId !== null) {
-    // First, since the kill cancels the fix job: no run opens a PR after the closes below.
-    await attempt(`kill issue ${issueId}`, async () => {
-      const row = await reader.issue(issueId);
+    const id = issueId;
+    // Read before the kill, which cancels the runs' jobs: after it, every run reads finished.
+    const inFlight = await runsInFlight(ctx, id);
+
+    // First, so no queued run starts after the closes below. A run a daemon has already
+    // claimed goes on: the daemon only stops on a `kill` the gateway relays, and the
+    // gateway is a stub. The drain after the closes watches those runs.
+    await attempt(`kill issue ${id}`, async () => {
+      const row = await reader.issue(id);
       if (row === null) return 'gone';
       if (isTerminal(row.status)) return `already ${row.status}`;
-      await control.killIssue(issueId);
+      await control.killIssue(id);
       return `was ${row.status}`;
     });
 
@@ -821,8 +920,8 @@ async function reset(
       // Every run of the issue, not only those the test saw: a run can start and give way
       // to the next tier between two reads. If the lookup fails, the seen ones still close.
       let runIds = result.runs.map((r) => r.runId);
-      await attempt(`find the runs of issue ${issueId}`, async () => {
-        const found = await reader.runIdsForIssue(issueId);
+      await attempt(`find the runs of issue ${id}`, async () => {
+        const found = await reader.runIdsForIssue(id);
         runIds = [...new Set([...found, ...runIds])];
         return `${runIds.length} runs`;
       });
@@ -830,22 +929,122 @@ async function reset(
         await attempt(`close PR of ${runId}`, async () => {
           const pr = await github.findOpenPullRequest(agentBranch(runId), signal);
           if (pr === null) return 'none open';
-          await github.closePullRequest(
-            pr.number,
-            `Closed by the end-to-end test reset: run \`${runId}\` was a test run of ` +
-              `\`${scenario.id}\`.`,
-            signal,
-          );
+          await github.closePullRequest(pr.number, closeComment(scenario, runId), signal);
           return `closed #${pr.number}`;
         });
       }
     }
+
+    await drain(ctx, inFlight, attempt);
   }
 
   await attempt('unseed', async () => {
     await target.unseed(scenario, signal);
     return target.name;
   });
+}
+
+/**
+ * The issue's runs a daemon is still on: claimed and not finished. Each run the test knows
+ * is read again, and so is the issue's current run, which it may never have seen; a failed
+ * read keeps the last one. A run waiting on a pending approval is left out: nothing grants
+ * it once the issue is killed, so it can't go on to open a PR.
+ */
+async function runsInFlight(ctx: ResetContext, issueId: string): Promise<InFlightRun[]> {
+  const { reader } = ctx.deps;
+  const ids = new Set([...ctx.watched.keys(), ...ctx.result.runs.map((r) => r.runId)]);
+  try {
+    const row = await reader.issue(issueId);
+    if (row?.currentRunId) ids.add(row.currentRunId);
+  } catch {
+    // The kill below reports a database that can't be read.
+  }
+  for (const runId of ids) {
+    try {
+      ctx.observe(await reader.run(runId));
+    } catch {
+      // Keep the last read.
+    }
+  }
+  return [...ctx.watched]
+    .filter(
+      ([, w]) =>
+        w.claimedAt !== null && !runFinished(w.progress) && w.progress.pendingApprovals === 0,
+    )
+    .map(([runId, w]) => ({ runId, claimedAt: w.claimedAt! }));
+}
+
+/**
+ * Watches each in-flight run's branch for a PR, closing any that opens, until the run's
+ * window is up: `drainMs`, or what is left of its share of the `fix` limit. One action per
+ * run watched; it fails when a PR is still open at the end.
+ */
+async function drain(ctx: ResetContext, inFlight: InFlightRun[], attempt: Attempt) {
+  if (inFlight.length === 0) return;
+  const { clock, github } = ctx.deps;
+  const log = ctx.deps.log ?? (() => {});
+  const start = clock.now();
+  const watches = inFlight.map((r): DrainWatch => ({
+    runId: r.runId,
+    until: start + (ctx.drainMs ?? Math.max(0, r.claimedAt + ctx.runFixMs - start)),
+    open: null,
+    error: null,
+    closed: null,
+  }));
+
+  const longest = Math.max(...watches.map((w) => w.until)) - start;
+  const plan =
+    github === undefined
+      ? 'With no GitHub reader, the reset cannot close a PR it opens.'
+      : longest === 0
+        ? 'Not watching for a PR: --drain 0, or its share of the fix limit is up.'
+        : `Watching for a PR for up to ${formatMs(longest)} (--drain to change), closing any that opens.`;
+  log(
+    `[reset] WARNING: ${inFlight.length === 1 ? 'run' : 'runs'} ` +
+      `${inFlight.map((r) => r.runId).join(', ')} still in flight. The orchestrator can't ` +
+      'stop a run a daemon has claimed yet (the kill cancels the job, but the gateway that ' +
+      `would tell the daemon is a stub), so it may still open a PR. ${plan}`,
+  );
+  if (github === undefined) return;
+
+  const timed = watches.filter((w) => w.until > start);
+  const every = Math.max(ctx.pollMs, DRAIN_POLL_MS);
+  let left = timed;
+  while (left.length > 0) {
+    for (const w of left) {
+      try {
+        w.open = await github.findOpenPullRequest(agentBranch(w.runId), ctx.signal);
+        w.error = null;
+        if (w.open !== null) {
+          const pr = w.open;
+          await github.closePullRequest(pr.number, closeComment(ctx.scenario, w.runId), ctx.signal);
+          w.open = null;
+          w.closed = `closed #${pr.number}, ${formatMs(clock.now() - start)} into the drain`;
+        }
+      } catch (error) {
+        w.error = error instanceof Error ? error.message : String(error);
+      }
+    }
+    // A run opens one PR at most, so a run whose PR closed is done.
+    left = left.filter((w) => w.closed === null && clock.now() < w.until);
+    if (left.length === 0) break;
+    const next = Math.min(...left.map((w) => w.until)) - clock.now();
+    await clock.sleep(Math.min(every, next), ctx.signal);
+  }
+
+  for (const w of timed) {
+    await attempt(`drain PRs of ${w.runId}`, () => {
+      if (w.closed !== null) return Promise.resolve(w.closed);
+      const why = w.error === null ? '' : `: ${w.error}`;
+      if (w.open !== null) {
+        return Promise.reject(new Error(`PR #${w.open.number} still open after the drain${why}`));
+      }
+      if (w.error !== null) {
+        return Promise.reject(new Error(`could not look for a PR at the end of the drain${why}`));
+      }
+      return Promise.resolve(`none opened in ${formatMs(w.until - start)}`);
+    });
+  }
 }
 
 /** The end state checks, once the run reached its outcome. */

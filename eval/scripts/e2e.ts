@@ -9,6 +9,7 @@ import { RestGitHub } from '@page/toolkit';
 import pg from 'pg';
 import {
   defaultExpectation,
+  parseDrain,
   parseDuration,
   parseTimeouts,
   runE2E,
@@ -25,7 +26,7 @@ import { localTarget, stagingTarget } from './e2e-targets.ts';
 
 const USAGE = `usage: pnpm e2e <scenario-id> [--target local|staging] [--expect pr|approval]
   [--timeout <step>=<duration>]... [--budget <duration>] [--poll <duration>]
-  [--runs <n>] [--keep] [--no-build] [--out <file.json>]
+  [--drain <duration>] [--runs <n>] [--keep] [--no-build] [--out <file.json>]
 
   --target   local (default): a demo app on this machine, staging: the app at DEMO_APP_URL
   --expect   what the run ends on (default: pr for a Tier 2 code scenario, else approval)
@@ -34,6 +35,8 @@ const USAGE = `usage: pnpm e2e <scenario-id> [--target local|staging] [--expect 
   --budget   most time from the trigger to the PR or approval request (default: the
              sum of the trigger to outcome step limits, 32m at Tier 1, 48m at Tier 2)
   --poll     between database reads (default 3s)
+  --drain    after the reset's kill, how long to watch a run a daemon is still on for a
+             late PR to close (default: what is left of its 16m per tier; 0 skips it)
   --runs     play it n times in a row, stopping at the first failure (default 1)
   --keep     skip the reset, to look at the PR and the issue afterwards (one run only)
   --no-build local: use the page-sandbox:demo image already built
@@ -52,6 +55,7 @@ const { values, positionals } = parseArgs({
     timeout: { type: 'string', multiple: true, default: [] },
     budget: { type: 'string' },
     poll: { type: 'string' },
+    drain: { type: 'string' },
     runs: { type: 'string', default: '1' },
     keep: { type: 'boolean', default: false },
     'no-build': { type: 'boolean', default: false },
@@ -104,6 +108,9 @@ if (values.budget !== undefined) {
   options.budgetMs = parsed('--budget', () => parseDuration(values.budget!));
 }
 if (values.poll !== undefined) options.pollMs = parsed('--poll', () => parseDuration(values.poll!));
+if (values.drain !== undefined) {
+  options.drainMs = parsed('--drain', () => parseDrain(values.drain!));
+}
 
 let scenario: Scenario;
 try {

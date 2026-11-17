@@ -159,7 +159,7 @@ the orchestrator is a stub. The test is written for the pipeline as designed.
 | `claim`   | a fix run on the issue that a daemon picked up (pg-boss job, steps or row)         | 5m                    |
 | `fix`     | the issue to wait on a human, following each tier of a ladder climb                | 16m per expected tier |
 | `outcome` | an open PR from `pageagents/<runId>`, or `awaiting_approval` or a pending approval | 2m                    |
-| `reset`   | the reset below                                                                    | 10m                   |
+| `reset`   | the reset below                                                                    | 10m, plus the drain   |
 
 Change a limit with `--timeout fix=20m`. A step that runs out names the last state it saw,
 such as `issue triaged at tier -, no run (nothing sent start_fix after triage)`. The
@@ -180,20 +180,34 @@ any more.
 `--expect pr` waits for a PR; `--expect approval` for a human approval. The default is
 `pr` for a Tier 2 code scenario and `approval` otherwise, since Tier 1 can't push and Tier
 3 asks before an ops action. So with `--expect pr`, an issue that ends `awaiting_approval`
-at Tier 1 fails `outcome` at once instead of waiting out its limit. The checks after the outcome: the issue's status, its class
-and severity set, the run it ended on, at least one `steps` row, a fix job that didn't
-fail, the `runs` row (when there is one) and its `pr_url` matching the PR, and the time
-from the trigger to the outcome within `--budget`. The default budget is the sum of the
-limits of the steps it covers, `trigger` through `outcome`, so it follows `fix` up the
-tiers (32m at Tier 1, 48m at Tier 2, 64m at Tier 3) and any `--timeout`; pass `--budget`
-for a tighter bar. A class or tier other than the scenario's, and a missing `runs` row
-(nothing writes them yet), are warnings.
+at Tier 1 fails `outcome` at once instead of waiting out its limit. The checks after the
+outcome: the issue's status, its class and severity set, the run it ended on, at least one
+`steps` row, a fix job that didn't fail, the `runs` row (when there is one) and its
+`pr_url` matching the PR, and the time from the trigger to the outcome within `--budget`.
+The default budget is the sum of the limits of the steps it covers, `trigger` through
+`outcome`, so it follows `fix` up the tiers (32m at Tier 1, 48m at Tier 2, 64m at Tier 3)
+and any `--timeout`; pass `--budget` for a tighter bar. A class or tier other than the
+scenario's, and a missing `runs` row (nothing writes them yet), are warnings.
 
 The reset runs after every outcome, a failed step included: it kills the issue through
 `POST /issues/:id/events`, which cancels its fix job and lets the next trigger open a new
 issue, then closes any open PR from each of the issue's runs (every pg-boss `fix` job for
-the issue and every `runs` row, not only the runs the test saw), and unseeds the target. A
-failed reset fails the run, since the next one would start dirty. `--keep` skips it, to
+the issue and every `runs` row, not only the runs the test saw), and unseeds the target.
+If the trigger ran but the test never picked up its issue (the `issue` step ran out, or
+`trigger.sh` failed after sending), the reset looks once more for an issue opened since
+the trigger with the report's title, and kills it and closes its PRs the same way.
+
+The kill can't stop a run a daemon has already claimed: it only cancels the pg-boss job,
+and the daemon stops on a `kill` the gateway relays, which is still a stub. So such a run
+can open its PR after the close pass. The reset prints a warning naming every run it saw
+claimed and not finished, then watches each one's `pageagents/<runId>` branch, closing any
+PR that opens, for what is left of the run's share of the `fix` limit (16m per tier by
+default) since the test first saw it claimed. `--drain 5m` sets that window, and `--drain
+0` skips the watch (the warning still prints). A PR still open when the window ends fails
+the reset. A run waiting on a pending approval isn't watched, since nothing grants it after
+the kill. The `reset` limit grows by the drain window.
+
+A failed reset fails the run, since the next one would start dirty. `--keep` skips it, to
 look at the PR or the issue; clean up by hand after. It only goes with one run: `--keep
 --runs 3` is refused, since run 2 would find run 1's issue still open. Ctrl-C skips it
 too. `--runs 3` plays the scenario three times and stops at the first failure, which is
