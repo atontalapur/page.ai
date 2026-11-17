@@ -179,7 +179,8 @@ any more.
 
 `--expect pr` waits for a PR; `--expect approval` for a human approval. The default is
 `pr` for a Tier 2 code scenario and `approval` otherwise, since Tier 1 can't push and Tier
-3 asks before an ops action. The checks after the outcome: the issue's status, its class
+3 asks before an ops action. So with `--expect pr`, an issue that ends `awaiting_approval`
+at Tier 1 fails `outcome` at once instead of waiting out its limit. The checks after the outcome: the issue's status, its class
 and severity set, the run it ended on, at least one `steps` row, a fix job that didn't
 fail, the `runs` row (when there is one) and its `pr_url` matching the PR, and the time
 from the trigger to the outcome within `--budget`. The default budget is the sum of the

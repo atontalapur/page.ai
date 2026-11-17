@@ -255,8 +255,8 @@ const tier1Fix = (): Change[] => [
   status(6 * MIN + 2 * S, 'awaiting_approval'),
 ];
 
-/** Tier 1 runs out of steps, Tier 2 fixes it and opens a PR. */
-const ladderToPr = (): Change[] => [
+/** Tier 1 runs out of steps, Tier 2 fixes it but opens no PR. */
+const ladderToPatch = (): Change[] => [
   opened(30 * S),
   triaged(31 * S),
   fixing(32 * S, R1, 1),
@@ -264,10 +264,12 @@ const ladderToPr = (): Change[] => [
   progress(5 * MIN, R1, { jobState: 'completed', steps: 30 }),
   fixing(5 * MIN + 1 * S, R2, 2),
   progress(5 * MIN + 10 * S, R2, { jobState: 'active', steps: 1 }),
-  pr(9 * MIN, R2, 7),
   progress(9 * MIN + 5 * S, R2, { jobState: 'completed', steps: 20 }),
   status(9 * MIN + 6 * S, 'awaiting_approval'),
 ];
+
+/** The same climb, and Tier 2 opens a PR. */
+const ladderToPr = (): Change[] => [...ladderToPatch(), pr(9 * MIN, R2, 7)];
 
 interface Harness {
   world: World;
@@ -455,8 +457,8 @@ describe('runE2E', () => {
           ]),
         1,
       ],
-      // Expecting a PR, but the patch only waits for approval.
-      ['outcome', () => harness(tier1Fix()), 2],
+      // Expecting a PR, but Tier 2's patch only waits for approval.
+      ['outcome', () => harness(ladderToPatch()), 2],
     ];
 
     it.each(cases)('%s', async (name, make, tier) => {
@@ -568,12 +570,23 @@ describe('runE2E', () => {
     });
 
     it('an issue someone approved while the outcome step waited for its PR', async () => {
-      const changes = [...tier1Fix(), status(6 * MIN + 20 * S, 'resolved')];
+      const changes = [...ladderToPatch(), status(9 * MIN + 30 * S, 'resolved')];
       const r = await play(harness(changes), scenario(2));
       expect(r.failedStep).toBe('outcome');
       expect(r.error).toBe(
-        'issue was resolved at tier 1: someone approved it before the test saw its outcome',
+        'issue was resolved at tier 2: someone approved it before the test saw its outcome',
       );
+    });
+
+    it('a Tier 1 patch when a PR is expected, at once', async () => {
+      const h = harness(tier1Fix());
+      const r = await play(h, scenario(2));
+      expect(r.expect).toBe('pr');
+      expect(r.failedStep).toBe('outcome');
+      expect(r.error).toBe(
+        "tier 1 ended on a patch awaiting approval; Tier 1 can't push, so no PR can open",
+      );
+      expect(stepOf(r, 'outcome')!.durationMs).toBe(0);
     });
 
     it('a run that finished while the issue stayed fixing', async () => {

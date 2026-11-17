@@ -699,6 +699,14 @@ export async function runE2E(
         async () => {
           const row = await read();
           stopIfEnded(row, 'outcome');
+          // A patch only ends `awaiting_approval` through patch_ready (issues/transitions.ts),
+          // and Tier 1 can't push, so its patch never comes with a PR.
+          if (expect === 'pr' && row.status === 'awaiting_approval' && row.currentTier === 1) {
+            throw new E2EFailure(
+              'outcome',
+              "tier 1 ended on a patch awaiting approval; Tier 1 can't push, so no PR can open",
+            );
+          }
           progress = await reader.run(finalRun.runId);
           if (expect === 'pr') {
             pr = await github!.findOpenPullRequest(agentBranch(finalRun.runId));
