@@ -33,8 +33,9 @@ pnpm --filter @page/demo-app dev
 each deploy, and gates on `/api/health`. One-time service setup:
 
 1. New service from this GitHub repo, root directory `/`.
-2. Settings, Config-as-code file path: `/apps/demo-app/railway.json` (Railway does not
-   find it on its own outside the root).
+2. Copy the `railway.json` settings onto the service by hand: Railway no longer accepts a
+   config-as-code path for new services, so edits to the file don't reach staging. Railway
+   runs the pre-deploy command without a shell, which is why it is one `db.ts` call.
 3. Add a Postgres service and set `DATABASE_URL=${{Postgres.DATABASE_URL}}` on this one.
 4. Generate a public domain. Optional shop settings are listed in `.env.example`.
    Set `OPS_SECRET` (`openssl rand -hex 32`) and give the same value to the orchestrator
