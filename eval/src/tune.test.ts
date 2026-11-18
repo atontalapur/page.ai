@@ -112,7 +112,7 @@ describe('renderTune counts', () => {
       file([[fix(1)]], { stoppedForBudget: true, notPlayed: [{ scenario: 'dev-b', run: 1 }] }),
     ]);
     expect(md).toContain('Results files: 2 (ladder, ladder). Model: m.');
-    expect(md).toContain('Incomplete: ladder stopped for budget; ladder 1 runs not played.');
+    expect(md).toContain('Incomplete: ladder stopped for budget; ladder 1 run not played.');
     expect(section(md, 1)).toContain('| 2 | 2 | 2 |');
   });
 

@@ -171,7 +171,29 @@ describe('renderReport', () => {
       }),
     ]);
     expect(md).toContain(
-      'Incomplete: ladder stopped for budget; ladder stopped for a provider error; ladder 1 runs not played; ladder 1 scenarios skipped.',
+      'Incomplete: ladder stopped for budget; ladder stopped for a provider error; ladder 1 run not played; ladder 1 scenario skipped.',
+    );
+  });
+
+  it('counts more than one left-out run or scenario in the plural', () => {
+    const md = renderReport([
+      results('ladder', [run('a', true)], {
+        errors: [
+          { scenario: 'b', run: 1, tier: 1, message: 'boom' },
+          { scenario: 'c', run: 1, tier: 1, message: 'boom' },
+        ],
+        notPlayed: [
+          { scenario: 'a', run: 2 },
+          { scenario: 'a', run: 3 },
+        ],
+        skipped: [
+          { scenario: 'd', reason: 'ops' },
+          { scenario: 'e', reason: 'ops' },
+        ],
+      }),
+    ]);
+    expect(md).toContain(
+      'Incomplete: ladder 2 errored runs left out; ladder 2 runs not played; ladder 2 scenarios skipped.',
     );
   });
 

@@ -8,6 +8,7 @@ import {
   incompleteNotes,
   percentileSec,
   plannedIds,
+  plural,
   rateLabel,
   reportFiles,
   sec,
@@ -134,7 +135,6 @@ export function chartData(files: EvalResults[]): ChartSet {
   // false pages per run. The labels say which.
   const counts = (n: (c: Cell) => number, label: (n: number, runs: number) => string): Bar[] =>
     cells.map((c) => ({ config: c.config, value: n(c), label: label(n(c), c.summary.runs) }));
-  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
   return {
     subtitle: `${first.model}, ${played} of ${plannedIds(first).length} planned bugs played, ${commits}`,

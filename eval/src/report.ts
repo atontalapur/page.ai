@@ -86,14 +86,19 @@ export function incompleteNotes(results: EvalResults[]): string[] {
   return results.flatMap((f) => incomplete(f).map((w) => `${f.config} ${w}`));
 }
 
+/** `1 run`, `2 runs`. */
+export function plural(n: number, one: string): string {
+  return `${n} ${one}${n === 1 ? '' : 's'}`;
+}
+
 /** A file whose runs don't cover every planned run. */
 export function incomplete(f: EvalResults): string[] {
   return [
     ...(f.stoppedForBudget ? ['stopped for budget'] : []),
     ...(f.stoppedForProvider ? ['stopped for a provider error'] : []),
-    ...(f.errors.length > 0 ? [`${f.errors.length} errored runs left out`] : []),
-    ...(f.notPlayed.length > 0 ? [`${f.notPlayed.length} runs not played`] : []),
-    ...(f.skipped.length > 0 ? [`${f.skipped.length} scenarios skipped`] : []),
+    ...(f.errors.length > 0 ? [`${plural(f.errors.length, 'errored run')} left out`] : []),
+    ...(f.notPlayed.length > 0 ? [`${plural(f.notPlayed.length, 'run')} not played`] : []),
+    ...(f.skipped.length > 0 ? [`${plural(f.skipped.length, 'scenario')} skipped`] : []),
   ];
 }
 
