@@ -59,6 +59,11 @@ try {
   if (!config.apiToken) {
     logger.warn('ORCHESTRATOR_API_TOKEN is unset; every route but /health and /ingest returns 401');
   }
+  logger.info(
+    config.autoStartFix
+      ? 'AUTO_START_FIX is on; triage starts a Tier 1 fix'
+      : 'AUTO_START_FIX is off; triaged issues wait for a start_fix event',
+  );
   if (!config.useFakeAdapters && !config.openRouterApiKey) {
     logger.warn('OPENROUTER_API_KEY is unset; triage uses the rule fallback');
   }

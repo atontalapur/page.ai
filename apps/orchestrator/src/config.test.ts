@@ -17,6 +17,7 @@ describe('loadConfig', () => {
       openRouterApiKey: undefined,
       triageModel: 'openai/gpt-4o-mini',
       triageTimeoutMs: 8000,
+      autoStartFix: false,
       twilio: undefined,
       notifyTo: [],
       dashboardUrl: 'http://localhost:3000',
@@ -27,6 +28,12 @@ describe('loadConfig', () => {
     expect(
       loadConfig({ DATABASE_URL, PORT: '8080', HOST: '127.0.0.1', PGBOSS_SCHEMA: 'jobs' }),
     ).toMatchObject({ port: 8080, host: '127.0.0.1', pgbossSchema: 'jobs' });
+  });
+
+  it('reads AUTO_START_FIX', () => {
+    expect(loadConfig({ DATABASE_URL, AUTO_START_FIX: 'true' }).autoStartFix).toBe(true);
+    expect(loadConfig({ DATABASE_URL, AUTO_START_FIX: 'off' }).autoStartFix).toBe(false);
+    expect(() => loadConfig({ DATABASE_URL, AUTO_START_FIX: 'maybe' })).toThrow(ConfigError);
   });
 
   it('rejects bad settings', () => {

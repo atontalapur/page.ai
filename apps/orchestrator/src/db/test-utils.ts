@@ -26,6 +26,7 @@ export const testConfig: Config = {
   openRouterApiKey: undefined,
   triageModel: 'openai/gpt-4o-mini',
   triageTimeoutMs: 8_000,
+  autoStartFix: false,
   twilio: undefined,
   notifyTo: ['+15550000001'],
   dashboardUrl: 'http://localhost:3000',

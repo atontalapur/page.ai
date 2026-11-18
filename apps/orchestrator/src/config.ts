@@ -53,6 +53,9 @@ const schema = envSchema(
     OPENROUTER_API_KEY: z.string().min(1).optional(),
     TRIAGE_MODEL: z.string().min(1).default('openai/gpt-4o-mini'),
     TRIAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(8_000),
+    // Triage sends start_fix after classifying, so a node daemon picks the issue up (#136).
+    // Off by default: each fix run spends model budget, so a deploy opts in.
+    AUTO_START_FIX: z.stringbool().default(false),
     ...pagerShape,
     DASHBOARD_URL: z.string().min(1).default('http://localhost:3000'),
   }),
@@ -80,6 +83,8 @@ export interface Config {
   openRouterApiKey: string | undefined;
   triageModel: string;
   triageTimeoutMs: number;
+  /** Start a Tier 1 fix as soon as triage has classified an issue. */
+  autoStartFix: boolean;
   /** Set only when all three Twilio vars are present. */
   twilio: TwilioCreds | undefined;
   notifyTo: string[];
@@ -154,6 +159,7 @@ export function loadConfig(env: Env = process.env): Config {
     openRouterApiKey: config.OPENROUTER_API_KEY,
     triageModel: config.TRIAGE_MODEL,
     triageTimeoutMs: config.TRIAGE_TIMEOUT_MS,
+    autoStartFix: config.AUTO_START_FIX,
     dashboardUrl: config.DASHBOARD_URL,
   };
 }

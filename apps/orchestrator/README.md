@@ -28,6 +28,7 @@ new ──────triage─▶ triaged ─start_fix─▶ fixing (tier 1)
                                          ▼  │
                                   awaiting_approval ─approve─▶ resolved
 
+triage sends start_fix itself when AUTO_START_FIX is on
 pr_open takes approve and reject like awaiting_approval; nothing enters it yet
 escalate or reject at tier 3 ─▶ failed (a human takes over)
 kill from any open status    ─▶ killed
@@ -113,6 +114,7 @@ so the app is compiled with `tsc` to `dist/` rather than run from source.
 | `OPENROUTER_API_KEY`       |                         | Unset, or `USE_FAKE_ADAPTERS`, uses the rule fallback                         |
 | `TRIAGE_MODEL`             | `openai/gpt-4o-mini`    | Cheap model for triage                                                        |
 | `TRIAGE_TIMEOUT_MS`        | `8000`                  |                                                                               |
+| `AUTO_START_FIX`           | `false`                 | Triage sends `start_fix` after classifying, queueing the Tier 1 fix job       |
 | `TWILIO_ACCOUNT_SID`       |                         | Set together with the token and from-number                                   |
 | `TWILIO_AUTH_TOKEN`        |                         |                                                                               |
 | `TWILIO_FROM_NUMBER`       |                         |                                                                               |
