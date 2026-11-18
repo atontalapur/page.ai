@@ -58,6 +58,37 @@ describe('orchestrator HTTP API', () => {
     expect(bad.statusCode).toBe(400);
   });
 
+  it('refuses run outcomes, which only the run_finished queue applies', async () => {
+    const { issue } = (
+      await http('POST', '/issues', { fingerprint: 'http-run', title: 'x' })
+    ).json<{
+      issue: Issue;
+    }>();
+    await http('POST', `/issues/${issue.id}/events`, {
+      type: 'triage',
+      class: 'frontend',
+      severity: 'low',
+    });
+    const fixing = (
+      await http('POST', `/issues/${issue.id}/events`, { type: 'start_fix' })
+    ).json<Issue>();
+    expect(fixing.status).toBe('fixing');
+
+    const runId = '00000000-0000-4000-8000-000000000001';
+    for (const event of [
+      { type: 'patch_ready', runId },
+      { type: 'escalate', runId, reason: 'stuck' },
+      { type: 'fail', runId, reason: 'sandbox' },
+    ]) {
+      const res = await http('POST', `/issues/${issue.id}/events`, event);
+      expect(res.statusCode).toBe(400);
+      expect(res.json<{ message: string }>().message).toBe(
+        `${event.type} comes from the node daemon's run_finished job, not this route`,
+      );
+    }
+    expect((await http('GET', `/issues/${issue.id}`)).json<Issue>().status).toBe('fixing');
+  });
+
   it('maps missing issues to 404 and disallowed events to 409', async () => {
     const missing = '00000000-0000-4000-8000-000000000000';
     expect((await http('GET', `/issues/${missing}`)).statusCode).toBe(404);

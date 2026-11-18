@@ -75,11 +75,11 @@ which writes a `failed` runs row and applies `fail`, unless the run is no longer
 the daemon's `run_finished` job for it is still queued. Without this the issue would stay in
 `fixing`, where only `kill` gets it out.
 
-The daemon's events (`patch_ready`, `escalate`, `fail`) carry the `runId` of the job they report on.
-An event for any run other than the current one returns 409, so a retried `escalate` cannot
-skip a tier. A repeat report with the
-same `fingerprint` bumps `occurrences` on the open issue; after a terminal status it opens a
-new one.
+The run outcome events (`patch_ready`, `escalate`, `fail`) carry the `runId` of the job they
+report on, and only `RunsService` applies them. An event for any run other than the current
+one is refused, so a retried `escalate` cannot skip a tier. A repeat report with the same
+`fingerprint` bumps `occurrences` on the open issue; after a terminal status it opens a new
+one.
 
 ## API
 
@@ -100,8 +100,9 @@ open for Railway's health check, and `/ingest/posthog` checks `POSTHOG_WEBHOOK_S
 `POST /issues` has no rate limit: only token holders reach it, and a repeat report with the same
 fingerprint bumps `occurrences` instead of adding a row.
 
-Bodies are validated against the zod contracts (400). Unknown ids return 404. Events the
-current status doesn't allow, and daemon events for a stale run, return 409. `GET /issues`
+Bodies are validated against the zod contracts (400). `POST /issues/:id/events` also returns
+400 for `patch_ready`, `escalate` and `fail`: run outcomes reach an issue only through the
+`run_finished` queue, which also writes the `runs` and `escalations` rows. Unknown ids return 404. Events the current status doesn't allow return 409. `GET /issues`
 returns at most 200 issues, most recently updated first; a repeat report counts as an update.
 
 ## Run locally

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -20,19 +21,23 @@ import {
   type NewIssue,
 } from '@page/contracts';
 import { z } from 'zod';
-import { IssueNotFoundError, IssuesService, StaleRunError } from './issues.service.ts';
+import { IssueNotFoundError, IssuesService } from './issues.service.ts';
 import { TransitionError } from './transitions.ts';
 
 const issueId = z.uuid();
+
+/**
+ * Run outcomes. They reach an issue only from the node's run_finished jobs (RunsService),
+ * which also write the runs and escalations rows and pass the escalation note on.
+ */
+const RUN_EVENTS: ReadonlySet<IssueEvent['type']> = new Set(['patch_ready', 'escalate', 'fail']);
 
 async function asHttp<T>(work: Promise<T>): Promise<T> {
   try {
     return await work;
   } catch (err) {
     if (err instanceof IssueNotFoundError) throw new NotFoundException(err.message);
-    if (err instanceof TransitionError || err instanceof StaleRunError) {
-      throw new ConflictException(err.message);
-    }
+    if (err instanceof TransitionError) throw new ConflictException(err.message);
     throw err;
   }
 }
@@ -66,13 +71,21 @@ export class IssuesController {
     return asHttp(this.issues.events(id));
   }
 
-  /** Applies one event. 409 when the issue's status doesn't allow it or the run is stale. */
+  /**
+   * Applies one event. 400 for a run outcome, which only the run_finished queue applies.
+   * 409 when the issue's status doesn't allow the event.
+   */
   @Post(':id/events')
   @HttpCode(200)
   apply(
     @Param('id', { schema: issueId }) id: string,
     @Body({ schema: issueEventSchema }) event: IssueEvent,
   ): Promise<Issue> {
+    if (RUN_EVENTS.has(event.type)) {
+      throw new BadRequestException(
+        `${event.type} comes from the node daemon's run_finished job, not this route`,
+      );
+    }
     return asHttp(this.issues.apply(id, event));
   }
 }
