@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="252" viewBox="0 0 760 252" role="img" aria-labelledby="fix-rate-title fix-rate-desc" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif">
+<title id="fix-rate-title">Fix rate</title>
+<desc id="fix-rate-desc">deepseek/deepseek-v4.1-flash, 9 of 10 planned bugs played, commit de1b6d4</desc>
+<rect x="0.5" y="0.5" width="759" height="251" rx="8" fill="#fcfcfb" stroke="#e1e0d9"/>
+<text x="20" y="36" font-size="16" fill="#0b0b0b" font-weight="600">Fix rate</text>
+<text x="20" y="56" font-size="12" fill="#52514e">deepseek/deepseek-v4.1-flash, 9 of 10 planned bugs played, commit de1b6d4</text>
+<rect x="20" y="72" width="12" height="12" rx="2" fill="#2a78d6"/>
+<text x="38" y="82" font-size="12" fill="#0b0b0b">tier1-only</text>
+<rect x="126" y="72" width="12" height="12" rx="2" fill="#eb6834"/>
+<text x="144" y="82" font-size="12" fill="#0b0b0b">tier3-start</text>
+<rect x="239" y="72" width="12" height="12" rx="2" fill="#1baf7a"/>
+<text x="257" y="82" font-size="12" fill="#0b0b0b">ladder</text>
+<line x1="88" y1="104" x2="88" y2="172" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="211" y1="104" x2="211" y2="172" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="334" y1="104" x2="334" y2="172" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="457" y1="104" x2="457" y2="172" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="580" y1="104" x2="580" y2="172" stroke="#e1e0d9" stroke-width="1"/>
+<text x="88" y="188" font-size="11" fill="#52514e" text-anchor="middle">0.00</text>
+<text x="211" y="188" font-size="11" fill="#52514e" text-anchor="middle">0.25</text>
+<text x="334" y="188" font-size="11" fill="#52514e" text-anchor="middle">0.50</text>
+<text x="457" y="188" font-size="11" fill="#52514e" text-anchor="middle">0.75</text>
+<text x="580" y="188" font-size="11" fill="#52514e" text-anchor="middle">1.00</text>
+<text x="334" y="208" font-size="12" fill="#52514e" text-anchor="middle">fix rate (fixed runs / runs)</text>
+<text x="76" y="142" font-size="12" fill="#0b0b0b" text-anchor="end">all bugs</text>
+<path d="M88,112h488a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-488z" fill="#2a78d6"><title>tier1-only, all bugs: 1.00 (9/9)</title></path>
+<text x="586" y="124" font-size="12" fill="#0b0b0b">1.00 (9/9)<tspan fill="#52514e">  tier1-only</tspan></text>
+<path d="M88,130h433.3a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-433.3z" fill="#eb6834"><title>tier3-start, all bugs: 0.89 (8/9)</title></path>
+<text x="531.3" y="142" font-size="12" fill="#0b0b0b">0.89 (8/9)<tspan fill="#52514e">  tier3-start</tspan></text>
+<path d="M88,148h488a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-488z" fill="#1baf7a"><title>ladder, all bugs: 1.00 (9/9)</title></path>
+<text x="586" y="160" font-size="12" fill="#0b0b0b">1.00 (9/9)<tspan fill="#52514e">  ladder</tspan></text>
+<text x="20" y="232" font-size="11" fill="#52514e">Incomplete: tier1-only 1 scenario skipped; tier3-start 1 scenario skipped; ladder 1 scenario skipped.</text>
+</svg>

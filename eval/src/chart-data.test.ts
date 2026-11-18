@@ -109,7 +109,7 @@ describe('chartData', () => {
       results('ladder', [run('a', true)], { skipped: [{ scenario: 'b', reason: 'ops' }] }),
     ]);
     expect(set.subtitle).toBe('m, 1 of 2 planned bugs played, commit abcdef1');
-    expect(set.notes).toEqual(['ladder 1 scenarios skipped']);
+    expect(set.notes).toEqual(['ladder 1 scenario skipped']);
   });
 
   it('names every commit when the files ran at more than one', () => {
