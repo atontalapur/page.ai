@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="316" viewBox="0 0 760 316" role="img" aria-labelledby="time-to-fix-title time-to-fix-desc" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif">
+<title id="time-to-fix-title">Time to fix</title>
+<desc id="time-to-fix-desc">deepseek/deepseek-v4.1-flash, 9 of 10 planned bugs played, commit de1b6d4</desc>
+<rect x="0.5" y="0.5" width="759" height="315" rx="8" fill="#fcfcfb" stroke="#e1e0d9"/>
+<text x="20" y="36" font-size="16" fill="#0b0b0b" font-weight="600">Time to fix</text>
+<text x="20" y="56" font-size="12" fill="#52514e">deepseek/deepseek-v4.1-flash, 9 of 10 planned bugs played, commit de1b6d4</text>
+<rect x="20" y="72" width="12" height="12" rx="2" fill="#2a78d6"/>
+<text x="38" y="82" font-size="12" fill="#0b0b0b">tier1-only</text>
+<rect x="126" y="72" width="12" height="12" rx="2" fill="#eb6834"/>
+<text x="144" y="82" font-size="12" fill="#0b0b0b">tier3-start</text>
+<rect x="239" y="72" width="12" height="12" rx="2" fill="#1baf7a"/>
+<text x="257" y="82" font-size="12" fill="#0b0b0b">ladder</text>
+<line x1="323" y1="71" x2="323" y2="85" stroke="#0b0b0b" stroke-width="2"/>
+<text x="335" y="82" font-size="12" fill="#0b0b0b">p50</text>
+<line x1="380" y1="71" x2="380" y2="85" stroke="#0b0b0b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="392" y="82" font-size="12" fill="#0b0b0b">p90</text>
+<line x1="177.3" y1="104" x2="177.3" y2="236" stroke="#e1e0d9" stroke-width="1" stroke-dasharray="3 2"/>
+<line x1="267.7" y1="104" x2="267.7" y2="236" stroke="#e1e0d9" stroke-width="1" stroke-dasharray="3 2"/>
+<line x1="404.3" y1="104" x2="404.3" y2="236" stroke="#e1e0d9" stroke-width="1" stroke-dasharray="3 2"/>
+<line x1="494.7" y1="104" x2="494.7" y2="236" stroke="#e1e0d9" stroke-width="1" stroke-dasharray="3 2"/>
+<line x1="109" y1="104" x2="109" y2="236" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="336" y1="104" x2="336" y2="236" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="563" y1="104" x2="563" y2="236" stroke="#e1e0d9" stroke-width="1"/>
+<text x="109" y="252" font-size="11" fill="#52514e" text-anchor="middle">10s</text>
+<text x="336" y="252" font-size="11" fill="#52514e" text-anchor="middle">100s</text>
+<text x="563" y="252" font-size="11" fill="#52514e" text-anchor="middle">1000s</text>
+<text x="336" y="272" font-size="12" fill="#52514e" text-anchor="middle">seconds from the exception to the fix (log scale), one dot per run</text>
+<text x="97" y="136" font-size="12" fill="#0b0b0b" text-anchor="end">tier1-only</text>
+<circle cx="359" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 126s</title></circle>
+<circle cx="368.1" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 138s</title></circle>
+<circle cx="375.3" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 149s</title></circle>
+<circle cx="387.3" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 168s</title></circle>
+<circle cx="395.2" cy="140" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 182s</title></circle>
+<circle cx="411.9" cy="124" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 216s</title></circle>
+<circle cx="430.1" cy="128" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 260s</title></circle>
+<circle cx="469.5" cy="132" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 387s</title></circle>
+<circle cx="521.7" cy="136" r="4" fill="#2a78d6" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier1-only: 658s</title></circle>
+<line x1="395" y1="115" x2="395" y2="149" stroke="#0b0b0b" stroke-width="2"/>
+<line x1="521.7" y1="115" x2="521.7" y2="149" stroke="#0b0b0b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="579" y="136" font-size="12" fill="#0b0b0b">n=9, p50 182s, p90 658s</text>
+<text x="97" y="176" font-size="12" fill="#0b0b0b" text-anchor="end">tier3-start</text>
+<circle cx="333.7" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 98s</title></circle>
+<circle cx="374" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 147s</title></circle>
+<circle cx="378.7" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 154s</title></circle>
+<circle cx="382.3" cy="176" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 160s</title></circle>
+<circle cx="392.6" cy="180" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 177s</title></circle>
+<circle cx="393.2" cy="164" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 179s</title></circle>
+<circle cx="426.4" cy="168" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 250s</title></circle>
+<circle cx="515.7" cy="172" r="4" fill="#eb6834" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>tier3-start: 619s</title></circle>
+<line x1="382.3" y1="155" x2="382.3" y2="189" stroke="#0b0b0b" stroke-width="2"/>
+<line x1="515.7" y1="155" x2="515.7" y2="189" stroke="#0b0b0b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="579" y="176" font-size="12" fill="#0b0b0b">n=8, p50 160s, p90 619s</text>
+<text x="97" y="216" font-size="12" fill="#0b0b0b" text-anchor="end">ladder</text>
+<circle cx="362.7" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 131s</title></circle>
+<circle cx="368.7" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 139s</title></circle>
+<circle cx="378.8" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 154s</title></circle>
+<circle cx="387.7" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 169s</title></circle>
+<circle cx="403.4" cy="220" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 198s</title></circle>
+<circle cx="411.6" cy="204" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 215s</title></circle>
+<circle cx="427.1" cy="208" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 252s</title></circle>
+<circle cx="457.8" cy="212" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 344s</title></circle>
+<circle cx="540.7" cy="216" r="4" fill="#1baf7a" fill-opacity="0.7" stroke="#fcfcfb" stroke-width="1"><title>ladder: 797s</title></circle>
+<line x1="403.3" y1="195" x2="403.3" y2="229" stroke="#0b0b0b" stroke-width="2"/>
+<line x1="540.6" y1="195" x2="540.6" y2="229" stroke="#0b0b0b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="579" y="216" font-size="12" fill="#0b0b0b">n=9, p50 198s, p90 797s</text>
+<text x="20" y="296" font-size="11" fill="#52514e">Incomplete: tier1-only 1 scenario skipped; tier3-start 1 scenario skipped; ladder 1 scenario skipped.</text>
+</svg>
