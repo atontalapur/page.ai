@@ -1,7 +1,14 @@
 import type { PosthogWebhook } from '@page/contracts';
 import { posthogWebhookFixture } from '@page/contracts/fixtures';
 import { describe, expect, it } from 'vitest';
-import { framePath, maskEmails, redactQuery, REPORT_MAX, reportFrom } from './report.ts';
+import {
+  framePath,
+  maskEmails,
+  maskMessage,
+  redactQuery,
+  REPORT_MAX,
+  reportFrom,
+} from './report.ts';
 
 const next = '../../node_modules/.pnpm/next@16.4.5/node_modules/next/dist/server/base-server.js';
 const chunk = '.next/server/chunks/ssr/[root-of-the-server]__1kgn5yuyma91u._.js';
@@ -113,6 +120,24 @@ describe('reportFrom', () => {
     expect(report).not.toMatch(/session|4242|jane/);
   });
 
+  it('keeps a body that JSON.parse quotes, or an email cut by the cap, out of the report', () => {
+    const body = webhook({
+      method: 'POST',
+      path: '/api/checkout/jane%40example.com',
+      $exception_list: [
+        {
+          type: 'SyntaxError',
+          value: `Unexpected token 'c', "card=42424"... is not valid JSON`,
+        },
+        { type: 'Error', value: `${'x'.repeat(1990)} jane@example.com` },
+      ],
+    });
+    const report = reportFrom(body, title);
+    expect(report).toContain('POST /api/checkout/[email]');
+    expect(report).toContain(`SyntaxError: Unexpected token 'c', "[input]" is not valid JSON`);
+    expect(report).not.toMatch(/4242|jane/);
+  });
+
   it('takes a browser error path from $current_url, and lists causes', () => {
     const body = webhook({
       $current_url: 'https://shop.example.com/cart?coupon=SAVE10#top',
@@ -161,9 +186,49 @@ describe('reportFrom', () => {
 
 describe('report helpers', () => {
   it('redacts query values and keeps the names', () => {
-    expect(redactQuery('/a?x=1&y=&z')).toBe('/a?x=&y=&z=');
+    expect(redactQuery('/a?x=1&y=&=v')).toBe('/a?x=&y=');
     expect(redactQuery('/a?')).toBe('/a');
     expect(redactQuery('/u/me@x.io#h')).toBe('/u/[email]');
+  });
+
+  it('redacts a query piece with no name, which may be a bare token', () => {
+    expect(redactQuery('/reset?3f9a8b7c2d1e0f')).toBe('/reset?[redacted]');
+    expect(redactQuery('/a?x=1&3f9a8b7c&')).toBe('/a?x=&[redacted]');
+  });
+
+  it('masks percent-encoded emails and leaves other escapes as sent', () => {
+    expect(redactQuery('/u/jane%40example.com/orders')).toBe('/u/[email]/orders');
+    expect(redactQuery('/u/jane%2Btest%40example.com')).toBe('/u/[email]');
+    expect(redactQuery('/u/jane%40example.com/100%')).toBe('/u/[email]/100%');
+    expect(redactQuery('/products/wool%20beanie?q%40x.io=1')).toBe(
+      '/products/wool%20beanie?[email]=',
+    );
+  });
+
+  it('masks the input a JSON.parse error quotes', () => {
+    const errorOf = (input: string) => {
+      try {
+        JSON.parse(input);
+      } catch (error) {
+        return (error as Error).message;
+      }
+      throw new Error('parsed');
+    };
+    for (const input of [
+      'card=4242424242424242',
+      'c',
+      '{"name": "jo", "card": tru x, "cvc": "123"}',
+    ]) {
+      const message = maskMessage(`SyntaxError: ${errorOf(input)}`);
+      expect(message).toMatch(/"\[input\]" is not valid JSON$/);
+      expect(message).not.toMatch(/4242|card|cvc/);
+    }
+    expect(maskMessage('SyntaxError: JSON Parse error: Unexpected identifier "card"')).toBe(
+      'SyntaxError: JSON Parse error: Unexpected identifier "[input]"',
+    );
+    expect(maskMessage('relation "orders" does not exist')).toBe(
+      'relation "orders" does not exist',
+    );
   });
 
   it('masks emails', () => {

@@ -48,8 +48,11 @@ still fails on its last try sends SMS.
 
 Ingest stores a sanitized error report on the issue (`src/ingest/report.ts`): the request
 line, the exception and its in-app frames, innermost first. It never reads bodies, headers,
-cookies or person fields, drops query values and masks email addresses, because a Tier 2 run
-writes a public PR from it. Every fix job carries the report, or the title for an issue that
+cookies or person fields, drops query values (and any query piece without a name), and masks
+email addresses, encoded ones included, because a Tier 2 run writes a public PR from it.
+Exception messages are kept, since they are what the agent fixes from. The one known way a
+body gets into a message is a JSON.parse error quoting its input, so that input is masked;
+any other message is kept as thrown. Every fix job carries the report, or the title for an issue that
 has none. A production Next build's frames name compiled `.next/server` chunks rather than
 `apps/demo-app/src` unless source maps reach PostHog, so the report says so under them. The
 `fix` queue expires a claimed job after 20 minutes (`FIX_EXPIRE_SECONDS`): 14 minutes of agent

@@ -5,7 +5,7 @@ import { z } from 'zod';
 // A Tier 2 run writes a public PR from it (docs/demo-repo.md), so it keeps only the request
 // line, the exception and its in-app frames. Bodies, headers, cookies, person and other user
 // fields are never read. Query values are dropped and email addresses masked, since either
-// can hold user data.
+// can hold user data. So is the input a JSON.parse error quotes, which is often a body.
 
 export const REPORT_MAX = 8_000;
 const MESSAGE_MAX = 2_000;
@@ -38,11 +38,44 @@ const exceptionSchema = z.looseObject({
 
 type Frame = z.infer<typeof frameSchema>;
 
-const EMAIL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
+// `%40` too, for an encoded path that does not decode.
+const EMAIL = /[\w.+-]+(?:@|%40)[\w-]+(?:\.[\w-]+)+/gi;
 
 /** Masks email addresses, the user field most likely to land in a path or message. */
 export function maskEmails(text: string): string {
   return text.replaceAll(EMAIL, '[email]');
+}
+
+// A JSON.parse error quotes part of its input, which is often a request body. V8 quotes up
+// to about 20 characters (`Unexpected token 'c', "card=4242"... is not valid JSON`), Safari
+// the bad token (`JSON Parse error: Unexpected identifier "card"`). The bounds keep the
+// patterns linear on a long message.
+const V8_JSON_INPUT = /(?:\.\.\.)?"[\s\S]{0,64}?"(?:\.\.\.)? is not valid JSON/g;
+const SAFARI_JSON_INPUT = /(JSON Parse error: [^"\n]{0,100})"[^"]{0,200}"/g;
+
+/** An exception message with emails and quoted JSON input masked. */
+export function maskMessage(text: string): string {
+  return maskEmails(
+    text
+      .replaceAll(V8_JSON_INPUT, '"[input]" is not valid JSON')
+      .replaceAll(SAFARI_JSON_INPUT, '$1"[input]"'),
+  );
+}
+
+/** `text` with percent escapes decoded, or as it is when they are malformed. */
+function decoded(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
+/** Masks emails in a URL part, encoded ones too. A part with none stays as it was sent. */
+function maskUrlEmails(part: string): string {
+  const plain = decoded(part);
+  const masked = maskEmails(plain);
+  return masked === plain ? part : masked;
 }
 
 const str = (value: unknown): string | undefined =>
@@ -53,20 +86,23 @@ const clip = (text: string, max: number) =>
 
 /**
  * A path with each query value replaced, so `/search?q=me@x.com` becomes `/search?q=`.
- * The parameter names stay: they tell the agent which input took the request down.
+ * The parameter names stay: they tell the agent which input took the request down. A piece
+ * with no `=` may be a bare token (`/reset?3f9a8b7c`), so it becomes `[redacted]`.
  */
 export function redactQuery(pathWithQuery: string): string {
   const [beforeHash = ''] = pathWithQuery.split('#', 1);
   const at = beforeHash.indexOf('?');
-  const hashless = at === -1 ? beforeHash : beforeHash.slice(0, at);
-  if (at === -1) return maskEmails(hashless);
-  const names = beforeHash
+  const path = maskUrlEmails(at === -1 ? beforeHash : beforeHash.slice(0, at));
+  if (at === -1) return path;
+  const pieces = beforeHash
     .slice(at + 1)
     .split('&')
-    .map((pair) => pair.split('=')[0] ?? '')
-    .filter((name) => name !== '');
-  const kept = names.length === 0 ? '' : `?${names.map((name) => `${name}=`).join('&')}`;
-  return maskEmails(`${hashless}${kept}`);
+    .flatMap((piece) => {
+      const eq = piece.indexOf('=');
+      if (eq === -1) return piece === '' ? [] : ['[redacted]'];
+      return eq === 0 ? [] : [`${maskUrlEmails(piece.slice(0, eq))}=`];
+    });
+  return pieces.length === 0 ? path : `${path}?${pieces.join('&')}`;
 }
 
 /** The path of a browser error's `$current_url`, if it parses. */
@@ -146,12 +182,13 @@ function exceptionLines(props: Record<string, unknown>, title: string): string[]
     .map((value) => exceptionSchema.safeParse(value))
     .flatMap((parsed) => (parsed.success ? [parsed.data] : []))
     .slice(0, EXCEPTIONS_MAX);
-  if (exceptions.length === 0) return [maskEmails(clip(title, MESSAGE_MAX))];
+  // Masked before the clip, so a cut can't leave part of an email or the input behind.
+  if (exceptions.length === 0) return [clip(maskMessage(title), MESSAGE_MAX)];
 
   const lines: string[] = [];
   exceptions.forEach((exception, index) => {
     const head = [str(exception.type), str(exception.value)].filter(Boolean).join(': ');
-    const message = maskEmails(clip(head || 'Exception', MESSAGE_MAX));
+    const message = clip(maskMessage(head || 'Exception'), MESSAGE_MAX);
     lines.push(index === 0 ? message : `Caused by: ${message}`);
     const frames = inAppFrames(exception.stacktrace?.frames ?? []);
     lines.push(...frames);
