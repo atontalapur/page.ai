@@ -16,7 +16,8 @@ export const scenarioMetaSchema = z
     // What on-call would see, and what the agent gets as its task until ingest (#30) can
     // build one: the request, the status and the error with its stack. It must not say why
     // the bug happens or how to fix it; `description` is for people, and names the cause.
-    report: z.string().trim().min(1).max(4_000),
+    // At most 2,000 characters, the most a PostHog read may hand the agent (#12).
+    report: z.string().trim().min(1).max(2_000),
     // The text of each repo line the report's stack cites, as break.sh leaves it, keyed
     // `path:line`. If one changes, the report points at the wrong code, so the self-test
     // fails (#79). `pnpm scenarios:frames` records it. Code scenarios only: the ops

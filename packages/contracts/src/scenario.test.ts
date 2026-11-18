@@ -27,9 +27,12 @@ describe('scenarioMetaSchema', () => {
     expect(() => scenarioMetaSchema.parse({ ...valid, report: undefined })).toThrow();
   });
 
-  it('rejects an empty or very long report', () => {
+  it('rejects an empty report or one over 2,000 characters', () => {
     expect(() => scenarioMetaSchema.parse({ ...valid, report: ' \n ' })).toThrow();
-    expect(() => scenarioMetaSchema.parse({ ...valid, report: 'x'.repeat(4_001) })).toThrow();
+    expect(scenarioMetaSchema.parse({ ...valid, report: 'x'.repeat(2_000) }).report).toHaveLength(
+      2_000,
+    );
+    expect(() => scenarioMetaSchema.parse({ ...valid, report: 'x'.repeat(2_001) })).toThrow();
   });
 
   it('accepts frameLines keyed path:line', () => {
