@@ -88,8 +88,10 @@ Docker and model and check the `steps` row, and start and remove a real containe
   `NODE_SHARED_SECRET`, and accept the `nodeToServerEvents` from contracts.
 - The daemon writes steps itself, because `execute()` must not run a command whose step
   it couldn't record. The server should relay `node.step` to the UI, not insert it again.
-- The orchestrator creates the `fix` queue with `retryLimit: 0` and a 20-minute expiry,
-  and the `run_finished` queue this daemon sends to. A result that can't be queued after 3
-  tries fails the fix job, which pg-boss records.
+- The orchestrator creates the `fix` queue with `retryLimit: 0`, a 20-minute expiry and
+  the `fix_failed` dead letter queue, and the `run_finished` queue this daemon sends to. A
+  result that can't be queued after 3 tries fails the fix job. So does a daemon that dies
+  mid-run, once the job expires. Either way pg-boss copies the job to `fix_failed`, and the
+  orchestrator fails the issue from it.
 - `node.run.finished` for a submitted run is `succeeded` with `confidence: null`, since
   nothing scores runs yet.

@@ -10,7 +10,7 @@ import { buildPager } from './notify/pager.ts';
 import { NotifyService } from './notify/notify.service.ts';
 import { createFixJobQueue } from './queue/fix-jobs.ts';
 import { createJobQueues } from './queue/queues.ts';
-import { RunsService } from './runs/runs.service.ts';
+import { failureMessage, RunsService } from './runs/runs.service.ts';
 import { startWorkers } from './queue/workers.ts';
 import { buildClassifier } from './triage/classify.ts';
 import { TriageService } from './triage/triage.service.ts';
@@ -89,6 +89,9 @@ try {
     notify: (job, attempt) => application.get(NotifyService).deliver(job, attempt),
     runFinished: async (job) => {
       await application.get(RunsService).record(job);
+    },
+    fixFailed: async (job, output) => {
+      await application.get(RunsService).recordLost(job, failureMessage(output));
     },
   });
   await application.listen({ port: config.port, host: config.host });

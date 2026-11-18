@@ -53,7 +53,8 @@ export interface RunDeps {
  * `run_finished` job the orchestrator records it from.
  *
  * Resolves for every run outcome, failures included. It rejects only if cleanup or the
- * link breaks, or the result can't be queued, which pg-boss then records on the job.
+ * link breaks, or the result can't be queued. pg-boss then fails the job and dead letters
+ * it, and the orchestrator fails the issue unless the result was queued after all.
  */
 export async function runFixJob(
   { job, signal }: ClaimedJob,

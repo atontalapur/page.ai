@@ -4,14 +4,15 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { createTestDeps } from '../db/test-utils.ts';
 import { IssuesService } from '../issues/issues.service.ts';
 import { createLogger } from '../logger.ts';
-import { FIX_QUEUE, type FixJob } from '../queue/fix-jobs.ts';
-import { issueEventFor, RunsService, type RunFinishedJob } from './runs.service.ts';
+import { FIX_FAILED_QUEUE, FIX_QUEUE, type FixJob } from '../queue/fix-jobs.ts';
+import { RUN_FINISHED_QUEUE } from '../queue/queues.ts';
+import { failureMessage, issueEventFor, RunsService, type RunFinishedJob } from './runs.service.ts';
 
 const deps = await createTestDeps();
 afterAll(() => deps.close());
 
 const issues = new IssuesService(deps.db, deps.fixJobs, deps.logger);
-const runs = new RunsService(deps.db, issues, deps.logger);
+const runs = new RunsService(deps.db, issues, deps.jobs, deps.logger);
 
 const report = 'GET /\n\nRangeError: Invalid currency code : US';
 let n = 0;
@@ -168,6 +169,21 @@ describe('RunsService', () => {
     expect((await issues.get(issue.id)).status).toBe('killed');
   });
 
+  it('records no escalation for a run that escalates after the issue was killed', async () => {
+    const { issue, job } = await fixing();
+    await issues.apply(issue.id, { type: 'kill' });
+    expect(await runs.record(finished(job, escalation))).toEqual({ kind: 'stale' });
+
+    expect(await issues.get(issue.id)).toMatchObject({ status: 'killed', currentTier: 1 });
+    expect((await runRow(job.runId))?.status).toBe('escalated');
+    const escalations = await deps.db
+      .selectFrom('escalations')
+      .select('id')
+      .where('run_id', '=', job.runId)
+      .execute();
+    expect(escalations).toEqual([]);
+  });
+
   it('records the run of an issue a person already killed, and leaves the issue', async () => {
     const { issue, job } = await fixing();
     await issues.apply(issue.id, { type: 'kill' });
@@ -179,7 +195,7 @@ describe('RunsService', () => {
   it('logs and drops a result for an issue that does not exist', async () => {
     const lines: unknown[] = [];
     const logger = createLogger('info', { write: (line: string) => lines.push(JSON.parse(line)) });
-    const logged = new RunsService(deps.db, issues, logger);
+    const logged = new RunsService(deps.db, issues, deps.jobs, logger);
     const { job } = await fixing();
     const orphan = finished({ ...job, issueId: randomUUID() });
     expect(await logged.record(orphan)).toEqual({ kind: 'no_issue' });
@@ -187,6 +203,85 @@ describe('RunsService', () => {
     expect(lines).toEqual([
       expect.objectContaining({ msg: 'run finished for an issue that does not exist' }),
     ]);
+  });
+});
+
+describe('RunsService.recordLost', () => {
+  /** Fails the fix job as pg-boss does when the daemon throws, and returns its dead letter. */
+  async function deadLetter(job: FixJob, error = new Error('could not queue the run result')) {
+    await deps.boss.fail(FIX_QUEUE, job.runId, error);
+    const letters = await deps.boss.findJobs<FixJob>(FIX_FAILED_QUEUE, {
+      data: { runId: job.runId },
+    });
+    expect(letters).toHaveLength(1);
+    return letters[0]!;
+  }
+
+  it('fails the issue of a fix job that failed with no result', async () => {
+    const { issue, job } = await fixing();
+    const letter = await deadLetter(job);
+    expect(letter.data).toEqual(job);
+    const why = failureMessage(letter.sourceOutput);
+    expect(why).toBe('could not queue the run result');
+
+    expect(await runs.recordLost(letter.data, why)).toEqual({ kind: 'applied', event: 'fail' });
+    expect(await issues.get(issue.id)).toMatchObject({ status: 'failed', currentTier: 1 });
+    expect((await issues.events(issue.id)).at(-1)?.event).toEqual({
+      type: 'fail',
+      runId: job.runId,
+      reason: 'The fix job failed with no result from the node: could not queue the run result',
+    });
+    expect(await runRow(job.runId)).toMatchObject({
+      issue_id: issue.id,
+      tier: 1,
+      status: 'failed',
+      started_at: null,
+      diff: null,
+    });
+
+    // A retry, or a result that turns up after all, leaves the issue failed.
+    expect(await runs.recordLost(letter.data, why)).toEqual({ kind: 'stale' });
+    expect(await runs.record(finished(job, { status: 'failed', note: null }))).toEqual({
+      kind: 'stale',
+    });
+    expect((await issues.get(issue.id)).status).toBe('failed');
+  });
+
+  it('leaves the issue to a run_finished job that is still queued', async () => {
+    const { issue, job } = await fixing();
+    // The daemon queued its result, then its cleanup threw and the fix job failed too.
+    const result = finished(job, escalation);
+    await deps.boss.send(RUN_FINISHED_QUEUE, result);
+    const letter = await deadLetter(job, new Error('docker rm failed'));
+
+    expect(await runs.recordLost(letter.data, 'docker rm failed')).toEqual({
+      kind: 'result_pending',
+    });
+    expect(await issues.get(issue.id)).toMatchObject({ status: 'fixing', currentTier: 1 });
+    expect(await runRow(job.runId)).toBeUndefined();
+
+    expect(await runs.record(result)).toEqual({ kind: 'applied', event: 'escalate' });
+    expect(await issues.get(issue.id)).toMatchObject({ status: 'fixing', currentTier: 2 });
+  });
+
+  it('leaves an issue that moved on, or does not exist', async () => {
+    const { issue, job } = await fixing();
+    await issues.apply(issue.id, { type: 'kill' });
+    expect(await runs.recordLost(job, 'job timed out')).toEqual({ kind: 'stale' });
+    expect((await issues.get(issue.id)).status).toBe('killed');
+    expect(await runRow(job.runId)).toBeUndefined();
+
+    const orphan = { ...job, issueId: randomUUID() };
+    expect(await runs.recordLost(orphan, 'job timed out')).toEqual({ kind: 'no_issue' });
+  });
+});
+
+describe('failureMessage', () => {
+  it("reads a thrown error's message and an expiry's", () => {
+    expect(failureMessage({ name: 'Error', message: 'boom', stack: '...' })).toBe('boom');
+    expect(failureMessage({ value: { message: 'job timed out' } })).toBe('job timed out');
+    expect(failureMessage(null)).toBe('no error was recorded');
+    expect(failureMessage({ value: 'x' })).toBe('no error was recorded');
   });
 });
 

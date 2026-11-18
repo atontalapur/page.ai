@@ -57,13 +57,20 @@ budget plus the sandbox start, the diff and closing a PR.
 
 When a run ends, the node daemon sends a `run_finished` job (`runFinishedJobSchema`) with the
 `node.run.finished` result, the run's times and the agent's diff. `RunsService` writes the
-`runs` row (and the `escalations` row for an escalation), then applies the issue event in the
-same transaction: `succeeded` is `patch_ready`, `escalated` is `escalate`, `failed` is `fail`
-and `killed` is `kill`. Entering the next tier queues its fix job with the report and the
-run's escalation note; a rejected patch hands the reviewer's reason on the same way. A result
-for a run that is no longer current only updates its row, so a retried job is harmless. A
-succeeded run's PR link stays on its `runs` row and the issue goes to `awaiting_approval`;
-nothing enters `pr_open` yet.
+`runs` row, then applies the issue event in the same transaction: `succeeded` is
+`patch_ready`, `escalated` is `escalate`, `failed` is `fail` and `killed` is `kill`. An
+escalation the issue takes also writes its `escalations` row. Entering the next tier queues
+its fix job with the report and the run's escalation note; a rejected patch hands the
+reviewer's reason on the same way. A result for a run that is no longer current only updates
+its row, so a retried job is harmless. A succeeded run's PR link stays on its `runs` row and
+the issue goes to `awaiting_approval`; nothing enters `pr_open` yet.
+
+A fix job can also end with no result: the daemon dies or hangs until the job expires, or it
+can't queue the result. pg-boss then fails the job and copies it to the `fix_failed` dead
+letter queue (a cancelled job is never copied). Its worker calls `RunsService.recordLost`,
+which writes a `failed` runs row and applies `fail`, unless the run is no longer current or
+the daemon's `run_finished` job for it is still queued. Without this the issue would stay in
+`fixing`, where only `kill` gets it out.
 
 The daemon's events (`patch_ready`, `escalate`, `fail`) carry the `runId` of the job they report on.
 An event for any run other than the current one returns 409, so a retried `escalate` cannot

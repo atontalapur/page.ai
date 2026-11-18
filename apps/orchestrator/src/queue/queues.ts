@@ -24,7 +24,12 @@ export interface JobQueues {
     fingerprint: string,
     trx?: Transaction<Database>,
   ): Promise<string | null>;
+  /** Whether a run_finished job for `runId` is queued, being worked, or waiting to retry. */
+  runFinishedPending(runId: string, trx?: Transaction<Database>): Promise<boolean>;
 }
+
+/** The states a job that will still be worked can be in. */
+const PENDING_STATES: ReadonlySet<string> = new Set(['created', 'retry', 'active']);
 
 function dbOpt(trx?: Transaction<Database>) {
   return trx ? { db: fromKysely(trx) } : {};
@@ -33,7 +38,7 @@ function dbOpt(trx?: Transaction<Database>) {
 /**
  * Creates the triage, notify and run_finished queues if needed and returns senders for the
  * first two. Only the node daemon sends run_finished jobs, so this creates the queue it sends
- * to, as it does `fix`.
+ * to, as it does `fix`, and only looks them up.
  */
 export async function createJobQueues(boss: PgBoss): Promise<JobQueues> {
   // exclusive + singletonKey: one created or active job per fingerprint, and for notify per
@@ -51,6 +56,13 @@ export async function createJobQueues(boss: PgBoss): Promise<JobQueues> {
       const data = notifyJobSchema.parse(job);
       const singletonKey = `${fingerprint}:${data.to}`;
       return boss.send(NOTIFY_QUEUE, data, { singletonKey, ...dbOpt(trx) });
+    },
+    async runFinishedPending(runId, trx) {
+      const jobs = await boss.findJobs(RUN_FINISHED_QUEUE, {
+        data: { result: { runId } },
+        ...dbOpt(trx),
+      });
+      return jobs.some((job) => PENDING_STATES.has(job.state));
     },
   };
 }

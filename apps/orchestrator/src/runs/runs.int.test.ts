@@ -8,7 +8,7 @@ import { RUN_FINISHED_QUEUE } from '../queue/queues.ts';
 import { startWorkers } from '../queue/workers.ts';
 import { TriageClassifier } from '../triage/classify.ts';
 import { TriageService } from '../triage/triage.service.ts';
-import { RunsService } from './runs.service.ts';
+import { failureMessage, RunsService } from './runs.service.ts';
 
 // The whole loop on real Postgres, with this test playing the node daemon: triage starts
 // the fix, the daemon claims it from pg-boss and sends its result as a run_finished job, and
@@ -18,7 +18,7 @@ const deps = await createSchemaDeps();
 afterAll(() => deps.close());
 
 const issues = new IssuesService(deps.db, deps.fixJobs, deps.logger);
-const runs = new RunsService(deps.db, issues, deps.logger);
+const runs = new RunsService(deps.db, issues, deps.jobs, deps.logger);
 const config = { ...deps.config, autoStartFix: true };
 const triage = new TriageService(
   issues,
@@ -32,6 +32,9 @@ await startWorkers(deps.boss, {
   notify: () => Promise.resolve(),
   runFinished: async (job) => {
     await runs.record(job);
+  },
+  fixFailed: async (job, output) => {
+    await runs.recordLost(job, failureMessage(output));
   },
 });
 
@@ -110,4 +113,27 @@ describe('fix runs on real Postgres', () => {
     ]);
     expect(await issues.get(issue.id)).toMatchObject({ currentTier: 2 });
   }, 40_000);
+
+  it('fails the issue when the fix job fails with no result', async () => {
+    const { issue } = await issues.report({ fingerprint: 'int-lost', title: 'Boom' }, report);
+    await deps.jobs.sendTriage(issue.id, 'int-lost');
+    const tier1 = await claim();
+
+    // What pg-boss does when the daemon throws before it queues a result, or the job expires.
+    await deps.boss.fail(FIX_QUEUE, tier1.runId, new Error('could not queue the run result'));
+    await expect
+      .poll(async () => (await issues.get(issue.id)).status, { timeout: 10_000 })
+      .toBe('failed');
+
+    const row = await deps.db
+      .selectFrom('runs')
+      .select(['tier', 'status'])
+      .where('id', '=', tier1.runId)
+      .executeTakeFirst();
+    expect(row).toEqual({ tier: 1, status: 'failed' });
+    expect((await issues.events(issue.id)).at(-1)?.event).toMatchObject({
+      type: 'fail',
+      runId: tier1.runId,
+    });
+  }, 30_000);
 });

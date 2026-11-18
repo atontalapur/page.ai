@@ -22,6 +22,13 @@ export type FixJob = JobPayload<typeof FIX_QUEUE>;
  */
 export const FIX_EXPIRE_SECONDS = 20 * 60;
 
+/**
+ * The fix queue's dead letter queue. pg-boss copies a fix job here when it fails: the daemon
+ * threw, or the job expired because the daemon died or hung. A cancelled job never lands
+ * here. RunsService.recordLost fails the issue if no run_finished job will.
+ */
+export const FIX_FAILED_QUEUE = 'fix_failed';
+
 /** What a fix job is queued with. The queue adds `v` and the `runId`. */
 export interface FixJobInput {
   issueId: string;
@@ -47,12 +54,20 @@ export interface FixJobQueue {
 
 /** Creates the queue if needed and returns a sender bound to it. */
 export async function createFixJobQueue(boss: PgBoss): Promise<FixJobQueue> {
-  // One created or active job per fingerprint (see `fingerprintSchema`). No retries:
-  // a failure escalates. The run a new tier replaces is cancelled in the same transaction,
-  // which frees the key so the next job can be queued.
-  const options = { retryLimit: 0, expireInSeconds: FIX_EXPIRE_SECONDS };
+  // The dead letter queue first: a queue can only name one that exists. Its jobs retry, since
+  // recording a lost run is safe to repeat.
+  await boss.createQueue(FIX_FAILED_QUEUE, { retryLimit: 3, retryDelay: 2, retryBackoff: true });
+  // One created or active job per fingerprint (see `fingerprintSchema`). No retries: the
+  // daemon reports how a run ended, and a job that fails without a report is dead lettered.
+  // The run a new tier replaces is cancelled in the same transaction, which frees the key so
+  // the next job can be queued.
+  const options = {
+    retryLimit: 0,
+    expireInSeconds: FIX_EXPIRE_SECONDS,
+    deadLetter: FIX_FAILED_QUEUE,
+  };
   await boss.createQueue(FIX_QUEUE, { policy: 'exclusive', ...options });
-  // createQueue leaves an existing queue as it was, so a deployed one gets the new expiry here.
+  // createQueue leaves an existing queue as it was, so a deployed one gets these here.
   await boss.updateQueue(FIX_QUEUE, options);
   return {
     async send(input, trx) {
