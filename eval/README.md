@@ -146,9 +146,9 @@ PostHog, the orchestrator, the node daemon and GitHub, so the daemon has to be u
 model key. `src/e2e.ts` has the steps, behind ports that the unit tests fake;
 `src/e2e-adapters.ts` and `scripts/e2e-targets.ts` are the real adapters.
 
-Until the rest of the pipeline lands, a run stops at `claim`: nothing applies `start_fix`
-after triage, and the gateway that would carry the daemon's `node.run.finished` back to
-the orchestrator is a stub. The test is written for the pipeline as designed.
+The orchestrator needs `AUTO_START_FIX=true`, or a run stops at `claim`: nothing else
+applies `start_fix` after triage. The daemon reports each run's end as a `run_finished` job,
+which the orchestrator records (#136).
 
 | Step      | Waits for                                                                          | Default limit         |
 | --------- | ---------------------------------------------------------------------------------- | --------------------- |
@@ -187,7 +187,7 @@ outcome: the issue's status, its class and severity set, the run it ended on, at
 The default budget is the sum of the limits of the steps it covers, `trigger` through
 `outcome`, so it follows `fix` up the tiers (32m at Tier 1, 48m at Tier 2, 64m at Tier 3)
 and any `--timeout`; pass `--budget` for a tighter bar. A class or tier other than the
-scenario's, and a missing `runs` row (nothing writes them yet), are warnings.
+scenario's, and a missing `runs` row, are warnings.
 
 The reset runs after every outcome, a failed step included: it kills the issue through
 `POST /issues/:id/events`, which cancels its fix job and lets the next trigger open a new
@@ -254,17 +254,18 @@ diff carries more than the fix.
 
 ### Environment
 
-| Variable                                        | For                                                                      |
-| ----------------------------------------------- | ------------------------------------------------------------------------ |
-| `E2E_DATABASE_URL`, else `DATABASE_URL`         | The orchestrator's database, read only. Railway's public URL for staging |
-| `E2E_ORCHESTRATOR_URL`, else `ORCHESTRATOR_URL` | The orchestrator API, for the reset's kill                               |
-| `GITHUB_TOKEN`, `GITHUB_REPO`                   | Finding and closing the PR. Needed for `--expect pr`                     |
-| `DEMO_APP_URL`                                  | Staging's app, for `--target staging` only                               |
-| `E2E_LOCAL_APP_URL`                             | Local ops scenarios' compose app (default localhost on `DEMO_APP_PORT`)  |
-| `OPS_SECRET`                                    | Ops scenarios                                                            |
-| `PGBOSS_SCHEMA`                                 | The orchestrator's pg-boss schema (default `pgboss`)                     |
-| `POSTHOG_KEY`, `POSTHOG_HOST`                   | Local code scenarios: passed to the demo app container. Key required     |
-| `E2E_DEMO_APP_PORT`, `E2E_DEMO_DATABASE_URL`    | Local code scenarios (defaults 3100 and the compose Postgres's `demo`)   |
+| Variable                                                    | For                                                                      |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `E2E_DATABASE_URL`, else `DATABASE_URL`                     | The orchestrator's database, read only. Railway's public URL for staging |
+| `E2E_ORCHESTRATOR_URL`, else `ORCHESTRATOR_URL`             | The orchestrator API, for the reset's kill                               |
+| `E2E_ORCHESTRATOR_API_TOKEN`, else `ORCHESTRATOR_API_TOKEN` | The orchestrator's API token, which the kill needs. Required             |
+| `GITHUB_TOKEN`, `GITHUB_REPO`                               | Finding and closing the PR. Needed for `--expect pr`                     |
+| `DEMO_APP_URL`                                              | Staging's app, for `--target staging` only                               |
+| `E2E_LOCAL_APP_URL`                                         | Local ops scenarios' compose app (default localhost on `DEMO_APP_PORT`)  |
+| `OPS_SECRET`                                                | Ops scenarios                                                            |
+| `PGBOSS_SCHEMA`                                             | The orchestrator's pg-boss schema (default `pgboss`)                     |
+| `POSTHOG_KEY`, `POSTHOG_HOST`                               | Local code scenarios: passed to the demo app container. Key required     |
+| `E2E_DEMO_APP_PORT`, `E2E_DEMO_DATABASE_URL`                | Local code scenarios (defaults 3100 and the compose Postgres's `demo`)   |
 
 The run's header names the app URL the scenario's scripts run against, and the database's
 host, never its URL. If Railway's Postgres wants TLS, add `?sslmode=require` to the URL.

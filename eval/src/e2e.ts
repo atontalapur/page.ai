@@ -1193,7 +1193,9 @@ export function assertEndState(
     `fix job ${progress.jobState ?? 'gone'}`,
   );
   if (progress.run === null) {
-    check('run.row', 'warn', false, 'no runs row (the orchestrator does not record runs yet)');
+    // The orchestrator writes the row from the run's run_finished job, so a run still
+    // waiting on an approval has none yet.
+    check('run.row', 'warn', false, 'no runs row (the run has not reported how it ended)');
   } else {
     const ok = waitingOnApproval
       ? progress.run.status === 'running'
