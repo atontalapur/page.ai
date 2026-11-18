@@ -1,3 +1,4 @@
+import { MAX_RUN_DIFF_CHARS } from '@page/contracts';
 import { jobFixtures } from '@page/contracts/fixtures';
 import type { CompleteOptions, CompletionResult, ModelClient } from '@page/model-client';
 import {
@@ -12,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { FakeLink } from '../link/fake-link.ts';
 import { bashReply, ScriptedModel, submitReply } from '../model/scripted-model.ts';
 import { FakeSandboxes } from '../sandbox/fake-sandboxes.ts';
+import { FakeRunResults, type RunResults } from './results.ts';
 import { runFixJob, type RunDeps } from './run-fix-job.ts';
 
 const job = jobFixtures.fix;
@@ -28,15 +30,17 @@ function setup(
   const sandboxes = new FakeSandboxes(respond);
   const sink = new InMemoryAuditSink();
   const link = new FakeLink();
+  const results = new FakeRunResults();
   const deps: RunDeps = {
     sandboxes,
     sink,
     link,
+    results,
     model: new ScriptedModel(replies),
     logger: pino({ enabled: false }),
     ...extra,
   };
-  return { deps, sandboxes, sink, link };
+  return { deps, sandboxes, sink, link, results };
 }
 
 const claim = (signal = new AbortController().signal) => ({ job, signal, attempt: 0 });
@@ -66,6 +70,49 @@ describe('runFixJob', () => {
     expect(link.payloads('node.step').map((p) => p.step.seq)).toEqual([0, 1]);
     expect(link.payloads('node.diff')[0]?.diff).toBe('diff --git a b\n');
     expect(finished).toMatchObject({ status: 'succeeded', confidence: null });
+  });
+
+  it('queues the result for the orchestrator with the run times and the diff', async () => {
+    let clock = Date.parse('2026-11-18T10:00:00.000Z');
+    const { deps, results, link } = setup(
+      [bashReply('ls'), submitReply()],
+      ({ command }) => FakeRunner.exited(0, command === DIFF ? 'diff --git a b\n' : 'out'),
+      { now: () => (clock += 1000) },
+    );
+    const finished = await runFixJob(claim(), deps);
+    const [sent] = results.sent;
+    expect(sent).toMatchObject({
+      v: 1,
+      issueId: job.issueId,
+      tier: job.tier,
+      startedAt: '2026-11-18T10:00:01.000Z',
+      diff: 'diff --git a b\n',
+      result: finished,
+    });
+    expect(Date.parse(sent!.finishedAt)).toBeGreaterThan(Date.parse(sent!.startedAt));
+    expect(results.sent).toHaveLength(1);
+    expect(link.payloads('node.run.finished')).toEqual([finished]);
+  });
+
+  it('records no diff for a run that did not submit, or one over the cap', async () => {
+    const failed = setup([bashReply('ls')], undefined, { agentConfig: { stepLimit: 1 } });
+    await runFixJob(claim(), failed.deps);
+    expect(failed.results.sent).toMatchObject([{ diff: null, result: { status: 'escalated' } }]);
+
+    const huge = 'x'.repeat(MAX_RUN_DIFF_CHARS + 1);
+    const big = setup([submitReply()], ({ command }) =>
+      FakeRunner.exited(0, command === DIFF ? huge : ''),
+    );
+    await runFixJob(claim(), big.deps);
+    expect(big.results.sent).toMatchObject([{ diff: null, result: { status: 'succeeded' } }]);
+    expect(big.link.payloads('node.diff')[0]?.diff).toBe(huge);
+  });
+
+  it('rejects when the result cannot be queued, after removing the sandbox', async () => {
+    const results: RunResults = { send: () => Promise.reject(new Error('database is down')) };
+    const { deps, sandboxes } = setup([submitReply()], undefined, { results });
+    await expect(runFixJob(claim(), deps)).rejects.toThrow('database is down');
+    expect(sandboxes.running).toEqual([]);
   });
 
   it('caps each command at the toolkit timeout', async () => {

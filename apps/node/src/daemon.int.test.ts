@@ -8,6 +8,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { loadConfig } from './config.ts';
 import { createAdapters, createDaemon } from './daemon.ts';
 import { FIX_QUEUE } from './jobs/job-source.ts';
+import { RUN_FINISHED_QUEUE } from './run/results.ts';
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL is required for integration tests');
@@ -27,7 +28,7 @@ afterAll(async () => {
 });
 
 describe('the daemon on real Postgres, with fake Docker, model and socket', () => {
-  it('claims a queued fix job and writes its steps to the steps table', async () => {
+  it('claims a queued fix job, writes its steps and queues its result', async () => {
     // The steps table comes from the orchestrator database's migrations, applied in order.
     await admin.query(`create schema ${schema}`);
     for (const migration of await loadMigrations()) {
@@ -49,6 +50,7 @@ describe('the daemon on real Postgres, with fake Docker, model and socket', () =
     boss.on('error', () => undefined);
     await boss.start();
     await boss.createQueue(FIX_QUEUE, { policy: 'singleton' });
+    await boss.createQueue(RUN_FINISHED_QUEUE);
     const job = jobFixtures.fix;
     await boss.send(FIX_QUEUE, job, { id: job.runId, singletonKey: job.fingerprint });
 
@@ -67,6 +69,12 @@ describe('the daemon on real Postgres, with fake Docker, model and socket', () =
       expect(rows).toEqual([
         { seq: 0, kind: 'exec', input: 'git status', exit_code: 0, allowed: true },
       ]);
+      const [result] = await boss.fetch(RUN_FINISHED_QUEUE);
+      expect(result?.data).toMatchObject({
+        issueId: job.issueId,
+        tier: job.tier,
+        result: { runId: job.runId, status: 'succeeded' },
+      });
     } finally {
       await daemon.stop();
       await boss.stop({ graceful: false });

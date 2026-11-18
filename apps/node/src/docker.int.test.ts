@@ -6,6 +6,7 @@ import { InMemoryAuditSink } from '@page/toolkit';
 import { pino } from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FakeLink } from './link/fake-link.ts';
+import { FakeRunResults } from './run/results.ts';
 import { bashReply } from './model/scripted-model.ts';
 import { DockerSandboxes } from './sandbox/docker-sandboxes.ts';
 import { sandboxName } from './sandbox/sandbox.ts';
@@ -95,6 +96,7 @@ async function killRun(replies: string[], ready: (calls: number) => boolean) {
       sandboxes: new WorkspaceSandboxes({ image: IMAGE }),
       sink: new InMemoryAuditSink(),
       link,
+      results: new FakeRunResults(),
       model: m.client,
       logger: pino({ enabled: false }),
     },

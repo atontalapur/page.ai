@@ -6,6 +6,7 @@ import { createDaemon, type Adapters } from './daemon.ts';
 import { FakeJobSource } from './jobs/fake-job-source.ts';
 import { FakeLink } from './link/fake-link.ts';
 import { bashReply, ScriptedModel, submitReply } from './model/scripted-model.ts';
+import { FakeRunResults } from './run/results.ts';
 import { FakeSandboxes } from './sandbox/fake-sandboxes.ts';
 import type { Sandboxes } from './sandbox/sandbox.ts';
 
@@ -16,6 +17,7 @@ function adapters() {
     sandboxes: new FakeSandboxes(),
     sink: new InMemoryAuditSink(),
     link: new FakeLink(),
+    results: new FakeRunResults(),
     model: new ScriptedModel([bashReply('git status'), submitReply()]),
     github: new FakeGitHub(),
     close,
@@ -35,6 +37,9 @@ describe('createDaemon', () => {
       'node.step',
       'node.diff',
       'node.run.finished',
+    ]);
+    expect(a.results.sent).toMatchObject([
+      { issueId: jobFixtures.fix.issueId, tier: 1, result: { status: 'succeeded' } },
     ]);
   });
 
