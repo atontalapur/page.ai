@@ -62,6 +62,34 @@ describe('IssuesService', () => {
     expect(again.issue).toMatchObject({ id: first.issue.id, occurrences: 2 });
   });
 
+  it('sends the stored report on every fix job, or the title without one', async () => {
+    const withReport = await service.report(
+      { fingerprint: `fp-${++n}`, title: 'Boom' },
+      'GET /\n\nError: Boom',
+    );
+    // A repeat keeps the first report.
+    await service.report({ fingerprint: `fp-${n}`, title: 'Boom' }, 'GET /other\n\nError: Boom');
+    await service.apply(withReport.issue.id, triage);
+    await service.apply(withReport.issue.id, { type: 'start_fix' });
+    expect((await liveJob(withReport.issue.id)).data.report).toBe('GET /\n\nError: Boom');
+    await fromDaemon(withReport.issue.id, { type: 'escalate' });
+    expect((await liveJob(withReport.issue.id)).data).toMatchObject({
+      tier: 2,
+      report: 'GET /\n\nError: Boom',
+    });
+
+    const issue = await fixingIssue();
+    expect((await liveJob(issue.id)).data.report).toBe('TypeError in /api/cart');
+  });
+
+  it('fills in the report on a repeat when the issue had none', async () => {
+    const { issue } = await service.report({ fingerprint: `fp-${++n}`, title: 'Boom' });
+    await service.report({ fingerprint: `fp-${n}`, title: 'Boom' }, 'GET /\n\nError: Boom');
+    await service.apply(issue.id, triage);
+    await service.apply(issue.id, { type: 'start_fix' });
+    expect((await liveJob(issue.id)).data.report).toBe('GET /\n\nError: Boom');
+  });
+
   it('opens a new issue when a closed one recurs', async () => {
     const { issue } = await service.report({ fingerprint: 'recur', title: 'Boom' });
     await service.apply(issue.id, { type: 'kill' });

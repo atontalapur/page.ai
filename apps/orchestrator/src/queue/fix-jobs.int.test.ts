@@ -9,11 +9,12 @@ describe('fix job queue on real Postgres', () => {
   it('creates one fix job when ten are sent for the same fingerprint', async () => {
     const issueId = '7f6c2c1e-3d5b-4f0a-9a43-1c2b3d4e5f60';
     const fingerprint = 'fp-ten';
+    const report = 'GET / (route /)\n\nRangeError: Invalid currency code : US';
     const sent = [];
     for (let i = 0; i < 10; i++) {
       const job = await deps.db
         .transaction()
-        .execute((trx) => deps.fixJobs.send({ issueId, fingerprint, tier: 1 }, trx));
+        .execute((trx) => deps.fixJobs.send({ issueId, fingerprint, tier: 1, report }, trx));
       if (job) sent.push(job);
     }
     expect(sent).toHaveLength(1);

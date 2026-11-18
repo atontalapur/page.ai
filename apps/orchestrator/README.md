@@ -44,6 +44,15 @@ triage queues one job per `NOTIFY_TO_NUMBERS` entry, so a retry pages only the p
 missed it. `triage` and `notify` retry 3 times with backoff. `fix` does not retry. A call that
 still fails on its last try sends SMS.
 
+Ingest stores a sanitized error report on the issue (`src/ingest/report.ts`): the request
+line, the exception and its in-app frames, innermost first. It never reads bodies, headers,
+cookies or person fields, drops query values and masks email addresses, because a Tier 2 run
+writes a public PR from it. Every fix job carries the report, or the title for an issue that
+has none. A production Next build's frames name compiled `.next/server` chunks rather than
+`apps/demo-app/src` unless source maps reach PostHog, so the report says so under them. The
+`fix` queue expires a claimed job after 20 minutes (`FIX_EXPIRE_SECONDS`): 14 minutes of agent
+budget plus the sandbox start, the diff and closing a PR.
+
 The daemon's events (`patch_ready`, `escalate`) carry the `runId` of the job they report on.
 An event for any run other than the current one returns 409, so a retried `escalate` cannot
 skip a tier. A repeat report with the

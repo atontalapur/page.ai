@@ -69,11 +69,15 @@ export class IssuesService {
     @Inject(LOGGER) private readonly logger: Logger,
   ) {}
 
-  /** Opens an issue, or counts another occurrence of the open one with this fingerprint. */
-  async report(input: NewIssue): Promise<{ issue: Issue; created: boolean }> {
+  /**
+   * Opens an issue, or counts another occurrence of the open one with this fingerprint.
+   * `report` is the sanitized error report fix jobs carry. A repeat keeps the first one and
+   * only fills it in when the issue had none.
+   */
+  async report(input: NewIssue, report?: string): Promise<{ issue: Issue; created: boolean }> {
     const row = await this.db
       .insertInto('issues')
-      .values(input)
+      .values({ ...input, report: report ?? null })
       .onConflict((oc) =>
         oc
           .column('fingerprint')
@@ -84,6 +88,7 @@ export class IssuesService {
             last_seen_at: sql<Date>`now()`,
             // list() sorts by updated_at, so a recurring issue stays near the top.
             updated_at: sql<Date>`now()`,
+            report: sql<string | null>`coalesce(issues.report, excluded.report)`,
           }),
       )
       .returningAll()
@@ -163,7 +168,13 @@ export class IssuesService {
       let runId = current.current_run_id;
       if (enteredTier && next.currentTier !== null) {
         const job = await this.fixJobs.send(
-          { issueId: id, fingerprint: current.fingerprint, tier: next.currentTier },
+          {
+            issueId: id,
+            fingerprint: current.fingerprint,
+            tier: next.currentTier,
+            // An issue opened without a report (POST /issues) still gives the agent its error.
+            report: current.report ?? current.title,
+          },
           trx,
         );
         if (!job) throw new Error(`fix job for ${current.fingerprint} is already queued`);

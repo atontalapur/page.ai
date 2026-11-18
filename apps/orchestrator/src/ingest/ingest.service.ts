@@ -3,6 +3,7 @@ import type { Issue, PosthogWebhook } from '@page/contracts';
 import { IssuesService } from '../issues/issues.service.ts';
 import type { JobQueues } from '../queue/queues.ts';
 import { JOB_QUEUES } from '../tokens.ts';
+import { reportFrom } from './report.ts';
 
 const TITLE_MAX = 500;
 const FINGERPRINT_MAX = 512;
@@ -24,15 +25,16 @@ export class IngestService {
   ) {}
 
   /**
-   * Upserts the exception by PostHog's issue id and, for a new issue, queues one triage job.
-   * Repeats bump `occurrences` and do not queue again.
+   * Upserts the exception by PostHog's issue id with its sanitized report and, for a new
+   * issue, queues one triage job. Repeats bump `occurrences` and do not queue again.
    */
   async receive(body: PosthogWebhook): Promise<{ issue: Issue; created: boolean }> {
     const fingerprint = body.event.properties.$exception_issue_id;
     if (fingerprint.length > FINGERPRINT_MAX) {
       throw new BadRequestException('fingerprint is too long');
     }
-    const reported = await this.issues.report({ fingerprint, title: titleFrom(body) });
+    const title = titleFrom(body);
+    const reported = await this.issues.report({ fingerprint, title }, reportFrom(body, title));
     if (reported.created) await this.jobs.sendTriage(reported.issue.id, fingerprint);
     return reported;
   }
