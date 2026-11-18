@@ -90,6 +90,20 @@ describe('IssuesService', () => {
     expect((await liveJob(issue.id)).data.report).toBe('GET /\n\nError: Boom');
   });
 
+  it("hands the next tier the reviewer's reason when a patch is rejected", async () => {
+    const issue = await fixingIssue();
+    await fromDaemon(issue.id, { type: 'patch_ready' });
+    await service.apply(issue.id, { type: 'reject', reason: 'The fix hides the error.' });
+    expect((await liveJob(issue.id)).data).toMatchObject({
+      tier: 2,
+      escalationNote: {
+        summary: 'A reviewer rejected the Tier 1 fix.',
+        tried: [],
+        blocker: 'The fix hides the error.',
+      },
+    });
+  });
+
   it('opens a new issue when a closed one recurs', async () => {
     const { issue } = await service.report({ fingerprint: 'recur', title: 'Boom' });
     await service.apply(issue.id, { type: 'kill' });

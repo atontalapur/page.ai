@@ -66,6 +66,9 @@ const rules: Record<IssueStatus, Rule> = {
         return { ...state, status: 'awaiting_approval' };
       case 'escalate':
         return escalate(state);
+      // A run a higher tier can't help (a broken sandbox, model or audit log).
+      case 'fail':
+        return { ...state, status: 'failed' };
       default:
         return undefined;
     }

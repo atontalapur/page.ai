@@ -1,6 +1,11 @@
-import { notifyJobSchema, triageJobSchema, type JobPayload } from '@page/contracts';
+import {
+  notifyJobSchema,
+  runFinishedJobSchema,
+  triageJobSchema,
+  type JobPayload,
+} from '@page/contracts';
 import type { PgBoss } from 'pg-boss';
-import { NOTIFY_QUEUE, TRIAGE_QUEUE } from './queues.ts';
+import { NOTIFY_QUEUE, RUN_FINISHED_QUEUE, TRIAGE_QUEUE } from './queues.ts';
 
 export interface NotifyAttempt {
   /** How many retries have already happened. The first try is 0. */
@@ -8,12 +13,16 @@ export interface NotifyAttempt {
   retryLimit: number;
 }
 
-/** Claims triage and notify jobs and parses each payload before the handler sees it. */
+/**
+ * Claims triage, notify and run_finished jobs and parses each payload before the handler
+ * sees it.
+ */
 export async function startWorkers(
   boss: PgBoss,
   handlers: {
     triage(job: JobPayload<'triage'>): Promise<void>;
     notify(job: JobPayload<'notify'>, attempt: NotifyAttempt): Promise<void>;
+    runFinished(job: JobPayload<'run_finished'>): Promise<void>;
   },
 ): Promise<void> {
   await boss.work(TRIAGE_QUEUE, async (jobs) => {
@@ -28,5 +37,8 @@ export async function startWorkers(
         retryLimit: job.retryLimit,
       });
     }
+  });
+  await boss.work(RUN_FINISHED_QUEUE, async (jobs) => {
+    for (const job of jobs) await handlers.runFinished(runFinishedJobSchema.parse(job.data));
   });
 }

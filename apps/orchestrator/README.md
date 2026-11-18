@@ -7,17 +7,17 @@ through Kysely, moves them through a state machine, and queues fix jobs on pg-bo
 ## Modules
 
 `AppModule` serves `/health`, `/issues` and `/ingest/posthog`, and imports seven feature modules.
-Ingest, triage and notify are wired. The other four are still stubs.
+Ingest, triage, runs and notify are wired. The other three are still stubs.
 
-| Module            | Owns                                                                      |
-| ----------------- | ------------------------------------------------------------------------- |
-| `IngestModule`    | `POST /ingest/posthog`: secret check, upsert by fingerprint, queue triage |
-| `TriageModule`    | Class and severity by model with a rule fallback, then notify             |
-| `RunsModule`      | Steps, diffs and results the node daemon streams back per run (#8). Stub. |
-| `TiersModule`     | Escalation after a run: up a tier, or to failed past Tier 3. Stub.        |
-| `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions. Stub.       |
-| `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone  |
-| `GatewayModule`   | Socket.IO events to and from the UI and node daemons (#34). Stub.         |
+| Module            | Owns                                                                       |
+| ----------------- | -------------------------------------------------------------------------- |
+| `IngestModule`    | `POST /ingest/posthog`: secret check, upsert by fingerprint, queue triage  |
+| `TriageModule`    | Class and severity by model with a rule fallback, then notify              |
+| `RunsModule`      | `run_finished` jobs from the node daemon: runs row, issue event, next tier |
+| `TiersModule`     | Escalation after a run: up a tier, or to failed past Tier 3. Stub.         |
+| `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions. Stub.        |
+| `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone   |
+| `GatewayModule`   | Socket.IO events to and from the UI and node daemons (#34). Stub.          |
 
 ## Issue lifecycle
 
@@ -31,6 +31,7 @@ new ──────triage─▶ triaged ─start_fix─▶ fixing (tier 1)
 triage sends start_fix itself when AUTO_START_FIX is on
 pr_open takes approve and reject like awaiting_approval; nothing enters it yet
 escalate or reject at tier 3 ─▶ failed (a human takes over)
+fail (a run a higher tier can't fix) ─▶ failed
 kill from any open status    ─▶ killed
 ```
 
@@ -54,7 +55,17 @@ has none. A production Next build's frames name compiled `.next/server` chunks r
 `fix` queue expires a claimed job after 20 minutes (`FIX_EXPIRE_SECONDS`): 14 minutes of agent
 budget plus the sandbox start, the diff and closing a PR.
 
-The daemon's events (`patch_ready`, `escalate`) carry the `runId` of the job they report on.
+When a run ends, the node daemon sends a `run_finished` job (`runFinishedJobSchema`) with the
+`node.run.finished` result, the run's times and the agent's diff. `RunsService` writes the
+`runs` row (and the `escalations` row for an escalation), then applies the issue event in the
+same transaction: `succeeded` is `patch_ready`, `escalated` is `escalate`, `failed` is `fail`
+and `killed` is `kill`. Entering the next tier queues its fix job with the report and the
+run's escalation note; a rejected patch hands the reviewer's reason on the same way. A result
+for a run that is no longer current only updates its row, so a retried job is harmless. A
+succeeded run's PR link stays on its `runs` row and the issue goes to `awaiting_approval`;
+nothing enters `pr_open` yet.
+
+The daemon's events (`patch_ready`, `escalate`, `fail`) carry the `runId` of the job they report on.
 An event for any run other than the current one returns 409, so a retried `escalate` cannot
 skip a tier. A repeat report with the
 same `fingerprint` bumps `occurrences` on the open issue; after a terminal status it opens a

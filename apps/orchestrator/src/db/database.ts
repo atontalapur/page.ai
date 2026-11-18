@@ -55,6 +55,8 @@ export interface RunsTable {
   finished_at: Date | null;
   pr_url: string | null;
   confidence: ColumnType<Confidence | null, string | null | undefined, string | null>;
+  // The agent's diff when it submitted. Kept out of the contracts Run; no route serves it yet.
+  diff: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: Generated<Date>;
 }
 
