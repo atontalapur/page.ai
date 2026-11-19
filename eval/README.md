@@ -147,9 +147,7 @@ model key. `src/e2e.ts` has the steps, behind ports that the unit tests fake;
 `src/e2e-adapters.ts` and `scripts/e2e-targets.ts` are the real adapters.
 
 The orchestrator needs `AUTO_START_FIX=true`, or a run stops at `claim`: nothing else
-applies `start_fix` after triage. Past `AUTO_START_FIX_MAX_PER_HOUR` fix starts in an hour
-(5 by default) triage stops starting them, which looks the same at `claim`; the
-orchestrator logs `auto-start cap reached`. Raise it for `--runs` above that. The daemon reports each run's end as a `run_finished` job,
+applies `start_fix` after triage. The daemon reports each run's end as a `run_finished` job,
 which the orchestrator records (#136).
 
 | Step      | Waits for                                                                          | Default limit         |

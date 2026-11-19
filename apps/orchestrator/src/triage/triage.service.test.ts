@@ -95,34 +95,6 @@ describe('TriageService', () => {
     ]);
   });
 
-  it('leaves the issue triaged once the hourly auto-start cap is reached', async () => {
-    // Other tests in this file start fixes too, so the cap leaves room for exactly one more.
-    const before = await issues.fixesStartedWithin(60 * 60 * 1000);
-    const room = { ...deps.config, autoStartFix: true, autoStartFixMaxPerHour: before + 1 };
-    const oneLeft = new TriageService(issues, deps.jobs, triageClassifier, room, deps.logger);
-
-    const { issue: first } = await issues.report({ fingerprint: 'cap-1', title: 'Boom' });
-    await oneLeft.handle({ v: 1, issueId: first.id });
-    expect((await issues.get(first.id)).status).toBe('fixing');
-
-    const { issue: second } = await issues.report({ fingerprint: 'cap-2', title: 'Boom' });
-    await oneLeft.handle({ v: 1, issueId: second.id });
-    expect(await issues.get(second.id)).toMatchObject({ status: 'triaged', currentTier: null });
-    expect(await deps.boss.findJobs(FIX_QUEUE, { data: { issueId: second.id } })).toEqual([]);
-
-    // An operator can still start it.
-    expect((await issues.apply(second.id, { type: 'start_fix' })).status).toBe('fixing');
-  });
-
-  it('counts fix starts in the window, manual and automatic', async () => {
-    const before = await issues.fixesStartedWithin(60 * 60 * 1000);
-    const { issue } = await issues.report({ fingerprint: 'count-starts', title: 'Boom' });
-    await triage.handle({ v: 1, issueId: issue.id });
-    await issues.apply(issue.id, { type: 'start_fix' });
-    expect(await issues.fixesStartedWithin(60 * 60 * 1000)).toBe(before + 1);
-    expect(await issues.fixesStartedWithin(0)).toBe(0);
-  });
-
   it('starts the fix on a retry when the first start failed after triage', async () => {
     const { issue } = await issues.report({ fingerprint: 'auto-retry', title: 'Boom' });
     await triage.handle({ v: 1, issueId: issue.id });

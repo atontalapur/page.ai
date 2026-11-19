@@ -156,21 +156,6 @@ export class IssuesService {
   }
 
   /**
-   * How many fixes started (triaged to fixing) in the last `ms` milliseconds, whether triage
-   * or an operator started them. Triage reads it to cap automatic starts.
-   */
-  async fixesStartedWithin(ms: number): Promise<number> {
-    const row = await this.db
-      .selectFrom('issue_events')
-      .select((eb) => eb.fn.countAll<string>().as('count'))
-      .where('from_status', '=', 'triaged')
-      .where('to_status', '=', 'fixing')
-      .where('created_at', '>', sql<Date>`now() - ${ms} * interval '1 millisecond'`)
-      .executeTakeFirstOrThrow();
-    return Number(row.count);
-  }
-
-  /**
    * Applies `event`, records it, and keeps the fix queue in step, all in one transaction:
    * entering a tier queues a job for it, and entering a new tier or a terminal status
    * cancels the job it replaces. Throws TransitionError if the event does not apply, and

@@ -27,7 +27,6 @@ export const testConfig: Config = {
   triageModel: 'openai/gpt-4o-mini',
   triageTimeoutMs: 8_000,
   autoStartFix: false,
-  autoStartFixMaxPerHour: 5,
   twilio: undefined,
   notifyTo: ['+15550000001'],
   dashboardUrl: 'http://localhost:3000',

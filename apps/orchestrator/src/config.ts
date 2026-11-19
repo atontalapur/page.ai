@@ -56,10 +56,6 @@ const schema = envSchema(
     // Triage sends start_fix after classifying, so a node daemon picks the issue up (#136).
     // Off by default: each fix run spends model budget, so a deploy opts in.
     AUTO_START_FIX: z.stringbool().default(false),
-    // Anyone with the public PostHog key can send an $exception, and its report becomes the
-    // agent's task, so automatic starts are capped per rolling hour. Past the cap, triaged
-    // issues wait for an operator's start_fix.
-    AUTO_START_FIX_MAX_PER_HOUR: z.coerce.number().int().positive().default(5),
     ...pagerShape,
     DASHBOARD_URL: z.string().min(1).default('http://localhost:3000'),
   }),
@@ -89,8 +85,6 @@ export interface Config {
   triageTimeoutMs: number;
   /** Start a Tier 1 fix as soon as triage has classified an issue. */
   autoStartFix: boolean;
-  /** Fix starts in the last hour, manual ones included, past which triage won't start one. */
-  autoStartFixMaxPerHour: number;
   /** Set only when all three Twilio vars are present. */
   twilio: TwilioCreds | undefined;
   notifyTo: string[];
@@ -166,7 +160,6 @@ export function loadConfig(env: Env = process.env): Config {
     triageModel: config.TRIAGE_MODEL,
     triageTimeoutMs: config.TRIAGE_TIMEOUT_MS,
     autoStartFix: config.AUTO_START_FIX,
-    autoStartFixMaxPerHour: config.AUTO_START_FIX_MAX_PER_HOUR,
     dashboardUrl: config.DASHBOARD_URL,
   };
 }

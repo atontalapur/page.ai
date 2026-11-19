@@ -73,7 +73,6 @@ describe('TriageClassifier', () => {
       triageModel: 'openai/gpt-4o-mini',
       triageTimeoutMs: 1000,
       autoStartFix: false,
-      autoStartFixMaxPerHour: 5,
       twilio: undefined,
       notifyTo: [],
       dashboardUrl: 'http://localhost:3000',

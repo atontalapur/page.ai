@@ -18,7 +18,6 @@ describe('loadConfig', () => {
       triageModel: 'openai/gpt-4o-mini',
       triageTimeoutMs: 8000,
       autoStartFix: false,
-      autoStartFixMaxPerHour: 5,
       twilio: undefined,
       notifyTo: [],
       dashboardUrl: 'http://localhost:3000',
@@ -35,18 +34,6 @@ describe('loadConfig', () => {
     expect(loadConfig({ DATABASE_URL, AUTO_START_FIX: 'true' }).autoStartFix).toBe(true);
     expect(loadConfig({ DATABASE_URL, AUTO_START_FIX: 'off' }).autoStartFix).toBe(false);
     expect(() => loadConfig({ DATABASE_URL, AUTO_START_FIX: 'maybe' })).toThrow(ConfigError);
-  });
-
-  it('reads AUTO_START_FIX_MAX_PER_HOUR, a positive whole number', () => {
-    expect(loadConfig({ DATABASE_URL }).autoStartFixMaxPerHour).toBe(5);
-    expect(
-      loadConfig({ DATABASE_URL, AUTO_START_FIX_MAX_PER_HOUR: '20' }).autoStartFixMaxPerHour,
-    ).toBe(20);
-    for (const bad of ['0', '-1', '1.5', 'many']) {
-      expect(() => loadConfig({ DATABASE_URL, AUTO_START_FIX_MAX_PER_HOUR: bad })).toThrow(
-        ConfigError,
-      );
-    }
   });
 
   it('rejects bad settings', () => {

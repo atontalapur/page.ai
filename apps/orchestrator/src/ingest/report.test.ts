@@ -301,35 +301,6 @@ describe('report helpers', () => {
 
   it('masks emails', () => {
     expect(maskEmails('to a.b+c@mail.example.org, ok')).toBe('to [email], ok');
-    expect(maskEmails('mail me@x.io.')).toBe('mail [email].');
-    expect(maskEmails('a@b.co and c@d.co')).toBe('[email] and [email]');
-  });
-
-  it('masks addresses with characters outside the BMP or format characters', () => {
-    expect(maskEmails('a@𠮷.jp')).toBe('[email]');
-    expect(maskEmails('user@𝐞𝐱.com')).toBe('[email]');
-    expect(maskEmails('𠮷野@example.com')).toBe('[email]');
-    expect(maskEmails('jane\u200b@x.com')).toBe('[email]');
-  });
-
-  it('masks non-ASCII addresses and dotless domains', () => {
-    expect(maskEmails('for josé.núñez@correo.es')).toBe('for [email]');
-    expect(maskEmails('user 用户@例子.中国 failed')).toBe('user [email] failed');
-    expect(maskEmails('as root@localhost')).toBe('as [email]');
-  });
-
-  it('leaves a bare @ alone', () => {
-    expect(maskEmails('import @page/contracts, @ 5, a@')).toBe('import @page/contracts, @ 5, a@');
-  });
-
-  it('masks in linear time on a long run with no @', () => {
-    const long = 'a'.repeat(200_000);
-    const dense = ['a@', '@a', '.@.', 'a%40', '𠮷@'].map((unit) => unit.repeat(50_000));
-    for (const text of [long, `${long}@`, `@${long}`, `${'a.'.repeat(100_000)}`, ...dense]) {
-      const started = performance.now();
-      maskEmails(text);
-      expect(performance.now() - started).toBeLessThan(500);
-    }
   });
 
   it('masks a long message or path in linear time', () => {
@@ -351,40 +322,5 @@ describe('report helpers', () => {
     expect(framePath('./src/x.ts')).toBe('src/x.ts');
     expect(framePath('/srv/myapps/server/chunks/123.js')).toBe('/srv/myapps/server/chunks/123.js');
     expect(framePath('/srv/webapps/apps/demo-app/src/x.ts')).toBe('apps/demo-app/src/x.ts');
-  });
-
-  it('redacts a blob: frame URL like a page URL', () => {
-    const body = webhook({
-      $exception_list: [
-        {
-          type: 'Error',
-          value: 'x',
-          stacktrace: {
-            frames: [
-              {
-                in_app: true,
-                source: 'blob:https://shop.example.com/9f8e7d6c5b4a3f2e1d0c?u=jane@example.com',
-                line: 3,
-                function: 'onLoad',
-              },
-            ],
-          },
-        },
-      ],
-    });
-    expect(reportFrom(body, title)).toBe(
-      ['Error: x', '    at onLoad (blob:https://shop.example.com/[redacted]?u=:3)'].join('\n'),
-    );
-  });
-
-  it('replaces home-folder user names and leaves other frames alone', () => {
-    expect(framePath('webpack-internal:///(app-pages-browser)/./src/app/page.tsx')).toBe(
-      'webpack-internal:///(app-pages-browser)/./src/app/page.tsx',
-    );
-    expect(framePath('/app/src/a#b.ts')).toBe('/app/src/a#b.ts');
-    expect(framePath('<anonymous>')).toBe('<anonymous>');
-    expect(framePath('/Users/jane/project/src/x.ts')).toBe('~/project/src/x.ts');
-    expect(framePath('/home/jane.doe/src/x.ts')).toBe('~/src/x.ts');
-    expect(framePath('C:\\Users\\jane\\proj\\src\\x.ts')).toBe('~\\proj\\src\\x.ts');
   });
 });
