@@ -10,6 +10,7 @@ import type {
   ExecErr,
   ExecOk,
   HostToolCall,
+  HostToolName,
   HostTools,
   RunOutcome,
   StepBase,
@@ -120,9 +121,19 @@ function run(call: ToolCall, ctx: ExecContext, base: StepBase): Promise<RunOutco
  * is the step's input, so replay and test helpers build it here too.
  */
 export function hostToolArgs(call: HostToolCall): Record<string, string> {
-  return call.tool === 'git.pushBranch'
-    ? { tool: call.tool, message: call.message }
-    : { tool: call.tool, title: call.title, body: call.body };
+  switch (call.tool) {
+    case 'git.pushBranch':
+      return { tool: call.tool, message: call.message };
+    case 'github.openPr':
+      return { tool: call.tool, title: call.title, body: call.body };
+    case 'ops.setConfig':
+      return { tool: call.tool, key: call.key, value: call.value };
+    case 'ops.deleteConfig':
+      return { tool: call.tool, key: call.key };
+    case 'ops.getConfig':
+    case 'ops.restart':
+      return { tool: call.tool };
+  }
 }
 
 function stepBase(call: ToolCall): StepBase {
@@ -163,11 +174,14 @@ function refusalFor(call: ToolCall, { tier, hostTools }: ExecContext): string | 
   const verdict =
     call.kind === 'host_tool' ? checkHostTool(call.tool, tier) : checkCommand(call.command, tier);
   if (!verdict.allowed) return verdict.reason;
-  if (call.kind === 'host_tool' && hostTools === undefined) {
+  if (call.kind === 'host_tool' && !canRun(hostTools, call.tool)) {
     return `${call.tool} is not set up on this node`;
   }
   return null;
 }
+
+const canRun = (tools: HostTools | undefined, tool: HostToolName) =>
+  tools !== undefined && (tools.handles?.(tool) ?? true);
 
 /** What goes in the step's output and exit code columns. */
 function outcomeOf(result: RunOutcome): StepOutcome {

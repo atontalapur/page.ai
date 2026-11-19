@@ -5,6 +5,7 @@ import type { ExecRunner, RunResult } from '../exec/runner.ts';
 import { combineOutput } from '../exec/trim.ts';
 import type {
   HostToolCall,
+  HostToolName,
   HostToolOutcome,
   HostTools,
   OpenPrCall,
@@ -98,7 +99,14 @@ export class GitHubHostTools implements HostTools {
     return this.pr?.url ?? null;
   }
 
+  handles(tool: HostToolName): boolean {
+    return tool === 'git.pushBranch' || tool === 'github.openPr';
+  }
+
   async run(call: HostToolCall, timeoutMs: number): Promise<HostToolOutcome> {
+    if (call.tool !== 'git.pushBranch' && call.tool !== 'github.openPr') {
+      return fail(`${call.tool} is not a GitHub tool`);
+    }
     const deadline = Date.now() + timeoutMs;
     const timeout = AbortSignal.timeout(Math.max(1, timeoutMs));
     const { signal: stopped } = this.options;

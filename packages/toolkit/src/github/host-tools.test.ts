@@ -100,6 +100,20 @@ const push = (tools: GitHubHostTools, message = 'fix: round cents', timeoutMs = 
 const openPr = (tools: GitHubHostTools, title = 'fix: round cents', body = 'Rounds cents.') =>
   tools.run({ kind: 'host_tool', tool: 'github.openPr', title, body }, 30_000);
 
+describe('GitHubHostTools', () => {
+  it('handles the GitHub tools and refuses the rest without touching GitHub', async () => {
+    const { github, tools } = setup();
+    expect(tools.handles('git.pushBranch')).toBe(true);
+    expect(tools.handles('github.openPr')).toBe(true);
+    expect(tools.handles('ops.restart')).toBe(false);
+    expect(await tools.run({ kind: 'host_tool', tool: 'ops.restart' }, 1000)).toEqual({
+      ok: false,
+      output: 'ops.restart is not a GitHub tool',
+    });
+    expect(github.calls).toEqual([]);
+  });
+});
+
 describe('GitHubHostTools git.pushBranch', () => {
   it('commits modified, new and deleted files to the run branch over main', async () => {
     const { github, workspace, tools } = setup();

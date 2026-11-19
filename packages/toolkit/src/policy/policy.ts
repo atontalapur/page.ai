@@ -102,8 +102,8 @@ const TIER_1: ReadonlyMap<string, ArgRule> = new Map([
   ['pnpm', pnpm],
 ]);
 
-// Tier 2 adds host tools (#10, see HOST_TOOL_TIERS) and Tier 3 the ops surface (#13).
-// Neither runs through the shell, so every tier shares the Tier 1 command list for now.
+// Tier 2 adds the GitHub host tools (#10) and Tier 3 the live app's ops tools (#13), both in
+// HOST_TOOL_TIERS. Neither runs through the shell, so every tier shares the Tier 1 commands.
 const ALLOWLISTS: Record<Tier, ReadonlyMap<string, ArgRule>> = {
   1: TIER_1,
   2: TIER_1,
@@ -175,11 +175,16 @@ export function checkCommand(input: string, tier: Tier): Verdict {
 
 /**
  * The lowest tier that may call each host tool. Tiers include the ones below them, so a
- * Tier 3 run may push and open PRs too.
+ * Tier 3 run may push and open PRs too. Reading the live config is Tier 3 as well: it shows
+ * settings a lower tier has no reason to see.
  */
 export const HOST_TOOL_TIERS: Readonly<Record<HostToolName, Tier>> = {
   'git.pushBranch': 2,
   'github.openPr': 2,
+  'ops.getConfig': 3,
+  'ops.setConfig': 3,
+  'ops.deleteConfig': 3,
+  'ops.restart': 3,
 };
 
 /** Whether `tool` may run at `tier`. An unknown tool name is refused. */

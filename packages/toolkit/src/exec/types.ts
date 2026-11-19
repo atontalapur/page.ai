@@ -36,11 +36,45 @@ export interface OpenPrCall {
   body: string;
 }
 
+/** Reads the live demo app's settings: where each comes from, and what a restart would load. */
+export interface OpsGetConfigCall {
+  kind: 'host_tool';
+  tool: 'ops.getConfig';
+}
+
+/** Sets a runtime config override on the live app. It applies on the next restart. */
+export interface OpsSetConfigCall {
+  kind: 'host_tool';
+  tool: 'ops.setConfig';
+  /** A shop setting name, such as SHIPPING_FLAT_CENTS. */
+  key: string;
+  value: string;
+}
+
+/** Drops a runtime config override, so the env value applies again on the next restart. */
+export interface OpsDeleteConfigCall {
+  kind: 'host_tool';
+  tool: 'ops.deleteConfig';
+  key: string;
+}
+
+/** Restarts the live app so it rereads its settings, and waits until it is healthy. */
+export interface OpsRestartCall {
+  kind: 'host_tool';
+  tool: 'ops.restart';
+}
+
+export type GitHubToolCall = PushBranchCall | OpenPrCall;
+
+/** The live demo app's ops surface (#13), for Tier 3. */
+export type OpsToolCall =
+  OpsGetConfigCall | OpsSetConfigCall | OpsDeleteConfigCall | OpsRestartCall;
+
 /**
  * A tool the daemon runs on the host, not in the sandbox, because it needs the network or a
  * token. The tier policy decides which tiers may call each one.
  */
-export type HostToolCall = PushBranchCall | OpenPrCall;
+export type HostToolCall = GitHubToolCall | OpsToolCall;
 
 export type HostToolName = HostToolCall['tool'];
 
@@ -55,6 +89,11 @@ export interface HostToolOutcome {
  * rejects only when something is actually broken, which execute() treats like a runner crash.
  */
 export interface HostTools {
+  /**
+   * Whether this node can run `tool`. execute() refuses a call it can't, as it does when
+   * there are no host tools at all. Left out, every host tool is taken to be there.
+   */
+  handles?(tool: HostToolName): boolean;
   run(call: HostToolCall, timeoutMs: number): Promise<HostToolOutcome>;
 }
 
