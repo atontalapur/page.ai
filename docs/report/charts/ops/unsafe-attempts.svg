@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="372" viewBox="0 0 760 372" role="img" aria-labelledby="unsafe-attempts-title unsafe-attempts-desc" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif">
+<title id="unsafe-attempts-title">Unsafe attempts by tier</title>
+<desc id="unsafe-attempts-desc">deepseek/deepseek-v4.1-flash, 2 of 2 planned bugs played, commit b0b4d84</desc>
+<rect x="0.5" y="0.5" width="759" height="371" rx="8" fill="#fcfcfb" stroke="#e1e0d9"/>
+<text x="20" y="36" font-size="16" fill="#0b0b0b" font-weight="600">Unsafe attempts by tier</text>
+<text x="20" y="56" font-size="12" fill="#52514e">deepseek/deepseek-v4.1-flash, 2 of 2 planned bugs played, commit b0b4d84</text>
+<rect x="20" y="72" width="12" height="12" rx="2" fill="#2a78d6"/>
+<text x="38" y="82" font-size="12" fill="#0b0b0b">tier1-only</text>
+<rect x="126" y="72" width="12" height="12" rx="2" fill="#eb6834"/>
+<text x="144" y="82" font-size="12" fill="#0b0b0b">tier3-start</text>
+<rect x="239" y="72" width="12" height="12" rx="2" fill="#1baf7a"/>
+<text x="257" y="82" font-size="12" fill="#0b0b0b">ladder</text>
+<line x1="74" y1="104" x2="74" y2="312" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="198.8" y1="104" x2="198.8" y2="312" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="323.5" y1="104" x2="323.5" y2="312" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="448.3" y1="104" x2="448.3" y2="312" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="573" y1="104" x2="573" y2="312" stroke="#e1e0d9" stroke-width="1"/>
+<text x="74" y="328" font-size="11" fill="#52514e" text-anchor="middle">0</text>
+<text x="198.8" y="328" font-size="11" fill="#52514e" text-anchor="middle">2</text>
+<text x="323.5" y="328" font-size="11" fill="#52514e" text-anchor="middle">4</text>
+<text x="448.3" y="328" font-size="11" fill="#52514e" text-anchor="middle">6</text>
+<text x="573" y="328" font-size="11" fill="#52514e" text-anchor="middle">8</text>
+<text x="323.5" y="348" font-size="12" fill="#52514e" text-anchor="middle">refused execute() calls per 100 steps, at the tier the attempt ran</text>
+<text x="62" y="142" font-size="12" fill="#0b0b0b" text-anchor="end">Tier 1</text>
+<path d="M74,112h368a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-368z" fill="#2a78d6"><title>tier1-only, Tier 1: 6.0 (13/218)</title></path>
+<text x="452" y="124" font-size="12" fill="#0b0b0b">6.0 (13/218)<tspan fill="#52514e">  tier1-only</tspan></text>
+
+<text x="80" y="142" font-size="12" fill="#0b0b0b">n/a<tspan fill="#52514e">  tier3-start</tspan></text>
+<path d="M74,148h469.4a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-469.4z" fill="#1baf7a"><title>ladder, Tier 1: 7.6 (17/224)</title></path>
+<text x="553.4" y="160" font-size="12" fill="#0b0b0b">7.6 (17/224)<tspan fill="#52514e">  ladder</tspan></text>
+<text x="62" y="212" font-size="12" fill="#0b0b0b" text-anchor="end">Tier 2</text>
+
+<text x="80" y="194" font-size="12" fill="#0b0b0b">n/a<tspan fill="#52514e">  tier1-only</tspan></text>
+
+<text x="80" y="212" font-size="12" fill="#0b0b0b">n/a<tspan fill="#52514e">  tier3-start</tspan></text>
+<path d="M74,218h400.6a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-400.6z" fill="#1baf7a"><title>ladder, Tier 2: 6.5 (12/185)</title></path>
+<text x="484.6" y="230" font-size="12" fill="#0b0b0b">6.5 (12/185)<tspan fill="#52514e">  ladder</tspan></text>
+<text x="62" y="282" font-size="12" fill="#0b0b0b" text-anchor="end">Tier 3</text>
+
+<text x="80" y="264" font-size="12" fill="#0b0b0b">n/a<tspan fill="#52514e">  tier1-only</tspan></text>
+<path d="M74,270h495a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-495z" fill="#eb6834"><title>tier3-start, Tier 3: 8.0 (4/50)</title></path>
+<text x="579" y="282" font-size="12" fill="#0b0b0b">8.0 (4/50)<tspan fill="#52514e">  tier3-start</tspan></text>
+
+<text x="80" y="300" font-size="12" fill="#0b0b0b">0.0 (0/35)<tspan fill="#52514e">  ladder</tspan></text>
+</svg>

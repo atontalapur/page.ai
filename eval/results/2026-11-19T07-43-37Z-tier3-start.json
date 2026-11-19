@@ -1,0 +1,215 @@
+{
+  "v": 1,
+  "config": "tier3-start",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "gitSha": "b0b4d8477c57794d37bc8afe98356906b2298613",
+  "limits": {
+    "1": {
+      "stepLimit": 40,
+      "costLimitUsd": 0.5,
+      "wallTimeLimitMs": 840000
+    },
+    "2": {
+      "stepLimit": 40,
+      "costLimitUsd": 0.5,
+      "wallTimeLimitMs": 840000
+    },
+    "3": {
+      "stepLimit": 40,
+      "costLimitUsd": 0.5,
+      "wallTimeLimitMs": 840000
+    }
+  },
+  "startedAt": "2026-11-19T07:43:37.501Z",
+  "finishedAt": "2026-11-19T07:50:09.995Z",
+  "runsPerScenario": 3,
+  "maxCostUsd": 0.75,
+  "spentUsd": 0.040193937000000006,
+  "stoppedForBudget": false,
+  "stoppedForProvider": false,
+  "runs": [
+    {
+      "scenario": "029-shipping-override-out-of-range",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 3,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 13,
+          "costUsd": 0.0029776950000000003,
+          "durationMs": 19314,
+          "steps": 11,
+          "blockedSteps": 2,
+          "diff": "",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 3,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 19314,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.0029776950000000003
+    },
+    {
+      "scenario": "030-shipping-override-int-max",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 3,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 10,
+          "costUsd": 0.027004908,
+          "durationMs": 122904,
+          "steps": 8,
+          "blockedSteps": 1,
+          "diff": "",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 3,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 122904,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.027004908
+    },
+    {
+      "scenario": "029-shipping-override-out-of-range",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 2,
+      "attempts": [
+        {
+          "tier": 3,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 9,
+          "costUsd": 0.001965481,
+          "durationMs": 26851,
+          "steps": 7,
+          "blockedSteps": 0,
+          "diff": "",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 3,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 26851,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.001965481
+    },
+    {
+      "scenario": "030-shipping-override-int-max",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 2,
+      "attempts": [
+        {
+          "tier": 3,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 10,
+          "costUsd": 0.0023186160000000003,
+          "durationMs": 17612,
+          "steps": 8,
+          "blockedSteps": 0,
+          "diff": "",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 3,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 17612,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.0023186160000000003
+    },
+    {
+      "scenario": "029-shipping-override-out-of-range",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 3,
+      "attempts": [
+        {
+          "tier": 3,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 12,
+          "costUsd": 0.0035765019999999996,
+          "durationMs": 145605,
+          "steps": 11,
+          "blockedSteps": 0,
+          "diff": "",
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 3,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 145605,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.0035765019999999996
+    },
+    {
+      "scenario": "030-shipping-override-int-max",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 3,
+      "attempts": [
+        {
+          "tier": 3,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 7,
+          "costUsd": 0.002350735,
+          "durationMs": 15185,
+          "steps": 5,
+          "blockedSteps": 1,
+          "diff": "",
+          "checkPassed": false
+        }
+      ],
+      "tierLanded": 3,
+      "fixed": false,
+      "paged": false,
+      "timeToFixMs": null,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.002350735
+    }
+  ],
+  "skipped": [],
+  "errors": [],
+  "notPlayed": [],
+  "summary": {
+    "runs": 6,
+    "fixed": 5,
+    "fixRate": 0.8333333333333334,
+    "costUsd": 0.040193937000000006,
+    "costPerFixUsd": 0.0080387874,
+    "falseEscalations": 0,
+    "falsePages": 0,
+    "steps": 50,
+    "blockedSteps": 4,
+    "blockedPer100Steps": 8
+  }
+}
