@@ -62,7 +62,7 @@ try {
   }
   logger.info(
     config.autoStartFix
-      ? 'AUTO_START_FIX is on; triage starts a Tier 1 fix'
+      ? `AUTO_START_FIX is on; triage starts a Tier 1 fix, at most ${config.autoStartFixMaxPerHour} an hour`
       : 'AUTO_START_FIX is off; triaged issues wait for a start_fix event',
   );
   if (!config.useFakeAdapters && !config.openRouterApiKey) {

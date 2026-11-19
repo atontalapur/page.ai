@@ -90,6 +90,21 @@ describe('IssuesService', () => {
     expect((await liveJob(withEmail.id)).data.report).toBe('Error: no account for [email]');
   });
 
+  it('masks a title used as the report, and clips it', async () => {
+    const { issue } = await service.report({
+      fingerprint: `fp-${++n}`,
+      title: `SyntaxError: Unexpected token 'c', "card=4242"... is not valid JSON for jane@example.com ${'x'.repeat(600)}`,
+    });
+    await service.apply(issue.id, triage);
+    await service.apply(issue.id, { type: 'start_fix' });
+    const sent = (await liveJob(issue.id)).data.report;
+    expect(sent).toMatch(
+      /^SyntaxError: Unexpected token 'c', "\[input\]" is not valid JSON for \[email\] x+\.\.\.$/,
+    );
+    expect(sent).not.toContain('4242');
+    expect(sent).toHaveLength(500);
+  });
+
   it('fills in the report on a repeat when the issue had none', async () => {
     const { issue } = await service.report({ fingerprint: `fp-${++n}`, title: 'Boom' });
     await service.report({ fingerprint: `fp-${n}`, title: 'Boom' }, 'GET /\n\nError: Boom');

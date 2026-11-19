@@ -8,6 +8,8 @@ import type { JobQueues } from '../queue/queues.ts';
 import { CLASSIFIER, CONFIG, JOB_QUEUES, LOGGER } from '../tokens.ts';
 import type { TriageClassifier } from './classify.ts';
 
+const HOUR_MS = 60 * 60 * 1000;
+
 @Injectable()
 export class TriageService {
   constructor(
@@ -22,11 +24,26 @@ export class TriageService {
    * Classifies a new issue, pages on-call, and moves it to `triaged`. With AUTO_START_FIX,
    * it then sends `start_fix`, which queues the Tier 1 fix job. A retry after a failed
    * start finds the issue `triaged` and only starts the fix.
+   *
+   * The report comes from a PostHog event, which anyone holding the public project key can
+   * forge, and it becomes the agent's task. So once AUTO_START_FIX_MAX_PER_HOUR fixes have
+   * started in the last hour, the issue stays `triaged` for an operator to start. The triage
+   * worker takes one job at a time, so one orchestrator holds the cap exactly; each extra
+   * instance could start one more past it.
    */
   async handle(job: JobPayload<'triage'>): Promise<void> {
     let issue = await this.issues.get(job.issueId);
     if (issue.status === 'new') issue = await this.classify(issue);
     if (issue.status === 'triaged' && this.config.autoStartFix) {
+      const max = this.config.autoStartFixMaxPerHour;
+      const started = await this.issues.fixesStartedWithin(HOUR_MS);
+      if (started >= max) {
+        issueLogger(this.logger, { issueId: issue.id }).warn(
+          { started, max },
+          'auto-start cap reached; the issue waits for a start_fix event',
+        );
+        return;
+      }
       const fixing = await this.issues.apply(issue.id, { type: 'start_fix' });
       issueLogger(this.logger, { issueId: issue.id, tier: fixing.currentTier }).info('fix started');
     }
