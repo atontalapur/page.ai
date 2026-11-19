@@ -7,6 +7,7 @@ import {
   maskMessage,
   MESSAGE_MAX,
   redactQuery,
+  redactRequestPath,
   REPORT_MAX,
   reportFrom,
 } from './report.ts';
@@ -154,6 +155,30 @@ describe('reportFrom', () => {
     );
   });
 
+  it('redacts a token in the page path and the query of a frame that names the page', () => {
+    const page = 'https://shop.example.com/invite/9f8e7d6c5b4a3f2e1d0c?email=jane@example.com';
+    const body = webhook({
+      $current_url: page,
+      $exception_list: [
+        {
+          type: 'Error',
+          value: 'x',
+          stacktrace: { frames: [{ in_app: true, source: page, line: 3, function: 'onLoad' }] },
+        },
+      ],
+    });
+    const report = reportFrom(body, title);
+    expect(report).toBe(
+      [
+        'Request to /invite/[redacted]?email=',
+        '',
+        'Error: x',
+        '    at onLoad (https://shop.example.com/invite/[redacted]?email=:3)',
+      ].join('\n'),
+    );
+    expect(report).not.toMatch(/jane|9f8e7d6c/);
+  });
+
   it('falls back to the title with no exception list or request', () => {
     expect(reportFrom(posthogWebhookFixture, 'TypeError: x of a@b.co')).toBe(
       'TypeError: x of [email]',
@@ -215,6 +240,20 @@ describe('report helpers', () => {
   it('redacts a query piece with no name, which may be a bare token', () => {
     expect(redactQuery('/reset?3f9a8b7c2d1e0f')).toBe('/reset?[redacted]');
     expect(redactQuery('/a?x=1&3f9a8b7c&')).toBe('/a?x=&[redacted]');
+  });
+
+  it('redacts request path segments that look like a token or an id', () => {
+    expect(redactRequestPath('/reset-password/9f8e7d6c5b4a3f2e1d0c?email=a@b.co')).toBe(
+      '/reset-password/[redacted]?email=',
+    );
+    expect(redactRequestPath('/orders/3f2a9c1e-1b2c-4d5e-8f90-123456789abc')).toBe(
+      '/orders/[redacted]',
+    );
+    expect(redactRequestPath('/cards/4242424242424242/x')).toBe('/cards/[redacted]/x');
+    expect(redactRequestPath('/products/wool-beanie-2024?q=1')).toBe(
+      '/products/wool-beanie-2024?q=',
+    );
+    expect(redactRequestPath('/u/jane%40example.com#9f8e7d6c5b4a3f2e1d0c')).toBe('/u/[email]');
   });
 
   it('masks percent-encoded emails and leaves other escapes as sent', () => {

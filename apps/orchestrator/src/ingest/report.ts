@@ -4,8 +4,9 @@ import { z } from 'zod';
 // The error report a fix job carries (#136), built once at ingest from the PostHog webhook.
 // A Tier 2 run writes a public PR from it (docs/demo-repo.md), so it keeps only the request
 // line, the exception and its in-app frames. Bodies, headers, cookies, person and other user
-// fields are never read. Query values are dropped and email addresses masked, since either
-// can hold user data. So is the input a JSON.parse error quotes, which is often a body.
+// fields are never read. Query values, path segments that look like a token or an id, and
+// email addresses are masked, since any of them can hold user data. So is the input a
+// JSON.parse error quotes, which is often a body.
 
 // The agent's view of the error stays under 2,000 characters (#12), the same cap a scenario's
 // report has in scenarioMetaSchema. A message gets a quarter of that, so frames still fit.
@@ -113,6 +114,31 @@ export function redactQuery(pathWithQuery: string): string {
   return pieces.length === 0 ? path : `${path}?${pieces.join('&')}`;
 }
 
+// A path segment that may be a secret or a user's id: a uuid, or a run of 16 or more letters
+// and digits with a digit in it (a reset or invite token, a card number). Slugs such as
+// `wool-beanie-2024` stay.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TOKEN_RUN = /[a-z0-9]{16,}/gi;
+
+const isTokenSegment = (segment: string) =>
+  UUID.test(segment) || (segment.match(TOKEN_RUN) ?? []).some((run) => /\d/.test(run));
+
+/**
+ * A request path with query values and emails redacted (redactQuery), and each segment that
+ * looks like a token or an id too, so `/reset-password/9f8e7d6c5b4a3f2e1d0c` becomes
+ * `/reset-password/[redacted]`. Frame file paths skip this step, since a bundle chunk's hash
+ * looks like a token; a frame that names a page URL gets it.
+ */
+export function redactRequestPath(pathWithQuery: string): string {
+  const at = pathWithQuery.search(/[?#]/);
+  const path = at === -1 ? pathWithQuery : pathWithQuery.slice(0, at);
+  const rest = at === -1 ? '' : pathWithQuery.slice(at);
+  const segments = path
+    .split('/')
+    .map((segment) => (isTokenSegment(segment) ? '[redacted]' : segment));
+  return redactQuery(`${segments.join('/')}${rest}`);
+}
+
 /** The path of a browser error's `$current_url`, if it parses. */
 function pathOf(url: string): string | undefined {
   try {
@@ -131,7 +157,7 @@ function requestLine(props: Record<string, unknown>): string | null {
   const notes = [str(props.route) && `route ${str(props.route)}`, str(props.source)].filter(
     (note): note is string => !!note,
   );
-  const request = `${method ?? 'Request to'} ${redactQuery(path)}`;
+  const request = `${method ?? 'Request to'} ${redactRequestPath(path)}`;
   return clip(notes.length === 0 ? request : `${request} (${notes.join(', ')})`, 300);
 }
 
@@ -156,7 +182,9 @@ const isNoise = (path: string) =>
 function formatFrame(frame: Frame): string | null {
   const raw = frame.source ?? frame.filename ?? frame.abs_path;
   if (raw === undefined || frame.in_app !== true) return null;
-  const path = framePath(raw);
+  // A browser frame from an inline script names the page URL, query string and all.
+  const file = framePath(raw);
+  const path = /^https?:\/\//i.test(file) ? redactRequestPath(file) : redactQuery(file);
   if (isNoise(path)) return null;
   const line = frame.line ?? frame.lineno;
   const column = frame.column ?? frame.colno;
