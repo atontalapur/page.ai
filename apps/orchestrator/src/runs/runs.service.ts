@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { IssueEvent, JobPayload } from '@page/contracts';
 import type { Insertable, Transaction } from 'kysely';
 import type { Database, Db, RunsTable } from '../db/database.ts';
-import { IssuesService } from '../issues/issues.service.ts';
+import { IssuesService, type Moved } from '../issues/issues.service.ts';
 import { issueLogger, type Logger } from '../logger.ts';
 import type { FixJob } from '../queue/fix-jobs.ts';
 import type { JobQueues } from '../queue/queues.ts';
@@ -49,6 +49,12 @@ export type RecordOutcome =
   | { kind: 'result_pending' }
   | { kind: 'no_issue' };
 
+/** What a transaction did, and the issue change to log once it commits. */
+interface Recorded {
+  outcome: RecordOutcome;
+  moved?: Moved;
+}
+
 /**
  * The error pg-boss kept for a failed job: `{ message }` for an error the worker threw, or
  * `{ value: { message } }` for an expiry.
@@ -94,9 +100,9 @@ export class RunsService {
       tier: job.tier,
     });
 
-    const outcome = await this.db.transaction().execute(async (trx): Promise<RecordOutcome> => {
+    const recorded = await this.db.transaction().execute(async (trx): Promise<Recorded> => {
       const issue = await lockIssue(trx, job.issueId);
-      if (!issue) return { kind: 'no_issue' };
+      if (!issue) return { outcome: { kind: 'no_issue' } };
 
       const row = {
         issue_id: job.issueId,
@@ -114,12 +120,14 @@ export class RunsService {
         .onConflict((oc) => oc.column('id').doUpdateSet(row))
         .execute();
 
-      if (!isCurrent(issue, result.runId)) return { kind: 'stale' };
+      if (!isCurrent(issue, result.runId)) return { outcome: { kind: 'stale' } };
       const event = issueEventFor(result);
-      await this.issues.apply(job.issueId, event, {
+      const moved = await this.issues.applyIn(
         trx,
-        ...(result.note === null ? {} : { escalationNote: result.note }),
-      });
+        job.issueId,
+        event,
+        result.note === null ? {} : { escalationNote: result.note },
+      );
       // Only an escalation the issue took is recorded: a run that escalates after the issue
       // was killed never reached the next tier.
       if (result.status === 'escalated') {
@@ -134,9 +142,10 @@ export class RunsService {
           })
           .execute();
       }
-      return { kind: 'applied', event: event.type };
+      return { outcome: { kind: 'applied', event: event.type }, moved };
     });
 
+    const { outcome } = this.committed(recorded);
     if (outcome.kind === 'no_issue') {
       log.error({ status: result.status }, 'run finished for an issue that does not exist');
     } else if (outcome.kind === 'applied') {
@@ -160,7 +169,7 @@ export class RunsService {
   async recordLost(job: FixJob, why: string): Promise<RecordOutcome> {
     const { issueId, runId, tier } = job;
     const log = issueLogger(this.logger, { issueId, runId, tier });
-    const outcome = await this.failRun(
+    const { outcome } = await this.failRun(
       { id: runId, issue_id: issueId, tier, status: 'failed', finished_at: new Date() },
       `The fix job failed with no result from the node: ${why}`,
       { unlessResultPending: true },
@@ -186,7 +195,7 @@ export class RunsService {
   async recordFailedResult(job: RunFinishedJob, why: string): Promise<RecordOutcome> {
     const { issueId, tier, result } = job;
     const log = issueLogger(this.logger, { issueId, runId: result.runId, tier });
-    const outcome = await this.failRun(
+    const { outcome } = await this.failRun(
       {
         id: result.runId,
         issue_id: issueId,
@@ -215,17 +224,17 @@ export class RunsService {
    * the run is still current. With `unlessResultPending`, a run_finished job still queued for
    * the run is left to move the issue instead.
    */
-  private failRun(
+  private async failRun(
     run: Insertable<RunsTable>,
     reason: string,
     { unlessResultPending }: { unlessResultPending: boolean },
-  ): Promise<RecordOutcome> {
-    return this.db.transaction().execute(async (trx): Promise<RecordOutcome> => {
+  ): Promise<Recorded> {
+    const recorded = await this.db.transaction().execute(async (trx): Promise<Recorded> => {
       const issue = await lockIssue(trx, run.issue_id);
-      if (!issue) return { kind: 'no_issue' };
-      if (!isCurrent(issue, run.id)) return { kind: 'stale' };
+      if (!issue) return { outcome: { kind: 'no_issue' } };
+      if (!isCurrent(issue, run.id)) return { outcome: { kind: 'stale' } };
       if (unlessResultPending && (await this.jobs.runFinishedPending(run.id, trx))) {
-        return { kind: 'result_pending' };
+        return { outcome: { kind: 'result_pending' } };
       }
 
       await trx
@@ -234,9 +243,16 @@ export class RunsService {
         .onConflict((oc) => oc.column('id').doNothing())
         .execute();
       const event: IssueEvent = { type: 'fail', runId: run.id, reason: clip(reason) };
-      await this.issues.apply(run.issue_id, event, { trx });
-      return { kind: 'applied', event: event.type };
+      const moved = await this.issues.applyIn(trx, run.issue_id, event);
+      return { outcome: { kind: 'applied', event: event.type }, moved };
     });
+    return this.committed(recorded);
+  }
+
+  /** Logs the issue change a committed transaction made, so a rollback never shows up. */
+  private committed(recorded: Recorded): Recorded {
+    if (recorded.moved) this.issues.logMoved(recorded.moved);
+    return recorded;
   }
 }
 

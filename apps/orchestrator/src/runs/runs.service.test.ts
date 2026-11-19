@@ -192,6 +192,29 @@ describe('RunsService', () => {
     expect((await runRow(job.runId))?.status).toBe('succeeded');
   });
 
+  it('logs the issue change only once the transaction commits', async () => {
+    const lines: { msg: string }[] = [];
+    const logger = createLogger('info', {
+      write: (line: string) => lines.push(JSON.parse(line) as { msg: string }),
+    });
+    const logged = new RunsService(
+      deps.db,
+      new IssuesService(deps.db, deps.fixJobs, logger),
+      deps.jobs,
+      logger,
+    );
+    const { issue, job } = await fixing();
+
+    // The escalations check refuses this reason after the event is applied, so it rolls back.
+    const refused = finished(job, { ...escalation, reason: 'not_a_reason' as 'budget_exhausted' });
+    await expect(logged.record(refused)).rejects.toThrow();
+    expect(await issues.get(issue.id)).toMatchObject({ status: 'fixing', currentTier: 1 });
+    expect(lines).toEqual([]);
+
+    await logged.record(finished(job, escalation));
+    expect(lines.map((line) => line.msg)).toEqual(['issue moved', 'run recorded']);
+  });
+
   it('logs and drops a result for an issue that does not exist', async () => {
     const lines: unknown[] = [];
     const logger = createLogger('info', { write: (line: string) => lines.push(JSON.parse(line)) });

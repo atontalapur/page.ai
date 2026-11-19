@@ -55,11 +55,15 @@ export interface ApplyOptions {
    * the reviewer's reason on instead.
    */
   escalationNote?: EscalationNote;
-  /**
-   * Applies the event inside the caller's transaction, so it commits or rolls back with the
-   * caller's own writes (RunsService). Without it, the event gets its own transaction.
-   */
-  trx?: Transaction<Database>;
+}
+
+/** A change `applyIn` made, for the log line written once its transaction commits. */
+export interface Moved {
+  event: IssueEvent;
+  issue: Issue;
+  from: IssueStatus;
+  runId: string | null;
+  cancelledRunId: string | undefined;
 }
 
 /** The note a rejected patch hands the next tier: the reviewer's reason is the blocker. */
@@ -158,27 +162,33 @@ export class IssuesService {
    * StaleRunError if a daemon event names a run other than the current one.
    */
   async apply(id: string, event: IssueEvent, options: ApplyOptions = {}): Promise<Issue> {
-    const { trx, escalationNote } = options;
-    const moved = trx
-      ? await this.applyIn(trx, id, event, escalationNote)
-      : await this.db.transaction().execute((own) => this.applyIn(own, id, event, escalationNote));
+    const moved = await this.db
+      .transaction()
+      .execute((trx) => this.applyIn(trx, id, event, options));
+    // Logged after the commit, so a rolled-back change never shows up.
+    this.logMoved(moved);
+    return moved.issue;
+  }
 
-    // Logged after the commit, so a rolled-back change never shows up. With the caller's
-    // transaction it is logged once the event is in, before the caller commits.
-    const { issue, from, runId, cancelledRunId } = moved;
-    issueLogger(this.logger, { issueId: id, runId, tier: issue.currentTier }).info(
+  /** The `issue moved` line for a change, once the transaction that made it has committed. */
+  logMoved({ event, issue, from, runId, cancelledRunId }: Moved): void {
+    issueLogger(this.logger, { issueId: issue.id, runId, tier: issue.currentTier }).info(
       { event: event.type, from, to: issue.status, cancelledRunId },
       'issue moved',
     );
-    return issue;
   }
 
-  private async applyIn(
+  /**
+   * `apply` inside the caller's transaction, so the change commits or rolls back with the
+   * caller's own writes (RunsService). Nothing is logged: the caller passes the result to
+   * `logMoved` once its transaction commits.
+   */
+  async applyIn(
     trx: Transaction<Database>,
     id: string,
     event: IssueEvent,
-    escalationNote: EscalationNote | undefined,
-  ) {
+    { escalationNote }: ApplyOptions = {},
+  ): Promise<Moved> {
     const current = await trx
       .selectFrom('issues')
       .selectAll()
@@ -254,6 +264,6 @@ export class IssuesService {
         current_tier: next.currentTier,
       })
       .execute();
-    return { issue: toIssue(updated), from: current.status, runId, cancelledRunId };
+    return { event, issue: toIssue(updated), from: current.status, runId, cancelledRunId };
   }
 }
