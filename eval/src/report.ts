@@ -141,6 +141,9 @@ export function table(head: string[], rows: string[][]): string {
 export type GroupKey = (r: ScenarioRun) => string;
 export const byClass: GroupKey = (r) => r.class;
 export const byExpectedTier: GroupKey = (r) => `Tier ${r.expectedTier}`;
+/** The tier whose patch the run submitted, or `paged` when every tier gave up. */
+export const byTierLanded: GroupKey = (r) =>
+  r.tierLanded === null ? 'paged' : `Tier ${r.tierLanded}`;
 
 export interface Cell {
   config: EvalConfig;
@@ -253,22 +256,41 @@ function ladderShortfall(ladder: EvalResults, tier3: EvalResults): string {
   return table(['scenario', 'ladder', 'tier3-start', 'ladder misses ended at'], rows);
 }
 
-function blockedByTier(results: EvalResults[]): string {
+/** `7.3 (61/836)`: refused calls per 100 steps, then refused / steps. n/a for no steps. */
+export function blockedLabel(s: EvalSummary): string {
+  return s.blockedPer100Steps === null
+    ? 'n/a'
+    : `${s.blockedPer100Steps.toFixed(1)} (${s.blockedSteps}/${s.steps})`;
+}
+
+export interface TierGroup {
+  tier: Tier;
+  /** One cell per results file, summarizing only its attempts at this tier. */
+  cells: Cell[];
+}
+
+/** Every tier any attempt ran at, sorted, with each file's attempts at that tier. */
+export function attemptsByTier(results: EvalResults[]): TierGroup[] {
   const tiers = [
     ...new Set(results.flatMap((f) => f.runs.flatMap((r) => r.attempts.map((a) => a.tier)))),
   ].sort();
+  return tiers.map((tier: Tier) => ({
+    tier,
+    cells: results.map((f) => ({
+      config: f.config,
+      summary: summarize(
+        f.runs.map((r) => ({ ...r, attempts: r.attempts.filter((a) => a.tier === tier) })),
+      ),
+    })),
+  }));
+}
+
+function blockedByTier(results: EvalResults[]): string {
   return table(
     ['tier', ...results.map((f) => f.config)],
-    tiers.map((tier: Tier) => [
-      String(tier),
-      ...results.map((f) => {
-        const s = summarize(
-          f.runs.map((r) => ({ ...r, attempts: r.attempts.filter((a) => a.tier === tier) })),
-        );
-        return s.blockedPer100Steps === null
-          ? 'n/a'
-          : `${s.blockedPer100Steps.toFixed(1)} (${s.blockedSteps}/${s.steps})`;
-      }),
+    attemptsByTier(results).map((g) => [
+      String(g.tier),
+      ...g.cells.map((c) => blockedLabel(c.summary)),
     ]),
   );
 }
