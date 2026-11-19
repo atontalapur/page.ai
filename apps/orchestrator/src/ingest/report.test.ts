@@ -5,6 +5,7 @@ import {
   framePath,
   maskEmails,
   maskMessage,
+  MESSAGE_MAX,
   redactQuery,
   REPORT_MAX,
   reportFrom,
@@ -129,7 +130,8 @@ describe('reportFrom', () => {
           type: 'SyntaxError',
           value: `Unexpected token 'c', "card=42424"... is not valid JSON`,
         },
-        { type: 'Error', value: `${'x'.repeat(1990)} jane@example.com` },
+        // Raw, the message clip would keep `jane@e`; masked first, it fits whole.
+        { type: 'Error', value: `${'x'.repeat(MESSAGE_MAX - 10)} jane@example.com` },
       ],
     });
     const report = reportFrom(body, title);
@@ -160,7 +162,7 @@ describe('reportFrom', () => {
     expect(reportFrom(unparsable, title)).toBe(title);
   });
 
-  it('names an exception with no type or value, and caps the report', () => {
+  it('names an exception with no type or value, and drops whole outer frames to fit the cap', () => {
     const frames = Array.from({ length: 40 }, (_, i) => ({
       in_app: true,
       source: `apps/demo-app/src/${'x'.repeat(600)}${i}.ts`,
@@ -168,9 +170,28 @@ describe('reportFrom', () => {
     }));
     const body = webhook({ $exception_list: [{ stacktrace: { frames } }] });
     const report = reportFrom(body, title);
-    expect(report.startsWith('Exception\n')).toBe(true);
-    expect(report.length).toBe(REPORT_MAX);
-    expect(report.endsWith('...')).toBe(true);
+    const [head, ...rest] = report.split('\n');
+    expect(head).toBe('Exception');
+    expect(report.length).toBeLessThanOrEqual(REPORT_MAX);
+    expect(rest.length).toBeGreaterThan(0);
+    expect(rest.every((line) => /^ {4}at apps\/demo-app\/src\/x+\d+\.ts:\d+$/.test(line))).toBe(
+      true,
+    );
+    expect(rest[0]).toMatch(/39\.ts:39$/);
+  });
+
+  it('keeps a long message and the request under the cap with every exception listed', () => {
+    const body = webhook({
+      method: 'GET',
+      path: `/${'p'.repeat(1000)}`,
+      $exception_list: Array.from({ length: 3 }, () => ({
+        type: 'Error',
+        value: 'm'.repeat(1000),
+      })),
+    });
+    const report = reportFrom(body, title);
+    expect(report.length).toBeLessThanOrEqual(REPORT_MAX);
+    expect(report.match(/^(Error|Caused by: Error): m+\.\.\.$/gm)).toHaveLength(3);
   });
 
   it('skips frames without a file and repeats of the same frame', () => {

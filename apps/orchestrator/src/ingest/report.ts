@@ -7,8 +7,10 @@ import { z } from 'zod';
 // fields are never read. Query values are dropped and email addresses masked, since either
 // can hold user data. So is the input a JSON.parse error quotes, which is often a body.
 
-export const REPORT_MAX = 8_000;
-const MESSAGE_MAX = 2_000;
+// The agent's view of the error stays under 2,000 characters (#12), the same cap a scenario's
+// report has in scenarioMetaSchema. A message gets a quarter of that, so frames still fit.
+export const REPORT_MAX = 2_000;
+export const MESSAGE_MAX = 500;
 const FRAMES_MAX = 15;
 const EXCEPTIONS_MAX = 3;
 
@@ -208,6 +210,16 @@ export function reportFrom(body: PosthogWebhook, title: string): string {
   const props = body.event.properties as Record<string, unknown>;
   const request = requestLine(props);
   const lines = exceptionLines(props, title);
-  const report = request === null ? lines.join('\n') : [request, '', ...lines].join('\n');
-  return clip(report, REPORT_MAX);
+  return fit(request === null ? lines : [request, '', ...lines], REPORT_MAX);
+}
+
+/**
+ * Drops whole lines from the end until the report fits, so the outermost frames and causes
+ * go first and no frame is cut in half. The request line (300) and a message (500) can't fill
+ * the cap alone; the clip is a backstop.
+ */
+function fit(lines: string[], max: number): string {
+  const kept = [...lines];
+  while (kept.length > 1 && kept.join('\n').length > max) kept.pop();
+  return clip(kept.join('\n'), max);
 }
