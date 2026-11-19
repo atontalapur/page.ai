@@ -40,8 +40,10 @@ const exceptionSchema = z.looseObject({
 
 type Frame = z.infer<typeof frameSchema>;
 
-// `%40` too, for an encoded path that does not decode.
-const EMAIL = /[\w.+-]+(?:@|%40)[\w-]+(?:\.[\w-]+)+/gi;
+// `%40` too, for an encoded path that does not decode. The local part stops at 64, the most an
+// address allows: unbounded, a long run of word characters with no `@` after it backtracks
+// quadratically, and this runs on the whole message before the clip.
+const EMAIL = /[\w.+-]{1,64}(?:@|%40)[\w-]+(?:\.[\w-]+)+/gi;
 
 /** Masks email addresses, the user field most likely to land in a path or message. */
 export function maskEmails(text: string): string {

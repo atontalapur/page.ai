@@ -256,6 +256,15 @@ describe('report helpers', () => {
     expect(maskEmails('to a.b+c@mail.example.org, ok')).toBe('to [email], ok');
   });
 
+  it('masks a long message or path in linear time', () => {
+    // Unbounded, the email pattern took about 14 s on 80,000 of these.
+    const long = 'a'.repeat(200_000);
+    const started = performance.now();
+    expect(maskMessage(long)).toBe(long);
+    expect(redactQuery(`/${long}?${long}=1`)).toBe(`/${long}?${long}=`);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
   it('makes frame paths repo relative', () => {
     expect(framePath('turbopack:///[project]/apps/demo-app/src/x.ts')).toBe(
       'apps/demo-app/src/x.ts',
