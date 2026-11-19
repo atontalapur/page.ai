@@ -16,6 +16,11 @@ export const ACTION_TAGS = {
   // Tier 2 host tools. Any tier can write them; execute() refuses them below Tier 2.
   pushBranch: 'page_push_branch',
   openPr: 'page_open_pr',
+  // Tier 3 ops tools on the live app. execute() refuses them below Tier 3.
+  opsConfig: 'page_ops_config',
+  opsSet: 'page_ops_set',
+  opsUnset: 'page_ops_unset',
+  opsRestart: 'page_ops_restart',
 } as const;
 
 const SEARCH = '<<<<<<< SEARCH';
@@ -90,6 +95,10 @@ export function parseAction(reply: string): ParseResult {
   if (tag === ACTION_TAGS.edit) return parseEdit(body);
   if (tag === ACTION_TAGS.pushBranch) return parsePushBranch(body);
   if (tag === ACTION_TAGS.openPr) return parseOpenPr(body);
+  if (tag === ACTION_TAGS.opsConfig) return hostTool({ kind: 'host_tool', tool: 'ops.getConfig' });
+  if (tag === ACTION_TAGS.opsRestart) return hostTool({ kind: 'host_tool', tool: 'ops.restart' });
+  if (tag === ACTION_TAGS.opsSet) return parseOpsSet(body);
+  if (tag === ACTION_TAGS.opsUnset) return parseOpsUnset(body);
 
   const command = body.join('\n').trim();
   if (command === '') return { ok: false, error: `The ${ACTION_TAGS.exec} block is empty.` };
@@ -138,6 +147,42 @@ function parsePushBranch(body: string[]): ParseResult {
     ok: true,
     action: { kind: 'host_tool', call: { kind: 'host_tool', tool: 'git.pushBranch', message } },
   };
+}
+
+const hostTool = (call: HostToolCall): ParseResult => ({
+  ok: true,
+  action: { kind: 'host_tool', call },
+});
+
+/** The block's one non-blank line, or undefined when it has none or more than one. */
+function oneLine(body: string[]): string | undefined {
+  const lines = body.map((line) => line.trim()).filter((line) => line !== '');
+  return lines.length === 1 ? lines[0] : undefined;
+}
+
+// Examples name no real setting, so the format can't hint at a fix.
+const OPS_SET_SHAPE = `A ${ACTION_TAGS.opsSet} block is one line, SETTING_NAME=value.`;
+
+/** One `KEY=value` line. The value may itself hold `=`. */
+function parseOpsSet(body: string[]): ParseResult {
+  const line = oneLine(body);
+  const split = line?.indexOf('=') ?? -1;
+  if (line === undefined || split < 1) return { ok: false, error: OPS_SET_SHAPE };
+  const key = line.slice(0, split).trim();
+  const value = line.slice(split + 1).trim();
+  return hostTool({ kind: 'host_tool', tool: 'ops.setConfig', key, value });
+}
+
+/** One line: the setting's name. */
+function parseOpsUnset(body: string[]): ParseResult {
+  const key = oneLine(body);
+  if (key === undefined) {
+    return {
+      ok: false,
+      error: `A ${ACTION_TAGS.opsUnset} block is one line, the setting's name.`,
+    };
+  }
+  return hostTool({ kind: 'host_tool', tool: 'ops.deleteConfig', key });
 }
 
 /** The first non-blank line is the title; the rest is the body. */
