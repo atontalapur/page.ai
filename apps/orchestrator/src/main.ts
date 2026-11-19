@@ -10,6 +10,7 @@ import { buildPager } from './notify/pager.ts';
 import { NotifyService } from './notify/notify.service.ts';
 import { createFixJobQueue } from './queue/fix-jobs.ts';
 import { createJobQueues } from './queue/queues.ts';
+import { failureMessage, RunsService } from './runs/runs.service.ts';
 import { startWorkers } from './queue/workers.ts';
 import { buildClassifier } from './triage/classify.ts';
 import { TriageService } from './triage/triage.service.ts';
@@ -59,6 +60,11 @@ try {
   if (!config.apiToken) {
     logger.warn('ORCHESTRATOR_API_TOKEN is unset; every route but /health and /ingest returns 401');
   }
+  logger.info(
+    config.autoStartFix
+      ? 'AUTO_START_FIX is on; triage starts a Tier 1 fix'
+      : 'AUTO_START_FIX is off; triaged issues wait for a start_fix event',
+  );
   if (!config.useFakeAdapters && !config.openRouterApiKey) {
     logger.warn('OPENROUTER_API_KEY is unset; triage uses the rule fallback');
   }
@@ -81,6 +87,15 @@ try {
   await startWorkers(boss, {
     triage: (job) => application.get(TriageService).handle(job),
     notify: (job, attempt) => application.get(NotifyService).deliver(job, attempt),
+    runFinished: async (job) => {
+      await application.get(RunsService).record(job);
+    },
+    fixFailed: async (job, output) => {
+      await application.get(RunsService).recordLost(job, failureMessage(output));
+    },
+    runFinishedFailed: async (job, output) => {
+      await application.get(RunsService).recordFailedResult(job, failureMessage(output));
+    },
   });
   await application.listen({ port: config.port, host: config.host });
 } catch (err) {

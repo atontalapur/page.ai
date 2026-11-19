@@ -10,7 +10,10 @@ which opens or bumps an issue and queues triage (#29). This page sets up that de
 destination template (`template-webhook`) as it ships: `{ "event": "{event}", "person":
 "{person}" }`. Keep that body. Ingest needs `event.uuid`, `event.event` (`$exception`),
 `event.timestamp` and `event.properties.$exception_issue_id`, which becomes the issue's
-fingerprint.
+fingerprint. It also builds the fix job's report from `$exception_list` (in-app frames only)
+and the demo app's `method`, `path`, `route` and `source` properties, or `$current_url` for a
+browser error. It never reads `person`, request bodies or headers, and it masks the input a
+JSON.parse error message quotes, since that is usually a body.
 
 Use the plain HTTP Webhook destination, not an Error Tracking alert ("issue created" and the
 like). Those send a different event, which ingest rejects with a 400.

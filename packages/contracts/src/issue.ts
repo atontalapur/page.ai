@@ -28,7 +28,10 @@ export const newIssueSchema = z.strictObject({
 });
 export type NewIssue = z.infer<typeof newIssueSchema>;
 
-const reason = z.string().trim().min(1).max(2000);
+/** The longest reason an issue event carries. */
+export const MAX_REASON_CHARS = 2_000;
+
+const reason = z.string().trim().min(1).max(MAX_REASON_CHARS);
 
 /**
  * Everything that moves an issue between statuses. The node daemon's events carry the
@@ -40,6 +43,9 @@ export const issueEventSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('start_fix') }),
   z.strictObject({ type: z.literal('patch_ready'), runId: idSchema }),
   z.strictObject({ type: z.literal('escalate'), runId: idSchema, reason }),
+  // The run failed in a way a higher tier can't fix (a broken sandbox, model or audit log).
+  // The issue goes to `failed` and a human takes over.
+  z.strictObject({ type: z.literal('fail'), runId: idSchema, reason }),
   z.strictObject({ type: z.literal('approve') }),
   z.strictObject({ type: z.literal('reject'), reason }),
   z.strictObject({ type: z.literal('kill') }),

@@ -7,17 +7,17 @@ through Kysely, moves them through a state machine, and queues fix jobs on pg-bo
 ## Modules
 
 `AppModule` serves `/health`, `/issues` and `/ingest/posthog`, and imports seven feature modules.
-Ingest, triage and notify are wired. The other four are still stubs.
+Ingest, triage, runs and notify are wired. The other three are still stubs.
 
-| Module            | Owns                                                                      |
-| ----------------- | ------------------------------------------------------------------------- |
-| `IngestModule`    | `POST /ingest/posthog`: secret check, upsert by fingerprint, queue triage |
-| `TriageModule`    | Class and severity by model with a rule fallback, then notify             |
-| `RunsModule`      | Steps, diffs and results the node daemon streams back per run (#8). Stub. |
-| `TiersModule`     | Escalation after a run: up a tier, or to failed past Tier 3. Stub.        |
-| `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions. Stub.       |
-| `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone  |
-| `GatewayModule`   | Socket.IO events to and from the UI and node daemons (#34). Stub.         |
+| Module            | Owns                                                                       |
+| ----------------- | -------------------------------------------------------------------------- |
+| `IngestModule`    | `POST /ingest/posthog`: secret check, upsert by fingerprint, queue triage  |
+| `TriageModule`    | Class and severity by model with a rule fallback, then notify              |
+| `RunsModule`      | `run_finished` jobs from the node daemon: runs row, issue event, next tier |
+| `TiersModule`     | Escalation after a run: up a tier, or to failed past Tier 3. Stub.         |
+| `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions. Stub.        |
+| `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone   |
+| `GatewayModule`   | Socket.IO events to and from the UI and node daemons (#34). Stub.          |
 
 ## Issue lifecycle
 
@@ -28,8 +28,10 @@ new ──────triage─▶ triaged ─start_fix─▶ fixing (tier 1)
                                          ▼  │
                                   awaiting_approval ─approve─▶ resolved
 
+triage sends start_fix itself when AUTO_START_FIX is on
 pr_open takes approve and reject like awaiting_approval; nothing enters it yet
 escalate or reject at tier 3 ─▶ failed (a human takes over)
+fail (a run a higher tier can't fix) ─▶ failed
 kill from any open status    ─▶ killed
 ```
 
@@ -44,11 +46,46 @@ triage queues one job per `NOTIFY_TO_NUMBERS` entry, so a retry pages only the p
 missed it. `triage` and `notify` retry 3 times with backoff. `fix` does not retry. A call that
 still fails on its last try sends SMS.
 
-The daemon's events (`patch_ready`, `escalate`) carry the `runId` of the job they report on.
-An event for any run other than the current one returns 409, so a retried `escalate` cannot
-skip a tier. A repeat report with the
-same `fingerprint` bumps `occurrences` on the open issue; after a terminal status it opens a
-new one.
+Ingest stores a sanitized error report on the issue (`src/ingest/report.ts`): the request
+line, the exception and its in-app frames, innermost first. It never reads bodies, headers,
+cookies or person fields, drops query values (and any query piece without a name), and masks
+email addresses, encoded ones included, because a Tier 2 run writes a public PR from it.
+Exception messages are kept, since they are what the agent fixes from. The one known way a
+body gets into a message is a JSON.parse error quoting its input, so that input is masked;
+any other message is kept as thrown. Every fix job carries the report, or the title for an issue that
+has none. A production Next build's frames name compiled `.next/server` chunks rather than
+`apps/demo-app/src` unless source maps reach PostHog, so the report says so under them. The
+`fix` queue expires a claimed job after 20 minutes (`FIX_EXPIRE_SECONDS`): 14 minutes of agent
+budget plus the sandbox start, the diff and closing a PR.
+
+When a run ends, the node daemon sends a `run_finished` job (`runFinishedJobSchema`) with the
+`node.run.finished` result, the run's times and the agent's diff. `RunsService` writes the
+`runs` row, then applies the issue event in the same transaction: `succeeded` is
+`patch_ready`, `escalated` is `escalate`, `failed` is `fail` and `killed` is `kill`. An
+escalation the issue takes also writes its `escalations` row. Entering the next tier queues
+its fix job with the report and the run's escalation note; a rejected patch hands the
+reviewer's reason on the same way. A result for a run that is no longer current only updates
+its row, so a retried job is harmless. A succeeded run's PR link stays on its `runs` row and
+the issue goes to `awaiting_approval`; nothing enters `pr_open` yet.
+
+A fix job can also end with no result: the daemon dies or hangs until the job expires, or it
+can't queue the result. pg-boss then fails the job and copies it to the `fix_failed` dead
+letter queue (a cancelled job is never copied). Its worker calls `RunsService.recordLost`,
+which writes a `failed` runs row and applies `fail`, unless the run is no longer current or
+the daemon's `run_finished` job for it is still queued. Without this the issue would stay in
+`fixing`, where only `kill` gets it out.
+
+A result can also fail to record: `RunsService.record` throws on all 3 tries of a
+`run_finished` job. pg-boss then copies the job to the `run_finished_failed` dead letter queue,
+whose worker calls `RunsService.recordFailedResult`. It writes the run's row without its diff
+and applies `fail`, unless the run is no longer current. The daemon sends each result with the
+run id as its pg-boss job id, so `recordLost` finds a queued result by id.
+
+The run outcome events (`patch_ready`, `escalate`, `fail`) carry the `runId` of the job they
+report on, and only `RunsService` applies them. An event for any run other than the current
+one is refused, so a retried `escalate` cannot skip a tier. A repeat report with the same
+`fingerprint` bumps `occurrences` on the open issue; after a terminal status it opens a new
+one.
 
 ## API
 
@@ -69,8 +106,9 @@ open for Railway's health check, and `/ingest/posthog` checks `POSTHOG_WEBHOOK_S
 `POST /issues` has no rate limit: only token holders reach it, and a repeat report with the same
 fingerprint bumps `occurrences` instead of adding a row.
 
-Bodies are validated against the zod contracts (400). Unknown ids return 404. Events the
-current status doesn't allow, and daemon events for a stale run, return 409. `GET /issues`
+Bodies are validated against the zod contracts (400). `POST /issues/:id/events` also returns
+400 for `patch_ready`, `escalate` and `fail`: run outcomes reach an issue only through the
+`run_finished` queue, which also writes the `runs` and `escalations` rows. Unknown ids return 404. Events the current status doesn't allow return 409. `GET /issues`
 returns at most 200 issues, most recently updated first; a repeat report counts as an update.
 
 ## Run locally
@@ -104,6 +142,7 @@ so the app is compiled with `tsc` to `dist/` rather than run from source.
 | `OPENROUTER_API_KEY`       |                         | Unset, or `USE_FAKE_ADAPTERS`, uses the rule fallback                         |
 | `TRIAGE_MODEL`             | `openai/gpt-4o-mini`    | Cheap model for triage                                                        |
 | `TRIAGE_TIMEOUT_MS`        | `8000`                  |                                                                               |
+| `AUTO_START_FIX`           | `false`                 | Triage sends `start_fix` after classifying, queueing the Tier 1 fix job       |
 | `TWILIO_ACCOUNT_SID`       |                         | Set together with the token and from-number                                   |
 | `TWILIO_AUTH_TOKEN`        |                         |                                                                               |
 | `TWILIO_FROM_NUMBER`       |                         |                                                                               |

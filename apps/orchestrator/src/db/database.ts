@@ -23,6 +23,8 @@ export interface IssuesTable {
   severity: Severity | null;
   current_tier: Tier | null;
   current_run_id: string | null;
+  // The sanitized error report every fix job carries. Null for an issue without one.
+  report: ColumnType<string | null, string | null | undefined, string | null>;
   occurrences: Generated<number>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
@@ -53,6 +55,8 @@ export interface RunsTable {
   finished_at: Date | null;
   pr_url: string | null;
   confidence: ColumnType<Confidence | null, string | null | undefined, string | null>;
+  // The agent's diff when it submitted. Kept out of the contracts Run; no route serves it yet.
+  diff: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: Generated<Date>;
 }
 

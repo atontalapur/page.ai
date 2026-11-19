@@ -1,14 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   TERMINAL_ISSUE_STATUSES,
+  type EscalationNote,
   type Issue,
   type IssueEvent,
   type IssueEventRecord,
   type IssueStatus,
   type NewIssue,
 } from '@page/contracts';
-import { sql, type Selectable } from 'kysely';
-import type { Db, IssueEventsTable, IssuesTable } from '../db/database.ts';
+import { sql, type Selectable, type Transaction } from 'kysely';
+import type { Database, Db, IssueEventsTable, IssuesTable } from '../db/database.ts';
+import { titleReport } from '../ingest/report.ts';
 import { issueLogger, type Logger } from '../logger.ts';
 import type { FixJobQueue } from '../queue/fix-jobs.ts';
 import { DB, FIX_JOB_QUEUE, LOGGER } from '../tokens.ts';
@@ -47,6 +49,32 @@ function toIssue(row: Selectable<IssuesTable>): Issue {
   };
 }
 
+export interface ApplyOptions {
+  /**
+   * What the run below left for the tier this event enters. A `reject` without one passes
+   * the reviewer's reason on instead.
+   */
+  escalationNote?: EscalationNote;
+}
+
+/** A change `applyIn` made, for the log line written once its transaction commits. */
+export interface Moved {
+  event: IssueEvent;
+  issue: Issue;
+  from: IssueStatus;
+  runId: string | null;
+  cancelledRunId: string | undefined;
+}
+
+/** The note a rejected patch hands the next tier: the reviewer's reason is the blocker. */
+function rejectionNote(tier: number | null, reason: string): EscalationNote {
+  return {
+    summary: `A reviewer rejected the Tier ${tier ?? '?'} fix.`,
+    tried: [],
+    blocker: reason,
+  };
+}
+
 function toEventRecord(row: Selectable<IssueEventsTable>): IssueEventRecord {
   return {
     id: String(row.id),
@@ -69,11 +97,15 @@ export class IssuesService {
     @Inject(LOGGER) private readonly logger: Logger,
   ) {}
 
-  /** Opens an issue, or counts another occurrence of the open one with this fingerprint. */
-  async report(input: NewIssue): Promise<{ issue: Issue; created: boolean }> {
+  /**
+   * Opens an issue, or counts another occurrence of the open one with this fingerprint.
+   * `report` is the sanitized error report fix jobs carry. A repeat keeps the first one and
+   * only fills it in when the issue had none.
+   */
+  async report(input: NewIssue, report?: string): Promise<{ issue: Issue; created: boolean }> {
     const row = await this.db
       .insertInto('issues')
-      .values(input)
+      .values({ ...input, report: report ?? null })
       .onConflict((oc) =>
         oc
           .column('fingerprint')
@@ -84,6 +116,7 @@ export class IssuesService {
             last_seen_at: sql<Date>`now()`,
             // list() sorts by updated_at, so a recurring issue stays near the top.
             updated_at: sql<Date>`now()`,
+            report: sql<string | null>`coalesce(issues.report, excluded.report)`,
           }),
       )
       .returningAll()
@@ -128,81 +161,109 @@ export class IssuesService {
    * cancels the job it replaces. Throws TransitionError if the event does not apply, and
    * StaleRunError if a daemon event names a run other than the current one.
    */
-  async apply(id: string, event: IssueEvent): Promise<Issue> {
-    const moved = await this.db.transaction().execute(async (trx) => {
-      const current = await trx
-        .selectFrom('issues')
-        .selectAll()
-        .where('id', '=', id)
-        .forUpdate()
-        .executeTakeFirst();
-      if (!current) throw new IssueNotFoundError(id);
-
-      const next = this.machine.apply(
-        {
-          status: current.status,
-          class: current.class,
-          severity: current.severity,
-          currentTier: current.current_tier,
-        },
-        event,
-      );
-      // A retried or late event from an earlier run must not move the current one.
-      if ('runId' in event && event.runId !== current.current_run_id) {
-        throw new StaleRunError(id, event.runId);
-      }
-
-      const enteredTier =
-        next.status === 'fixing' &&
-        (current.status !== 'fixing' || current.current_tier !== next.currentTier);
-      let cancelledRunId: string | undefined;
-      if ((enteredTier || isTerminal(next.status)) && current.current_run_id) {
-        await this.fixJobs.cancel(current.current_run_id, trx);
-        cancelledRunId = current.current_run_id;
-      }
-      let runId = current.current_run_id;
-      if (enteredTier && next.currentTier !== null) {
-        const job = await this.fixJobs.send(
-          { issueId: id, fingerprint: current.fingerprint, tier: next.currentTier },
-          trx,
-        );
-        if (!job) throw new Error(`fix job for ${current.fingerprint} is already queued`);
-        runId = job.runId;
-      }
-
-      const updated = await trx
-        .updateTable('issues')
-        .set({
-          status: next.status,
-          class: next.class,
-          severity: next.severity,
-          current_tier: next.currentTier,
-          current_run_id: runId,
-          updated_at: sql<Date>`now()`,
-        })
-        .where('id', '=', id)
-        .returningAll()
-        .executeTakeFirstOrThrow();
-
-      await trx
-        .insertInto('issue_events')
-        .values({
-          issue_id: id,
-          event: JSON.stringify(event),
-          from_status: current.status,
-          to_status: next.status,
-          current_tier: next.currentTier,
-        })
-        .execute();
-      return { issue: toIssue(updated), from: current.status, runId, cancelledRunId };
-    });
-
+  async apply(id: string, event: IssueEvent, options: ApplyOptions = {}): Promise<Issue> {
+    const moved = await this.db
+      .transaction()
+      .execute((trx) => this.applyIn(trx, id, event, options));
     // Logged after the commit, so a rolled-back change never shows up.
-    const { issue, from, runId, cancelledRunId } = moved;
-    issueLogger(this.logger, { issueId: id, runId, tier: issue.currentTier }).info(
+    this.logMoved(moved);
+    return moved.issue;
+  }
+
+  /** The `issue moved` line for a change, once the transaction that made it has committed. */
+  logMoved({ event, issue, from, runId, cancelledRunId }: Moved): void {
+    issueLogger(this.logger, { issueId: issue.id, runId, tier: issue.currentTier }).info(
       { event: event.type, from, to: issue.status, cancelledRunId },
       'issue moved',
     );
-    return issue;
+  }
+
+  /**
+   * `apply` inside the caller's transaction, so the change commits or rolls back with the
+   * caller's own writes (RunsService). Nothing is logged: the caller passes the result to
+   * `logMoved` once its transaction commits.
+   */
+  async applyIn(
+    trx: Transaction<Database>,
+    id: string,
+    event: IssueEvent,
+    { escalationNote }: ApplyOptions = {},
+  ): Promise<Moved> {
+    const current = await trx
+      .selectFrom('issues')
+      .selectAll()
+      .where('id', '=', id)
+      .forUpdate()
+      .executeTakeFirst();
+    if (!current) throw new IssueNotFoundError(id);
+
+    const next = this.machine.apply(
+      {
+        status: current.status,
+        class: current.class,
+        severity: current.severity,
+        currentTier: current.current_tier,
+      },
+      event,
+    );
+    // A retried or late event from an earlier run must not move the current one.
+    if ('runId' in event && event.runId !== current.current_run_id) {
+      throw new StaleRunError(id, event.runId);
+    }
+
+    const enteredTier =
+      next.status === 'fixing' &&
+      (current.status !== 'fixing' || current.current_tier !== next.currentTier);
+    let cancelledRunId: string | undefined;
+    if ((enteredTier || isTerminal(next.status)) && current.current_run_id) {
+      await this.fixJobs.cancel(current.current_run_id, trx);
+      cancelledRunId = current.current_run_id;
+    }
+    let runId = current.current_run_id;
+    const note =
+      escalationNote ??
+      (event.type === 'reject' ? rejectionNote(current.current_tier, event.reason) : undefined);
+    if (enteredTier && next.currentTier !== null) {
+      const job = await this.fixJobs.send(
+        {
+          issueId: id,
+          fingerprint: current.fingerprint,
+          tier: next.currentTier,
+          // An issue opened without a report still gives the agent its error, masked as
+          // ingest masks one, since a Tier 2 PR is public.
+          report: current.report ?? titleReport(current.title),
+          ...(note === undefined ? {} : { escalationNote: note }),
+        },
+        trx,
+      );
+      if (!job) throw new Error(`fix job for ${current.fingerprint} is already queued`);
+      runId = job.runId;
+    }
+
+    const updated = await trx
+      .updateTable('issues')
+      .set({
+        status: next.status,
+        class: next.class,
+        severity: next.severity,
+        current_tier: next.currentTier,
+        current_run_id: runId,
+        updated_at: sql<Date>`now()`,
+      })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    await trx
+      .insertInto('issue_events')
+      .values({
+        issue_id: id,
+        event: JSON.stringify(event),
+        from_status: current.status,
+        to_status: next.status,
+        current_tier: next.currentTier,
+      })
+      .execute();
+    return { event, issue: toIssue(updated), from: current.status, runId, cancelledRunId };
   }
 }

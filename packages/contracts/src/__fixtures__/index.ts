@@ -124,6 +124,22 @@ export const jobFixtures: { [Q in QueueName]: JobPayload<Q> } = {
     to: '+15550000001',
     message: 'New high severity backend-api issue.',
   },
+  run_finished: {
+    v: 1,
+    issueId,
+    tier: 1,
+    startedAt: at,
+    finishedAt: later,
+    diff: '--- a/src/cart/total.ts\n+++ b/src/cart/total.ts\n',
+    result: {
+      v: 1,
+      runId,
+      status: 'succeeded',
+      prUrl: null,
+      confidence: null,
+      note: null,
+    },
+  },
 };
 
 export const serverToUiEventFixtures: Payloads<ServerToUiEvents> = {

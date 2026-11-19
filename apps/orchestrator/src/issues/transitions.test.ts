@@ -103,6 +103,7 @@ describe('issue transitions', () => {
       [fixing(1), { type: 'patch_ready', runId }, 'awaiting_approval'],
       [fixing(1), { type: 'escalate', runId, reason: 'x' }, 'fixing'],
       [fixing(3), { type: 'escalate', runId, reason: 'x' }, 'failed'],
+      [fixing(1), { type: 'fail', runId, reason: 'x' }, 'failed'],
       [fixing(2), { type: 'kill' }, 'killed'],
       [{ ...fixing(2), status: 'awaiting_approval' }, { type: 'approve' }, 'resolved'],
       [{ ...fixing(2), status: 'awaiting_approval' }, { type: 'reject', reason: 'x' }, 'fixing'],
@@ -123,6 +124,11 @@ describe('issue transitions', () => {
       [triaged, { type: 'triage', class: 'frontend', severity: 'low' }],
       [fixing(1), { type: 'approve' }],
       [fixing(1), { type: 'reject', reason: 'x' }],
+      [triaged, { type: 'fail', runId, reason: 'x' }],
+      [
+        { ...fixing(1), status: 'awaiting_approval' },
+        { type: 'fail', runId, reason: 'x' },
+      ],
       [{ ...fixing(1), status: 'resolved' }, { type: 'kill' }],
       [{ ...fixing(1), status: 'failed' }, { type: 'start_fix' }],
       [

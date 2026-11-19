@@ -1,5 +1,5 @@
 import { budgetFor, runAgent, type AgentConfig, type ExecuteFn } from '@page/agent';
-import type { Tier } from '@page/contracts';
+import { MAX_RUN_DIFF_CHARS, type Tier } from '@page/contracts';
 import type { ModelClient } from '@page/model-client';
 import {
   DEFAULT_TIMEOUT_MS,
@@ -15,6 +15,7 @@ import type { ClaimedJob } from '../jobs/job-source.ts';
 import type { OrchestratorLink } from '../link/link.ts';
 import type { Sandbox, Sandboxes } from '../sandbox/sandbox.ts';
 import { finishedEvent, type RunEnd, type RunFinished } from './outcome.ts';
+import type { RunResults } from './results.ts';
 import { StreamingAuditSink } from './streaming-sink.ts';
 
 // The agent's diff, read after it submits. It goes to the UI, so it needn't be complete.
@@ -25,6 +26,8 @@ export interface RunDeps {
   /** The steps table. Every execute() call writes to it before anything is streamed. */
   sink: AuditSink;
   link: OrchestratorLink;
+  /** The run_finished queue: how the orchestrator learns how the run ended. */
+  results: RunResults;
   model: ModelClient;
   /**
    * The demo repo. With it, the run gets the Tier 2 host tools, which execute() still
@@ -46,8 +49,12 @@ export interface RunDeps {
  * `kill` stops the run the way a job expiry does: the in-flight model call is cancelled
  * and the sandbox removed at once. The run then finishes as `killed`.
  *
+ * Every way out sends the result twice: `node.run.finished` on the link for the UI, and a
+ * `run_finished` job the orchestrator records it from.
+ *
  * Resolves for every run outcome, failures included. It rejects only if cleanup or the
- * link itself breaks, which pg-boss then records on the job.
+ * link breaks, or the result can't be queued. pg-boss then fails the job and dead letters
+ * it, and the orchestrator fails the issue unless the result was queued after all.
  */
 export async function runFixJob(
   { job, signal }: ClaimedJob,
@@ -58,11 +65,23 @@ export async function runFixJob(
   const logger = deps.logger.child({ issueId, runId, tier });
   const now = deps.now ?? Date.now;
   const tried: string[] = [];
+  const claimedAt = new Date(now()).toISOString();
   let hostTools: GitHubHostTools | undefined;
+  let diff: string | null = null;
 
-  const finish = (end: RunEnd): RunFinished => {
+  const finish = async (end: RunEnd): Promise<RunFinished> => {
     const event = finishedEvent(runId, tier, end, tried, hostTools?.prUrl ?? null);
     deps.link.send('node.run.finished', event);
+    await deps.results.send({
+      v: 1,
+      issueId,
+      tier,
+      startedAt: claimedAt,
+      finishedAt: new Date(now()).toISOString(),
+      // Only a submitted run's diff is the patch; a later kill or expiry voids it.
+      diff: event.status === 'succeeded' ? diff : null,
+      result: event,
+    });
     logger.info({ status: event.status }, 'run finished');
     return event;
   };
@@ -84,7 +103,7 @@ export async function runFixJob(
     sandbox = await deps.sandboxes.start(runId);
   } catch (error) {
     logger.error({ err: error }, 'sandbox did not start');
-    return finish(stoppedEnd() ?? { kind: 'sandbox_failed', message: String(error) });
+    return await finish(stoppedEnd() ?? { kind: 'sandbox_failed', message: String(error) });
   }
   logger.info({ container: sandbox.name }, 'sandbox started');
 
@@ -166,13 +185,14 @@ export async function runFixJob(
     }
 
     if (end.kind === 'agent' && end.run.exitStatus === 'submitted') {
-      await sendDiff(sandbox, runId, deps.link, logger);
+      diff = await sendDiff(sandbox, runId, deps.link, logger);
     }
     // A kill or expiry that lands after the agent returned (say during sendDiff) still
     // ends the run, and removing the sandbox may have cost it the diff.
     const final = stoppedEnd() ?? end;
     if (hostTools !== undefined) await closeUnfinishedPr(hostTools, final, runId, tier, logger);
-    return finish(final);
+    // Awaited here, so the result is queued before the sandbox goes in `finally`.
+    return await finish(final);
   } finally {
     stopped.removeEventListener('abort', onAbort);
     // Try again if the removal on abort failed, so cleanup still runs on every path.
@@ -207,13 +227,16 @@ async function closeUnfinishedPr(
   }
 }
 
-/** Best effort: a diff that can't be read is logged, and the run still finishes. */
+/**
+ * Best effort: a diff that can't be read is logged, and the run still finishes. Returns the
+ * diff for the run_finished job, or null when it couldn't be read or is over the job's cap.
+ */
 async function sendDiff(
   sandbox: Sandbox,
   runId: string,
   link: OrchestratorLink,
   logger: Logger,
-): Promise<void> {
+): Promise<string | null> {
   try {
     // No external diff or textconv driver: the repo's config and attributes are the agent's.
     const result = await sandbox.runner.run({
@@ -222,10 +245,13 @@ async function sendDiff(
     });
     if (result.status === 'exited' && result.exitCode === 0) {
       link.send('node.diff', { v: 1, runId, diff: result.stdout });
-      return;
+      if (result.stdout.length <= MAX_RUN_DIFF_CHARS) return result.stdout;
+      logger.warn({ chars: result.stdout.length }, 'diff is over the cap; not recorded');
+      return null;
     }
     logger.warn({ result: result.status }, 'git diff failed; no diff sent');
   } catch (error) {
     logger.warn({ err: error }, 'git diff failed; no diff sent');
   }
+  return null;
 }

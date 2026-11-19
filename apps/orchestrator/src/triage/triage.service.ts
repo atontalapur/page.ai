@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { JobPayload } from '@page/contracts';
+import type { Issue, JobPayload } from '@page/contracts';
 import type { Config } from '../config.ts';
 import { IssuesService } from '../issues/issues.service.ts';
 import { issueLogger, type Logger } from '../logger.ts';
@@ -18,11 +18,21 @@ export class TriageService {
     @Inject(LOGGER) private readonly logger: Logger,
   ) {}
 
-  /** Classifies a new issue, pages on-call, and moves it to `triaged`. */
+  /**
+   * Classifies a new issue, pages on-call, and moves it to `triaged`. With AUTO_START_FIX,
+   * it then sends `start_fix`, which queues the Tier 1 fix job. A retry after a failed
+   * start finds the issue `triaged` and only starts the fix.
+   */
   async handle(job: JobPayload<'triage'>): Promise<void> {
-    const issue = await this.issues.get(job.issueId);
-    if (issue.status !== 'new') return;
+    let issue = await this.issues.get(job.issueId);
+    if (issue.status === 'new') issue = await this.classify(issue);
+    if (issue.status === 'triaged' && this.config.autoStartFix) {
+      const fixing = await this.issues.apply(issue.id, { type: 'start_fix' });
+      issueLogger(this.logger, { issueId: issue.id, tier: fixing.currentTier }).info('fix started');
+    }
+  }
 
+  private async classify(issue: Issue): Promise<Issue> {
     const verdict = await this.classifier.classify(issue.title);
     const message = pageMessage({
       severity: verdict.severity,
@@ -42,7 +52,7 @@ export class TriageService {
         issue.fingerprint,
       );
     }
-    await this.issues.apply(issue.id, {
+    const triaged = await this.issues.apply(issue.id, {
       type: 'triage',
       class: verdict.class,
       severity: verdict.severity,
@@ -51,5 +61,6 @@ export class TriageService {
       { class: verdict.class, severity: verdict.severity },
       'issue triaged',
     );
+    return triaged;
   }
 }

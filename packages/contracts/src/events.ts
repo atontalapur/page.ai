@@ -31,9 +31,10 @@ const runFinishedBase = {
 
 /**
  * The node's last word on a run. An escalation carries everything the server needs to write
- * the `Escalation` row; the server checks `toTier` is above the run's tier.
+ * the `Escalation` row; the server checks `toTier` is above the run's tier. The daemon sends
+ * it on the socket for the UI and inside a `run_finished` job (jobs.ts) for the record.
  */
-const nodeRunFinished = z.discriminatedUnion('status', [
+export const nodeRunFinishedSchema = z.discriminatedUnion('status', [
   z.strictObject({
     ...runFinishedBase,
     status: z.literal('succeeded'),
@@ -85,7 +86,7 @@ export const uiToServerEvents = {
 export const nodeToServerEvents = {
   'node.step': z.strictObject({ v, step: stepSchema }),
   'node.diff': runDiff,
-  'node.run.finished': nodeRunFinished,
+  'node.run.finished': nodeRunFinishedSchema,
   // A Tier 3 agent asks to run a gated host tool such as `ops.restart`. The node picks the
   // approval id so it can match the `approval.decided` that answers it.
   'node.approval.request': z.strictObject({

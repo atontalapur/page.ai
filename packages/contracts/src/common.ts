@@ -3,6 +3,11 @@ import { z } from 'zod';
 // The error-tracking agent's classes (README, step 2).
 export const BUG_CLASSES = ['frontend', 'backend-api', 'database', 'infra-config'] as const;
 
+/** `text` cut to `max` characters, ending in `...` when it was cut, to fit a schema's cap. */
+export function clip(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 3)}...`;
+}
+
 /** Every id on the wire is a uuid. */
 export const idSchema = z.uuid();
 

@@ -142,21 +142,25 @@ describe('OrchestratorControl', () => {
       calls.push({ url: url instanceof Request ? url.url : url.toString(), init });
       return Promise.resolve(new Response('{}', { status: 200 }));
     };
-    await new OrchestratorControl('https://orch.example/', fetchFake).killIssue('abc');
+    await new OrchestratorControl('https://orch.example/', 'tok', fetchFake).killIssue('abc');
     expect(calls[0]!.url).toBe('https://orch.example/issues/abc/events');
-    expect(calls[0]!.init).toMatchObject({ method: 'POST', body: '{"type":"kill"}' });
+    expect(calls[0]!.init).toMatchObject({
+      method: 'POST',
+      body: '{"type":"kill"}',
+      headers: { authorization: 'Bearer tok' },
+    });
   });
 
   it('throws with the status and body on an error answer', async () => {
     const fetchFake: typeof fetch = () =>
       Promise.resolve(new Response('cannot kill an issue that is killed', { status: 409 }));
-    await expect(new OrchestratorControl('http://o', fetchFake).killIssue('abc')).rejects.toThrow(
-      'POST /issues/abc/events answered 409: cannot kill an issue that is killed',
-    );
+    await expect(
+      new OrchestratorControl('http://o', 'tok', fetchFake).killIssue('abc'),
+    ).rejects.toThrow('POST /issues/abc/events answered 409: cannot kill an issue that is killed');
     const empty: typeof fetch = () => Promise.resolve(new Response(null, { status: 500 }));
-    await expect(new OrchestratorControl('http://o', empty).killIssue('abc')).rejects.toThrow(
-      /answered 500$/,
-    );
+    await expect(
+      new OrchestratorControl('http://o', 'tok', empty).killIssue('abc'),
+    ).rejects.toThrow(/answered 500$/);
   });
 });
 

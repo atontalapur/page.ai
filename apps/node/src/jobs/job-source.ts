@@ -1,7 +1,7 @@
-import { fixJobSchema, type JobPayload, type QueueName } from '@page/contracts';
+import { FIX_QUEUE, fixJobSchema, type JobPayload } from '@page/contracts';
 import { err, ok, type Result } from '@page/toolkit';
 
-export const FIX_QUEUE = 'fix' satisfies QueueName;
+export { FIX_QUEUE };
 
 export type FixJob = JobPayload<typeof FIX_QUEUE>;
 
@@ -15,9 +15,9 @@ export interface ClaimedJob {
 }
 
 /**
- * Runs one claimed job. Resolving marks the job done; the run's outcome travels to the
- * orchestrator on its own, so a failed or escalated run still resolves. Rejecting means
- * the daemon broke, and the queue may retry the job.
+ * Runs one claimed job. Resolving marks the job done; the run's outcome goes to the
+ * orchestrator as a run_finished job, so a failed or escalated run still resolves. Rejecting
+ * means the daemon broke, and the queue may retry the job.
  */
 export type FixJobHandler = (claimed: ClaimedJob) => Promise<void>;
 

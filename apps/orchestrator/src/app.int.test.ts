@@ -2,6 +2,7 @@ import { fixJobSchema, type Issue } from '@page/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
 import { createSchemaDeps, testConfig } from './db/test-utils.ts';
+import { IssuesService, StaleRunError } from './issues/issues.service.ts';
 import { FIX_QUEUE } from './queue/fix-jobs.ts';
 
 const deps = await createSchemaDeps();
@@ -43,16 +44,21 @@ describe('orchestrator on real Postgres', () => {
     const claimed = fixJobSchema.parse(job?.data);
     expect(claimed).toMatchObject({ issueId: issue.id, fingerprint: 'int-1', tier: 1 });
 
-    // The daemon gives up on tier 1. Its active job is cancelled, so tier 2 is claimable
-    // at once, and a retry of the same escalate is refused.
-    const escalate = { type: 'escalate', runId: claimed.runId, reason: 'tests still fail' };
+    // The daemon gives up on tier 1. A run outcome can't be posted to the route; it comes
+    // through RunsService, which applies it like this. The active job is cancelled, so tier 2
+    // is claimable at once, and a retry of the same escalate is refused.
+    const escalate = {
+      type: 'escalate',
+      runId: claimed.runId,
+      reason: 'tests still fail',
+    } as const;
     const url = `/issues/${issue.id}/events`;
     expect((await app.inject({ method: 'POST', url, payload: escalate, headers })).statusCode).toBe(
-      200,
+      400,
     );
-    expect((await app.inject({ method: 'POST', url, payload: escalate, headers })).statusCode).toBe(
-      409,
-    );
+    const issues = app.get(IssuesService);
+    await issues.apply(issue.id, escalate);
+    await expect(issues.apply(issue.id, escalate)).rejects.toThrow(StaleRunError);
 
     const [next] = await deps.boss.fetch(FIX_QUEUE);
     expect(fixJobSchema.parse(next?.data)).toMatchObject({ issueId: issue.id, tier: 2 });

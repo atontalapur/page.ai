@@ -1,10 +1,10 @@
 import {
   BUG_CLASSES,
+  FIX_QUEUE,
   ISSUE_STATUSES,
   RUN_STATUSES,
   SEVERITIES,
   tierSchema,
-  type QueueName,
 } from '@page/contracts';
 import type { SqlClient } from '@page/toolkit';
 import { z } from 'zod';
@@ -21,7 +21,6 @@ import {
 // only read the database, through any `pg` Pool or Client; the one write, the reset's
 // kill, goes through the orchestrator's API like any other client's.
 
-const FIX_QUEUE = 'fix' satisfies QueueName;
 const SCHEMA_NAME = /^[a-z_][a-z0-9_]*$/;
 
 const issueRow = z.object({
@@ -157,13 +156,18 @@ export class PgPipelineReader implements PipelineReader {
   }
 }
 
-/** The orchestrator's HTTP API (apps/orchestrator README, API). */
+/**
+ * The orchestrator's HTTP API (apps/orchestrator README, API). Every route it calls needs
+ * ORCHESTRATOR_API_TOKEN as a bearer token.
+ */
 export class OrchestratorControl implements PipelineControl {
   private readonly baseUrl: string;
+  private readonly apiToken: string;
   private readonly doFetch: typeof fetch;
 
-  constructor(baseUrl: string, doFetch: typeof fetch = fetch) {
+  constructor(baseUrl: string, apiToken: string, doFetch: typeof fetch = fetch) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.apiToken = apiToken;
     this.doFetch = doFetch;
   }
 
@@ -171,7 +175,7 @@ export class OrchestratorControl implements PipelineControl {
     const path = `/issues/${encodeURIComponent(id)}/events`;
     const res = await this.doFetch(`${this.baseUrl}${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiToken}` },
       body: JSON.stringify({ type: 'kill' }),
       signal: AbortSignal.timeout(15_000),
     });

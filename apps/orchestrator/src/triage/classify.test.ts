@@ -72,6 +72,7 @@ describe('TriageClassifier', () => {
       posthogWebhookSecret: undefined,
       triageModel: 'openai/gpt-4o-mini',
       triageTimeoutMs: 1000,
+      autoStartFix: false,
       twilio: undefined,
       notifyTo: [],
       dashboardUrl: 'http://localhost:3000',

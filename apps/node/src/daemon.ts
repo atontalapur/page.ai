@@ -16,6 +16,7 @@ import { FakeLink } from './link/fake-link.ts';
 import type { OrchestratorLink } from './link/link.ts';
 import { SocketIoLink } from './link/socket-io-link.ts';
 import { ScriptedModel } from './model/scripted-model.ts';
+import { PgBossRunResults, type RunResults } from './run/results.ts';
 import { runFixJob } from './run/run-fix-job.ts';
 import { DockerSandboxes } from './sandbox/docker-sandboxes.ts';
 import { FakeSandboxes } from './sandbox/fake-sandboxes.ts';
@@ -27,6 +28,8 @@ export interface Adapters {
   sandboxes: Sandboxes;
   sink: AuditSink;
   link: OrchestratorLink;
+  /** The orchestrator's run_finished queue. */
+  results: RunResults;
   model: ModelClient;
   /** The demo repo Tier 2 runs push to and open PRs on. */
   github: GitHub;
@@ -46,7 +49,7 @@ export interface Daemon {
  * may hold it, or it already finished.
  */
 export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
-  const { jobs, sandboxes, sink, link, model, github } = adapters;
+  const { jobs, sandboxes, sink, link, results, model, github } = adapters;
   // Each run's kill switch, with a logger that carries the run's issueId, runId and tier.
   const runs = new Map<string, { kill: AbortController; logger: Logger }>();
   // The link has no `off`, so the kill handler goes on once however often start() runs.
@@ -81,7 +84,7 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
         try {
           await runFixJob(
             claimed,
-            { sandboxes, sink, link, model, github, logger },
+            { sandboxes, sink, link, results, model, github, logger },
             entry.kill.signal,
           );
         } finally {
@@ -103,8 +106,8 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
 
 /**
  * The real adapters for `config`. USE_FAKE_ADAPTERS swaps Docker, OpenRouter, GitHub and
- * the orchestrator socket for fakes. pg-boss and the steps table stay real either way, since
- * they are the local Postgres, not a third party.
+ * the orchestrator socket for fakes. pg-boss (fix jobs in, run results out) and the steps
+ * table stay real either way, since they are the local Postgres, not a third party.
  */
 export async function createAdapters(config: NodeConfig, logger: Logger): Promise<Adapters> {
   const fake = config.USE_FAKE_ADAPTERS;
@@ -132,6 +135,7 @@ export async function createAdapters(config: NodeConfig, logger: Logger): Promis
     sandboxes: fake ? new FakeSandboxes() : new DockerSandboxes({ image: config.SANDBOX_IMAGE }),
     sink: new PostgresAuditSink(pool),
     link,
+    results: new PgBossRunResults({ boss, logger }),
     model: fake ? new ScriptedModel() : withRetries(openRouter(config)),
     github: fake ? new FakeGitHub() : gitHub(config),
     async close() {

@@ -4,12 +4,15 @@ The daemon that runs fix jobs (#8). It claims a job from the orchestrator's `fix
 starts one sandbox container for the run, runs the agent loop on the host, and sends each
 command into the container through toolkit's `execute()`. Every step is written to the
 `steps` table, then streamed to the orchestrator as `node.step`. When the run ends it sends
-`node.diff` (after a submit) and `node.run.finished`, and removes the container.
+`node.diff` (after a submit) and `node.run.finished` on the socket, queues the same result
+with the run's times and diff as a `run_finished` job, and removes the container. The job
+is the record the orchestrator moves the issue from (#136); the socket is best effort.
 
 ```
 pg-boss `fix` queue -> PgBossJobSource -> runFixJob -> DockerSandboxes (one container per run)
                                               |-> runAgent -> execute() -> docker exec
                                               |-> PostgresAuditSink -> steps table
+                                              |-> PgBossRunResults -> pg-boss `run_finished` queue
                                               '-> SocketIoLink -> orchestrator /node namespace
 ```
 
@@ -85,8 +88,10 @@ Docker and model and check the `steps` row, and start and remove a real containe
   `NODE_SHARED_SECRET`, and accept the `nodeToServerEvents` from contracts.
 - The daemon writes steps itself, because `execute()` must not run a command whose step
   it couldn't record. The server should relay `node.step` to the UI, not insert it again.
-- pg-boss expires an active job after 900 s by default, the same as the sandbox wall
-  clock, and then retries it twice. The `fix` queue should set `expireInSeconds` above the
-  run's 15 minutes. Decide whether a retry of a run makes sense at all (`retryLimit: 0`).
+- The orchestrator creates the `fix` queue with `retryLimit: 0`, a 20-minute expiry and
+  the `fix_failed` dead letter queue, and the `run_finished` queue this daemon sends to. A
+  result that can't be queued after 3 tries fails the fix job. So does a daemon that dies
+  mid-run, once the job expires. Either way pg-boss copies the job to `fix_failed`, and the
+  orchestrator fails the issue from it.
 - `node.run.finished` for a submitted run is `succeeded` with `confidence: null`, since
   nothing scores runs yet.

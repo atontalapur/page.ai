@@ -84,4 +84,29 @@ describe('POST /ingest/posthog', () => {
     expect(triageJobSchema.parse(jobs[0]?.data)).toEqual({ v: 1, issueId });
     expect(jobs[0]?.singletonKey).toBe(posthogWebhookFixture.event.properties.$exception_issue_id);
   });
+
+  it('stores a sanitized report for the fix job', async () => {
+    const payload = {
+      ...posthogWebhookFixture,
+      person: { properties: { email: 'jane@example.com' } },
+      event: {
+        ...posthogWebhookFixture.event,
+        properties: {
+          ...posthogWebhookFixture.event.properties,
+          $exception_issue_id: 'fp-report',
+          method: 'GET',
+          path: '/cart?token=secret',
+          $exception_list: [{ type: 'TypeError', value: 'boom' }],
+        },
+      },
+    };
+    const res = await app.inject({ method: 'POST', url: '/ingest/posthog', headers, payload });
+    expect(res.statusCode).toBe(200);
+    const row = await deps.db
+      .selectFrom('issues')
+      .select('report')
+      .where('fingerprint', '=', 'fp-report')
+      .executeTakeFirstOrThrow();
+    expect(row.report).toBe('GET /cart?token=\n\nTypeError: boom');
+  });
 });

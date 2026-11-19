@@ -1,5 +1,5 @@
 import type { AgentRun } from '@page/agent';
-import type { EscalationNote, Tier } from '@page/contracts';
+import { clip, type EscalationNote, type Tier } from '@page/contracts';
 import type { NodePayload } from '../link/link.ts';
 
 export type RunFinished = NodePayload<'node.run.finished'>;
@@ -17,9 +17,6 @@ export type RunEnd =
 const TRIED_LIMIT = 20;
 const TRIED_CHARS = 200;
 const SUMMARY_CHARS = 500;
-
-const clip = (text: string, limit: number) =>
-  text.length <= limit ? text : `${text.slice(0, limit - 3)}...`;
 
 /**
  * The `node.run.finished` event for a run. `tried` is what the agent ran, in order, and

@@ -1,10 +1,22 @@
-import { notifyJobSchema, triageJobSchema, type JobPayload, type QueueName } from '@page/contracts';
+import {
+  NOTIFY_QUEUE,
+  notifyJobSchema,
+  RUN_FINISHED_QUEUE,
+  TRIAGE_QUEUE,
+  triageJobSchema,
+  type JobPayload,
+} from '@page/contracts';
 import type { Transaction } from 'kysely';
 import { fromKysely, type PgBoss } from 'pg-boss';
 import type { Database } from '../db/database.ts';
 
-export const TRIAGE_QUEUE = 'triage' satisfies QueueName;
-export const NOTIFY_QUEUE = 'notify' satisfies QueueName;
+// The node daemon sends one run_finished job per finished fix run; RunsService records it.
+export { NOTIFY_QUEUE, RUN_FINISHED_QUEUE, TRIAGE_QUEUE };
+/**
+ * run_finished's dead letter queue: pg-boss copies a result here once recording it has failed
+ * on every retry. RunsService.recordFailedResult fails the issue, so it never sits in `fixing`.
+ */
+export const RUN_FINISHED_FAILED_QUEUE = 'run_finished_failed';
 
 /** 3 tries with exponential backoff, for triage and for the call before SMS. */
 const RETRIES = { retryLimit: 3, retryDelay: 2, retryBackoff: true } as const;
@@ -22,18 +34,34 @@ export interface JobQueues {
     fingerprint: string,
     trx?: Transaction<Database>,
   ): Promise<string | null>;
+  /** Whether a run_finished job for `runId` is queued, being worked, or waiting to retry. */
+  runFinishedPending(runId: string, trx?: Transaction<Database>): Promise<boolean>;
 }
+
+/** The states a job that will still be worked can be in. */
+const PENDING_STATES: ReadonlySet<string> = new Set(['created', 'retry', 'active']);
 
 function dbOpt(trx?: Transaction<Database>) {
   return trx ? { db: fromKysely(trx) } : {};
 }
 
-/** Creates the triage and notify queues if needed and returns senders bound to them. */
+/**
+ * Creates the triage, notify and run_finished queues if needed and returns senders for the
+ * first two. Only the node daemon sends run_finished jobs, so this creates the queue it sends
+ * to, as it does `fix`, and only looks them up.
+ */
 export async function createJobQueues(boss: PgBoss): Promise<JobQueues> {
   // exclusive + singletonKey: one created or active job per fingerprint, and for notify per
   // fingerprint and phone, so each phone retries on its own.
   await boss.createQueue(TRIAGE_QUEUE, { policy: 'exclusive', ...RETRIES });
   await boss.createQueue(NOTIFY_QUEUE, { policy: 'exclusive', ...RETRIES });
+  // No singleton: a result must never be dropped as a duplicate. Recording one is idempotent.
+  // The dead letter queue comes first, since a queue can only name one that exists.
+  await boss.createQueue(RUN_FINISHED_FAILED_QUEUE, { ...RETRIES });
+  const runFinished = { ...RETRIES, deadLetter: RUN_FINISHED_FAILED_QUEUE };
+  await boss.createQueue(RUN_FINISHED_QUEUE, runFinished);
+  // createQueue leaves an existing queue as it was, so a deployed one gets these here.
+  await boss.updateQueue(RUN_FINISHED_QUEUE, runFinished);
   return {
     sendTriage(issueId, fingerprint, trx) {
       const data = triageJobSchema.parse({ v: 1, issueId });
@@ -43,6 +71,11 @@ export async function createJobQueues(boss: PgBoss): Promise<JobQueues> {
       const data = notifyJobSchema.parse(job);
       const singletonKey = `${fingerprint}:${data.to}`;
       return boss.send(NOTIFY_QUEUE, data, { singletonKey, ...dbOpt(trx) });
+    },
+    async runFinishedPending(runId, trx) {
+      // The daemon sends each result with the run id as its job id: a key lookup, not a scan.
+      const jobs = await boss.findJobs(RUN_FINISHED_QUEUE, { id: runId, ...dbOpt(trx) });
+      return jobs.some((job) => PENDING_STATES.has(job.state));
     },
   };
 }

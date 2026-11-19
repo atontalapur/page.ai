@@ -48,7 +48,7 @@ const USAGE = `usage: pnpm e2e <scenario-id> [--target local|staging] [--expect 
   --out      write the results as JSON: { prepare, runs }
 
 Env: E2E_DATABASE_URL (or DATABASE_URL), E2E_ORCHESTRATOR_URL (or ORCHESTRATOR_URL),
-GITHUB_TOKEN and GITHUB_REPO, DEMO_APP_URL (staging only), E2E_LOCAL_APP_URL (local ops
+E2E_ORCHESTRATOR_API_TOKEN (or ORCHESTRATOR_API_TOKEN), GITHUB_TOKEN and GITHUB_REPO, DEMO_APP_URL (staging only), E2E_LOCAL_APP_URL (local ops
 scenarios, default http://localhost:\${DEMO_APP_PORT:-3000}), OPS_SECRET (ops scenarios),
 PGBOSS_SCHEMA, and for local code scenarios POSTHOG_KEY, POSTHOG_HOST, E2E_DEMO_APP_PORT,
 E2E_DEMO_DATABASE_URL.`;
@@ -131,8 +131,12 @@ if (!(await loadSplit('eval/split.json')).dev.includes(id)) {
 
 const databaseUrl = env('E2E_DATABASE_URL') ?? env('DATABASE_URL');
 const orchestratorUrl = env('E2E_ORCHESTRATOR_URL') ?? env('ORCHESTRATOR_URL');
+const apiToken = env('E2E_ORCHESTRATOR_API_TOKEN') ?? env('ORCHESTRATOR_API_TOKEN');
 if (databaseUrl === undefined) fail("E2E_DATABASE_URL (the orchestrator's database) is not set");
 if (orchestratorUrl === undefined) fail('E2E_ORCHESTRATOR_URL is not set');
+// Checked before seeding: without it the reset's kill gets a 401 and leaves the issue open.
+if (apiToken === undefined)
+  fail("E2E_ORCHESTRATOR_API_TOKEN (the orchestrator's API token) is not set");
 
 const token = env('GITHUB_TOKEN');
 const repo = env('GITHUB_REPO');
@@ -213,7 +217,7 @@ try {
   await pool.end();
   fail(error instanceof Error ? error.message : String(error));
 }
-const control = new OrchestratorControl(orchestratorUrl);
+const control = new OrchestratorControl(orchestratorUrl, apiToken);
 
 // Once, before the first run and outside its seed step, so every run's seed time compares.
 // It resolves with a record whatever happens.
