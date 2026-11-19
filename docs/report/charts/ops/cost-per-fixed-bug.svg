@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="232" viewBox="0 0 760 232" role="img" aria-labelledby="cost-per-fixed-bug-title cost-per-fixed-bug-desc" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif">
+<title id="cost-per-fixed-bug-title">Cost per fixed bug</title>
+<desc id="cost-per-fixed-bug-desc">deepseek/deepseek-v4.1-flash, 2 of 2 planned bugs played, commit b0b4d84</desc>
+<rect x="0.5" y="0.5" width="759" height="231" rx="8" fill="#fcfcfb" stroke="#e1e0d9"/>
+<text x="20" y="36" font-size="16" fill="#0b0b0b" font-weight="600">Cost per fixed bug</text>
+<text x="20" y="56" font-size="12" fill="#52514e">deepseek/deepseek-v4.1-flash, 2 of 2 planned bugs played, commit b0b4d84</text>
+<rect x="20" y="72" width="12" height="12" rx="2" fill="#2a78d6"/>
+<text x="38" y="82" font-size="12" fill="#0b0b0b">tier1-only</text>
+<rect x="126" y="72" width="12" height="12" rx="2" fill="#eb6834"/>
+<text x="144" y="82" font-size="12" fill="#0b0b0b">tier3-start</text>
+<rect x="239" y="72" width="12" height="12" rx="2" fill="#1baf7a"/>
+<text x="257" y="82" font-size="12" fill="#0b0b0b">ladder</text>
+<line x1="88" y1="104" x2="88" y2="172" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="269.8" y1="104" x2="269.8" y2="172" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="451.5" y1="104" x2="451.5" y2="172" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="633.3" y1="104" x2="633.3" y2="172" stroke="#e1e0d9" stroke-width="1"/>
+<text x="88" y="188" font-size="11" fill="#52514e" text-anchor="middle">$0.00</text>
+<text x="269.8" y="188" font-size="11" fill="#52514e" text-anchor="middle">$0.05</text>
+<text x="451.5" y="188" font-size="11" fill="#52514e" text-anchor="middle">$0.10</text>
+<text x="633.3" y="188" font-size="11" fill="#52514e" text-anchor="middle">$0.15</text>
+<text x="360.6" y="208" font-size="12" fill="#52514e" text-anchor="middle">USD of kept runs per fixed run</text>
+<text x="76" y="142" font-size="12" fill="#0b0b0b" text-anchor="end">all bugs</text>
+
+<text x="94" y="124" font-size="12" fill="#0b0b0b">n/a (0 fixed)<tspan fill="#52514e">  tier1-only</tspan></text>
+<path d="M88,130h25.2a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-25.2z" fill="#eb6834"><title>tier3-start, all bugs: $0.0080 (5 fixed)</title></path>
+<text x="123.2" y="142" font-size="12" fill="#0b0b0b">$0.0080 (5 fixed)<tspan fill="#52514e">  tier3-start</tspan></text>
+<path d="M88,148h467a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-467z" fill="#1baf7a"><title>ladder, all bugs: $0.1296 (3 fixed)</title></path>
+<text x="565" y="160" font-size="12" fill="#0b0b0b">$0.1296 (3 fixed)<tspan fill="#52514e">  ladder</tspan></text>
+</svg>
