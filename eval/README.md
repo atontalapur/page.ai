@@ -85,7 +85,9 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   earlier spend included. Don't let the laptop sleep mid-run: pause first.
 - Ops scenarios (Tier 3) break a live demo app, not the sandbox, so they need one: set
   `DEMO_APP_URL` and `OPS_SECRET` (for example `docker compose up demo-app` with
-  `OPS_SECRET` set). Without them they are skipped with a reason. Before each run the
+  `OPS_SECRET` set). Without them they are skipped with a reason. Leave `POSTHOG_KEY`
+  unset on that app: its errors would go through the PostHog webhook to the staging
+  orchestrator, which opens an issue and pages the on-call phones. Before each run the
   runner drops every runtime config override on the app, restarts it and runs
   `break-ops.sh`. Tier 3 attempts get the ops tools on that app (`page_ops_*` blocks);
   code scenarios at Tier 3 get them on an in-memory fake. `check.sh` runs on the host as

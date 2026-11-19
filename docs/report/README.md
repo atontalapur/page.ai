@@ -15,10 +15,10 @@ they're wrong.
 | System: node daemon, sandbox, tiered toolkit and demo app  | Advaith  | not started                              |                                                              |
 | System: dashboard                                          | Daniyal  | not started                              |                                                              |
 | Evaluation method                                          | Advaith  | drafted, needs review (#17)              | [evaluation-method.md](evaluation-method.md)                 |
-| Results (dev and held-out)                                 | Advaith  | drafted, needs review (#17)              | [evaluation-method.md#results](evaluation-method.md#results) |
+| Results (dev, held-out and ops)                            | Advaith  | drafted, needs review (#17)              | [evaluation-method.md#results](evaluation-method.md#results) |
 | Discussion and limitations                                 | open     | not started                              |                                                              |
 | Appendix: eval preregistration                             | Advaith  | done                                     | [eval-prereg.md](eval-prereg.md)                             |
 | Contributions                                              | everyone | ongoing, due Dec 4                       | [contributions.md](../contributions.md)                      |
 
-Charts for the Results are in [charts/dev](charts/dev) and [charts/held-out](charts/held-out),
-rendered by `pnpm eval:charts`.
+Charts for the Results are in [charts/dev](charts/dev), [charts/held-out](charts/held-out) and
+[charts/ops](charts/ops), rendered by `pnpm eval:charts`.
