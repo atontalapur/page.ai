@@ -250,6 +250,14 @@ describe('report helpers', () => {
     expect(maskMessage('relation "orders" does not exist')).toBe(
       'relation "orders" does not exist',
     );
+    // Quoted text before the input stays; only the input V8 quotes goes.
+    expect(
+      maskMessage(`Failed to load "config": Unexpected token 'c', "card=4242" is not valid JSON`),
+    ).toBe(`Failed to load "config": Unexpected token 'c', "[input]" is not valid JSON`);
+    expect(maskMessage(`Error: Failed to load "config": ${errorOf('undefined')}`)).toBe(
+      'Error: Failed to load "config": "[input]" is not valid JSON',
+    );
+    expect(maskMessage(errorOf("'abc"))).toBe(`Unexpected token ''', "[input]" is not valid JSON`);
   });
 
   it('masks emails', () => {
@@ -273,5 +281,7 @@ describe('report helpers', () => {
       'apps/demo-app/.next/server/a.js',
     );
     expect(framePath('./src/x.ts')).toBe('src/x.ts');
+    expect(framePath('/srv/myapps/server/chunks/123.js')).toBe('/srv/myapps/server/chunks/123.js');
+    expect(framePath('/srv/webapps/apps/demo-app/src/x.ts')).toBe('apps/demo-app/src/x.ts');
   });
 });

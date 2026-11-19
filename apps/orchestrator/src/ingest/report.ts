@@ -51,17 +51,21 @@ export function maskEmails(text: string): string {
 }
 
 // A JSON.parse error quotes part of its input, which is often a request body. V8 quotes up
-// to about 20 characters (`Unexpected token 'c', "card=4242"... is not valid JSON`), Safari
-// the bad token (`JSON Parse error: Unexpected identifier "card"`). The bounds keep the
-// patterns linear on a long message.
-const V8_JSON_INPUT = /(?:\.\.\.)?"[\s\S]{0,64}?"(?:\.\.\.)? is not valid JSON/g;
+// to about 20 characters (`Unexpected token 'c', "card=4242"... is not valid JSON`), or the
+// whole input when it is short (`"undefined" is not valid JSON`). Safari quotes the bad token
+// (`JSON Parse error: Unexpected identifier "card"`). The V8 pattern starts where V8 puts the
+// quote, after the token or at the start of the message or a `: `, so quoted text earlier in
+// a wrapping message stays. The input itself can hold quotes. The bounds keep the patterns
+// linear on a long message.
+const V8_JSON_INPUT =
+  /(Unexpected token '[\s\S]{1,2}', |^|: )(?:\.\.\.)?"[\s\S]{0,64}?"(?:\.\.\.)? is not valid JSON/g;
 const SAFARI_JSON_INPUT = /(JSON Parse error: [^"\n]{0,100})"[^"]{0,200}"/g;
 
 /** An exception message with emails and quoted JSON input masked. */
 export function maskMessage(text: string): string {
   return maskEmails(
     text
-      .replaceAll(V8_JSON_INPUT, '"[input]" is not valid JSON')
+      .replaceAll(V8_JSON_INPUT, '$1"[input]" is not valid JSON')
       .replaceAll(SAFARI_JSON_INPUT, '$1"[input]"'),
   );
 }
@@ -133,11 +137,12 @@ function requestLine(props: Record<string, unknown>): string | null {
 
 /**
  * Where a frame points, relative to the repo where possible: bundler and file prefixes and
- * leading `../` go, and an absolute deploy path is cut back to `apps/...`.
+ * leading `../` go, and an absolute deploy path is cut back to its `apps/` directory (not
+ * one that only ends in `apps`, like `/srv/webapps`).
  */
 export function framePath(raw: string): string {
   let path = raw.replace(/^(webpack|file|turbopack):\/\/+(\[project\]\/)?/, '');
-  const apps = path.indexOf('apps/');
+  const apps = path.search(/(?<=\/)apps\//);
   if (apps > 0) path = path.slice(apps);
   return path.replace(/^(\.\.?\/)+/, '');
 }
