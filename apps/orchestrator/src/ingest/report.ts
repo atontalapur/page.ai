@@ -41,14 +41,78 @@ const exceptionSchema = z.looseObject({
 
 type Frame = z.infer<typeof frameSchema>;
 
-// `%40` too, for an encoded path that does not decode. The local part stops at 64, the most an
-// address allows: unbounded, a long run of word characters with no `@` after it backtracks
-// quadratically, and this runs on the whole message before the clip.
-const EMAIL = /[\w.+-]{1,64}(?:@|%40)[\w-]+(?:\.[\w-]+)+/gi;
+// The characters either side of an `@`, in any script. `%` lets an encoded local part
+// (`jane%2Btest%40x.com`) mask whole. A regex like /[\w.+-]+@.../ retries from every start
+// position on a long run with no `@`, which is quadratic on a message anyone can send.
+// Format characters (\p{Cf}, such as a zero-width space) count as part of an address, so
+// one slipped into it can't hide the rest.
+const LOCAL_CHAR = /[\p{L}\p{N}\p{M}\p{Cf}._%+-]/u;
+const DOMAIN_CHAR = /[\p{L}\p{N}\p{M}\p{Cf}._-]/u;
 
-/** Masks email addresses, the user field most likely to land in a path or message. */
+const isLowSurrogate = (unit: number) => unit >= 0xdc00 && unit <= 0xdfff;
+const isHighSurrogate = (unit: number) => unit >= 0xd800 && unit <= 0xdbff;
+
+/** The character ending just before `index`, a whole surrogate pair when there is one. */
+function charBefore(text: string, index: number): string {
+  if (index >= 2 && isLowSurrogate(text.charCodeAt(index - 1))) {
+    if (isHighSurrogate(text.charCodeAt(index - 2))) return text.slice(index - 2, index);
+  }
+  return text.charAt(index - 1);
+}
+
+/** The character starting at `index`, a whole surrogate pair when there is one. */
+function charFrom(text: string, index: number): string {
+  const point = text.codePointAt(index);
+  return point === undefined ? '' : String.fromCodePoint(point);
+}
+
+/** The length of the `@` or `%40` at `index`, or 0. */
+function atSignAt(text: string, index: number): number {
+  if (text[index] === '@') return 1;
+  return text.startsWith('%40', index) ? 3 : 0;
+}
+
+/**
+ * Masks email addresses, the user field most likely to land in a path or message. It works
+ * out from each `@` (or `%40`, for an encoded path that does not decode), so it runs in
+ * linear time, and it masks non-ASCII addresses and dotless domains (`root@localhost`) too.
+ */
 export function maskEmails(text: string): string {
-  return text.replaceAll(EMAIL, '[email]');
+  let out = '';
+  let copied = 0;
+  // A local part never reaches back past an earlier `@`, so no character is scanned twice.
+  let floor = 0;
+  let index = 0;
+  while (index < text.length) {
+    const at = atSignAt(text, index);
+    if (at === 0) {
+      index += 1;
+      continue;
+    }
+    let start = index;
+    while (start > floor) {
+      const char = charBefore(text, start);
+      if (!LOCAL_CHAR.test(char)) break;
+      start -= char.length;
+    }
+    let end = index + at;
+    while (end < text.length) {
+      const char = charFrom(text, end);
+      if (!DOMAIN_CHAR.test(char)) break;
+      end += char.length;
+    }
+    // A sentence's full stop or a trailing hyphen is not part of the domain.
+    while (end > index + at && /[.-]/.test(text.charAt(end - 1))) end -= 1;
+    if (start < index && end > index + at) {
+      out += `${text.slice(copied, start)}[email]`;
+      copied = end;
+      index = end;
+    } else {
+      index += at;
+    }
+    floor = index;
+  }
+  return out + text.slice(copied);
 }
 
 // A JSON.parse error quotes part of its input, which is often a request body. V8 quotes up
@@ -158,16 +222,22 @@ function requestLine(props: Record<string, unknown>): string | null {
   return clip(notes.length === 0 ? request : `${request} (${notes.join(', ')})`, 300);
 }
 
+// A page URL, bare or as a blob: URL, as an inline script's frame names it.
+const PAGE_URL = /^(?:blob:)?https?:\/\//i;
+
 /**
  * Where a frame points, relative to the repo where possible: bundler and file prefixes and
- * leading `../` go, and an absolute deploy path is cut back to its `apps/` directory (not
- * one that only ends in `apps`, like `/srv/webapps`).
+ * leading `../` go, an absolute deploy path is cut back to its `apps/` directory (not one
+ * that only ends in `apps`, like `/srv/webapps`), and a home folder's user name becomes `~`.
  */
 export function framePath(raw: string): string {
   let path = raw.replace(/^(webpack|file|turbopack):\/\/+(\[project\]\/)?/, '');
   const apps = path.search(/(?<=\/)apps\//);
   if (apps > 0) path = path.slice(apps);
-  return path.replace(/^(\.\.?\/)+/, '');
+  return path
+    .replace(/^(?:\/Users|\/home)\/[^/]+\//, '~/')
+    .replace(/^[a-z]:\\Users\\[^\\]+\\/i, '~\\')
+    .replace(/^(\.\.?\/)+/, '');
 }
 
 const isNoise = (path: string) =>
@@ -179,9 +249,10 @@ const isNoise = (path: string) =>
 function formatFrame(frame: Frame): string | null {
   const raw = frame.source ?? frame.filename ?? frame.abs_path;
   if (raw === undefined || frame.in_app !== true) return null;
-  // A browser frame from an inline script names the page URL, query string and all.
+  // A browser frame from an inline script names the page URL, so its path segments can
+  // hold a token like a request path's can.
   const file = framePath(raw);
-  const path = /^https?:\/\//i.test(file) ? redactRequestPath(file) : redactQuery(file);
+  const path = PAGE_URL.test(raw) ? redactRequestPath(file) : redactQuery(file);
   if (isNoise(path)) return null;
   const line = frame.line ?? frame.lineno;
   const column = frame.column ?? frame.colno;

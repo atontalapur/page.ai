@@ -28,7 +28,7 @@ new ──────triage─▶ triaged ─start_fix─▶ fixing (tier 1)
                                          ▼  │
                                   awaiting_approval ─approve─▶ resolved
 
-triage sends start_fix itself when AUTO_START_FIX is on
+triage sends start_fix itself when AUTO_START_FIX is on, up to AUTO_START_FIX_MAX_PER_HOUR
 pr_open takes approve and reject like awaiting_approval; nothing enters it yet
 escalate or reject at tier 3 ─▶ failed (a human takes over)
 fail (a run a higher tier can't fix) ─▶ failed
@@ -130,26 +130,27 @@ so the app is compiled with `tsc` to `dist/` rather than run from source.
 
 `src/config.ts` reads these once at boot:
 
-| Variable                   | Default                 | Notes                                                                         |
-| -------------------------- | ----------------------- | ----------------------------------------------------------------------------- |
-| `DATABASE_URL`             |                         | Required; a `postgres://` or `postgresql://` URL                              |
-| `PORT`                     | `4000`                  | Railway sets it                                                               |
-| `HOST`                     | `0.0.0.0`               |                                                                               |
-| `PGBOSS_SCHEMA`            | `pgboss`                | Must match the node daemon's                                                  |
-| `USE_FAKE_ADAPTERS`        | `false`                 | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`                               |
-| `LOG_LEVEL`                | `info`                  | `fatal`, `error`, `warn`, `info`, `debug`, `trace`                            |
-| `POSTHOG_WEBHOOK_SECRET`   |                         | Bearer secret for `POST /ingest/posthog`. Unset rejects every webhook         |
-| `OPENROUTER_API_KEY`       |                         | Unset, or `USE_FAKE_ADAPTERS`, uses the rule fallback                         |
-| `TRIAGE_MODEL`             | `openai/gpt-4o-mini`    | Cheap model for triage                                                        |
-| `TRIAGE_TIMEOUT_MS`        | `8000`                  |                                                                               |
-| `AUTO_START_FIX`           | `false`                 | Triage sends `start_fix` after classifying, queueing the Tier 1 fix job       |
-| `TWILIO_ACCOUNT_SID`       |                         | Set together with the token and from-number                                   |
-| `TWILIO_AUTH_TOKEN`        |                         |                                                                               |
-| `TWILIO_FROM_NUMBER`       |                         |                                                                               |
-| `TWILIO_MACHINE_DETECTION` | `false`                 | Voicemail or fax counts as not answered. Paid accounts only: trial rejects it |
-| `TWILIO_TRIAL`             | `false`                 | Trial account: calls and texts use Twilio's templates, not the page text      |
-| `NOTIFY_TO_NUMBERS`        |                         | Comma-separated E.164 numbers                                                 |
-| `DASHBOARD_URL`            | `http://localhost:3000` | Link included in the call and the SMS                                         |
+| Variable                      | Default                 | Notes                                                                         |
+| ----------------------------- | ----------------------- | ----------------------------------------------------------------------------- |
+| `DATABASE_URL`                |                         | Required; a `postgres://` or `postgresql://` URL                              |
+| `PORT`                        | `4000`                  | Railway sets it                                                               |
+| `HOST`                        | `0.0.0.0`               |                                                                               |
+| `PGBOSS_SCHEMA`               | `pgboss`                | Must match the node daemon's                                                  |
+| `USE_FAKE_ADAPTERS`           | `false`                 | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`                               |
+| `LOG_LEVEL`                   | `info`                  | `fatal`, `error`, `warn`, `info`, `debug`, `trace`                            |
+| `POSTHOG_WEBHOOK_SECRET`      |                         | Bearer secret for `POST /ingest/posthog`. Unset rejects every webhook         |
+| `OPENROUTER_API_KEY`          |                         | Unset, or `USE_FAKE_ADAPTERS`, uses the rule fallback                         |
+| `TRIAGE_MODEL`                | `openai/gpt-4o-mini`    | Cheap model for triage                                                        |
+| `TRIAGE_TIMEOUT_MS`           | `8000`                  |                                                                               |
+| `AUTO_START_FIX`              | `false`                 | Triage sends `start_fix` after classifying, queueing the Tier 1 fix job       |
+| `AUTO_START_FIX_MAX_PER_HOUR` | `5`                     | Fix starts in the last hour past which triage leaves issues for an operator   |
+| `TWILIO_ACCOUNT_SID`          |                         | Set together with the token and from-number                                   |
+| `TWILIO_AUTH_TOKEN`           |                         |                                                                               |
+| `TWILIO_FROM_NUMBER`          |                         |                                                                               |
+| `TWILIO_MACHINE_DETECTION`    | `false`                 | Voicemail or fax counts as not answered. Paid accounts only: trial rejects it |
+| `TWILIO_TRIAL`                | `false`                 | Trial account: calls and texts use Twilio's templates, not the page text      |
+| `NOTIFY_TO_NUMBERS`           |                         | Comma-separated E.164 numbers                                                 |
+| `DASHBOARD_URL`               | `http://localhost:3000` | Link included in the call and the SMS                                         |
 
 A missing or bad `DATABASE_URL` stops startup with exit code 1 and one log line naming each
 problem, e.g. `invalid config: DATABASE_URL is required`. As in `apps/node`, a blank var
