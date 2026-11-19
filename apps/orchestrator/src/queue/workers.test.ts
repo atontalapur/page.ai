@@ -59,8 +59,9 @@ describe('workers', () => {
       );
     await deps.boss.fail(FIX_QUEUE, fix!.runId, new Error('daemon broke'));
 
+    // The dead letter is a second pg-boss poll after the first (about 2 s each).
     await expect
-      .poll(() => seen.slice().sort(), { timeout: 8_000 })
+      .poll(() => seen.slice().sort(), { timeout: 15_000 })
       .toEqual([
         'fix_failed:1:daemon broke',
         `notify:sms:0`,
@@ -73,5 +74,5 @@ describe('workers', () => {
     const notify = await deps.boss.findJobs(NOTIFY_QUEUE, { data: { issueId } });
     expect(triage.map((job) => job.state)).toEqual(['completed']);
     expect(notify.map((job) => job.state)).toEqual(['completed']);
-  });
+  }, 20_000);
 });
