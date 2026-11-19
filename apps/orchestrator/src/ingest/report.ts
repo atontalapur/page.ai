@@ -1,4 +1,4 @@
-import type { PosthogWebhook } from '@page/contracts';
+import { clip, type PosthogWebhook } from '@page/contracts';
 import { z } from 'zod';
 
 // The error report a fix job carries (#136), built once at ingest from the PostHog webhook.
@@ -89,9 +89,6 @@ function maskUrlEmails(part: string): string {
 
 const str = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
-
-const clip = (text: string, max: number) =>
-  text.length <= max ? text : `${text.slice(0, max - 3)}...`;
 
 /**
  * A path with each query value replaced, so `/search?q=me@x.com` becomes `/search?q=`.

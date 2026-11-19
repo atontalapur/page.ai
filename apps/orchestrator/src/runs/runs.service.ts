@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { IssueEvent, JobPayload } from '@page/contracts';
+import { clip, MAX_REASON_CHARS, type IssueEvent, type JobPayload } from '@page/contracts';
 import type { Insertable, Transaction } from 'kysely';
 import type { Database, Db, RunsTable } from '../db/database.ts';
 import { IssuesService, type Moved } from '../issues/issues.service.ts';
@@ -11,10 +11,7 @@ import { DB, JOB_QUEUES, LOGGER } from '../tokens.ts';
 export type RunFinishedJob = JobPayload<'run_finished'>;
 type RunResult = RunFinishedJob['result'];
 
-const REASON_MAX = 2000;
-
-const clip = (text: string) =>
-  text.length <= REASON_MAX ? text : `${text.slice(0, REASON_MAX - 3)}...`;
+const reason = (text: string) => clip(text, MAX_REASON_CHARS);
 
 /**
  * The issue event a run's result applies. A success is a patch for review. An escalation
@@ -28,10 +25,14 @@ export function issueEventFor(result: RunResult): IssueEvent {
     case 'succeeded':
       return { type: 'patch_ready', runId };
     case 'escalated':
-      return { type: 'escalate', runId, reason: clip(`${result.reason}: ${result.note.summary}`) };
+      return {
+        type: 'escalate',
+        runId,
+        reason: reason(`${result.reason}: ${result.note.summary}`),
+      };
     case 'failed': {
       const why = result.note ? `${result.note.summary} ${result.note.blocker}` : 'The run failed.';
-      return { type: 'fail', runId, reason: clip(why) };
+      return { type: 'fail', runId, reason: reason(why) };
     }
     case 'killed':
       return { type: 'kill' };
@@ -226,7 +227,7 @@ export class RunsService {
    */
   private async failRun(
     run: Insertable<RunsTable>,
-    reason: string,
+    why: string,
     { unlessResultPending }: { unlessResultPending: boolean },
   ): Promise<Recorded> {
     const recorded = await this.db.transaction().execute(async (trx): Promise<Recorded> => {
@@ -242,7 +243,7 @@ export class RunsService {
         .values(run)
         .onConflict((oc) => oc.column('id').doNothing())
         .execute();
-      const event: IssueEvent = { type: 'fail', runId: run.id, reason: clip(reason) };
+      const event: IssueEvent = { type: 'fail', runId: run.id, reason: reason(why) };
       const moved = await this.issues.applyIn(trx, run.issue_id, event);
       return { outcome: { kind: 'applied', event: event.type }, moved };
     });

@@ -1,9 +1,9 @@
-import { runFinishedJobSchema, type JobPayload, type QueueName } from '@page/contracts';
+import { RUN_FINISHED_QUEUE, runFinishedJobSchema, type JobPayload } from '@page/contracts';
 import type { PgBoss } from 'pg-boss';
 import type { Logger } from 'pino';
 
-/** The orchestrator's queue for finished runs. It creates the queue; the daemon sends. */
-export const RUN_FINISHED_QUEUE = 'run_finished' satisfies QueueName;
+// The orchestrator's queue for finished runs. It creates the queue; the daemon sends.
+export { RUN_FINISHED_QUEUE };
 
 export type RunFinishedJob = JobPayload<typeof RUN_FINISHED_QUEUE>;
 

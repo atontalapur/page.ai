@@ -82,4 +82,10 @@ export const jobSchemas = {
 
 export type QueueName = keyof typeof jobSchemas;
 
+// Each queue's name, imported by the side that sends to it and the side that works it.
+export const TRIAGE_QUEUE = 'triage' satisfies QueueName;
+export const FIX_QUEUE = 'fix' satisfies QueueName;
+export const NOTIFY_QUEUE = 'notify' satisfies QueueName;
+export const RUN_FINISHED_QUEUE = 'run_finished' satisfies QueueName;
+
 export type JobPayload<Q extends QueueName> = z.infer<(typeof jobSchemas)[Q]>;

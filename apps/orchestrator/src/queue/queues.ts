@@ -1,12 +1,17 @@
-import { notifyJobSchema, triageJobSchema, type JobPayload, type QueueName } from '@page/contracts';
+import {
+  NOTIFY_QUEUE,
+  notifyJobSchema,
+  RUN_FINISHED_QUEUE,
+  TRIAGE_QUEUE,
+  triageJobSchema,
+  type JobPayload,
+} from '@page/contracts';
 import type { Transaction } from 'kysely';
 import { fromKysely, type PgBoss } from 'pg-boss';
 import type { Database } from '../db/database.ts';
 
-export const TRIAGE_QUEUE = 'triage' satisfies QueueName;
-export const NOTIFY_QUEUE = 'notify' satisfies QueueName;
-/** The node daemon sends one job here per finished fix run; RunsService records it. */
-export const RUN_FINISHED_QUEUE = 'run_finished' satisfies QueueName;
+// The node daemon sends one run_finished job per finished fix run; RunsService records it.
+export { NOTIFY_QUEUE, RUN_FINISHED_QUEUE, TRIAGE_QUEUE };
 /**
  * run_finished's dead letter queue: pg-boss copies a result here once recording it has failed
  * on every retry. RunsService.recordFailedResult fails the issue, so it never sits in `fixing`.

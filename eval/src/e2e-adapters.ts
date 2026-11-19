@@ -1,10 +1,10 @@
 import {
   BUG_CLASSES,
+  FIX_QUEUE,
   ISSUE_STATUSES,
   RUN_STATUSES,
   SEVERITIES,
   tierSchema,
-  type QueueName,
 } from '@page/contracts';
 import type { SqlClient } from '@page/toolkit';
 import { z } from 'zod';
@@ -21,7 +21,6 @@ import {
 // only read the database, through any `pg` Pool or Client; the one write, the reset's
 // kill, goes through the orchestrator's API like any other client's.
 
-const FIX_QUEUE = 'fix' satisfies QueueName;
 const SCHEMA_NAME = /^[a-z_][a-z0-9_]*$/;
 
 const issueRow = z.object({

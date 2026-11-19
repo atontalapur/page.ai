@@ -1,7 +1,7 @@
-import { fixJobSchema, type JobPayload, type QueueName } from '@page/contracts';
+import { FIX_QUEUE, fixJobSchema, type JobPayload } from '@page/contracts';
 import { err, ok, type Result } from '@page/toolkit';
 
-export const FIX_QUEUE = 'fix' satisfies QueueName;
+export { FIX_QUEUE };
 
 export type FixJob = JobPayload<typeof FIX_QUEUE>;
 

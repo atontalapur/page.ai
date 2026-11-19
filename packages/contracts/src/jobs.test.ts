@@ -1,11 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { escalationNoteFixture, jobFixtures } from './__fixtures__/index.ts';
-import { jobSchemas, MAX_RUN_DIFF_CHARS, type QueueName } from './jobs.ts';
+import {
+  FIX_QUEUE,
+  jobSchemas,
+  MAX_RUN_DIFF_CHARS,
+  NOTIFY_QUEUE,
+  RUN_FINISHED_QUEUE,
+  TRIAGE_QUEUE,
+  type QueueName,
+} from './jobs.ts';
 import { roundTrip } from './test-utils.ts';
 
 const queues = Object.keys(jobSchemas) as QueueName[];
 
 describe('jobSchemas', () => {
+  it('has a name constant for every queue', () => {
+    expect([TRIAGE_QUEUE, FIX_QUEUE, NOTIFY_QUEUE, RUN_FINISHED_QUEUE].sort()).toEqual(
+      [...queues].sort(),
+    );
+  });
+
   it.each(queues)('%s round-trips its fixture', (queue) => {
     expect(roundTrip(jobSchemas[queue], jobFixtures[queue])).toEqual(jobFixtures[queue]);
   });

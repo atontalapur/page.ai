@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import {
+  FIX_QUEUE,
   fixJobSchema,
   type EscalationNote,
   type JobPayload,
-  type QueueName,
   type Tier,
 } from '@page/contracts';
 import type { Transaction } from 'kysely';
 import { fromKysely, type PgBoss } from 'pg-boss';
 import type { Database } from '../db/database.ts';
 
-export const FIX_QUEUE = 'fix' satisfies QueueName;
+export { FIX_QUEUE };
 
 export type FixJob = JobPayload<typeof FIX_QUEUE>;
 
