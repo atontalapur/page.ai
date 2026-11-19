@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="462" viewBox="0 0 760 462" role="img" aria-labelledby="fix-rate-by-tier-landed-title fix-rate-by-tier-landed-desc" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif">
+<title id="fix-rate-by-tier-landed-title">Fix rate by tier landed</title>
+<desc id="fix-rate-by-tier-landed-desc">deepseek/deepseek-v4.1-flash, 18 of 20 planned bugs played, commit b862244</desc>
+<rect x="0.5" y="0.5" width="759" height="461" rx="8" fill="#fcfcfb" stroke="#e1e0d9"/>
+<text x="20" y="36" font-size="16" fill="#0b0b0b" font-weight="600">Fix rate by tier landed</text>
+<text x="20" y="56" font-size="12" fill="#52514e">deepseek/deepseek-v4.1-flash, 18 of 20 planned bugs played, commit b862244</text>
+<rect x="20" y="72" width="12" height="12" rx="2" fill="#2a78d6"/>
+<text x="38" y="82" font-size="12" fill="#0b0b0b">tier1-only</text>
+<rect x="126" y="72" width="12" height="12" rx="2" fill="#eb6834"/>
+<text x="144" y="82" font-size="12" fill="#0b0b0b">tier3-start</text>
+<rect x="239" y="72" width="12" height="12" rx="2" fill="#1baf7a"/>
+<text x="257" y="82" font-size="12" fill="#0b0b0b">ladder</text>
+<line x1="74" y1="104" x2="74" y2="382" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="195.3" y1="104" x2="195.3" y2="382" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="316.5" y1="104" x2="316.5" y2="382" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="437.8" y1="104" x2="437.8" y2="382" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="559" y1="104" x2="559" y2="382" stroke="#e1e0d9" stroke-width="1"/>
+<text x="74" y="398" font-size="11" fill="#52514e" text-anchor="middle">0.00</text>
+<text x="195.3" y="398" font-size="11" fill="#52514e" text-anchor="middle">0.25</text>
+<text x="316.5" y="398" font-size="11" fill="#52514e" text-anchor="middle">0.50</text>
+<text x="437.8" y="398" font-size="11" fill="#52514e" text-anchor="middle">0.75</text>
+<text x="559" y="398" font-size="11" fill="#52514e" text-anchor="middle">1.00</text>
+<text x="316.5" y="418" font-size="12" fill="#52514e" text-anchor="middle">fix rate (fixed runs / runs)</text>
+<text x="62" y="142" font-size="12" fill="#0b0b0b" text-anchor="end">Tier 1</text>
+<path d="M74,112h481a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-481z" fill="#2a78d6"><title>tier1-only, Tier 1: 1.00 (51/51)</title></path>
+<text x="565" y="124" font-size="12" fill="#0b0b0b">1.00 (51/51)<tspan fill="#52514e">  tier1-only</tspan></text>
+
+<text x="80" y="142" font-size="12" fill="#0b0b0b">n/a<tspan fill="#52514e">  tier3-start</tspan></text>
+<path d="M74,148h462a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-462z" fill="#1baf7a"><title>ladder, Tier 1: 0.96 (49/51)</title></path>
+<text x="546" y="160" font-size="12" fill="#0b0b0b">0.96 (49/51)<tspan fill="#52514e">  ladder</tspan></text>
+<text x="62" y="212" font-size="12" fill="#0b0b0b" text-anchor="end">Tier 2</text>
+
+<text x="80" y="194" font-size="12" fill="#0b0b0b">n/a<tspan fill="#52514e">  tier1-only</tspan></text>
+
+<text x="80" y="212" font-size="12" fill="#0b0b0b">n/a<tspan fill="#52514e">  tier3-start</tspan></text>
+<path d="M74,218h481a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-481z" fill="#1baf7a"><title>ladder, Tier 2: 1.00 (2/2)</title></path>
+<text x="565" y="230" font-size="12" fill="#0b0b0b">1.00 (2/2)<tspan fill="#52514e">  ladder</tspan></text>
+<text x="62" y="282" font-size="12" fill="#0b0b0b" text-anchor="end">Tier 3</text>
+
+<text x="80" y="264" font-size="12" fill="#0b0b0b">n/a<tspan fill="#52514e">  tier1-only</tspan></text>
+<path d="M74,270h481a4,4 0 0 1 4,4v8a4,4 0 0 1 -4,4h-481z" fill="#eb6834"><title>tier3-start, Tier 3: 1.00 (51/51)</title></path>
+<text x="565" y="282" font-size="12" fill="#0b0b0b">1.00 (51/51)<tspan fill="#52514e">  tier3-start</tspan></text>
+
+<text x="80" y="300" font-size="12" fill="#0b0b0b">n/a<tspan fill="#52514e">  ladder</tspan></text>
+<text x="62" y="352" font-size="12" fill="#0b0b0b" text-anchor="end">paged</text>
+
+<text x="80" y="334" font-size="12" fill="#0b0b0b">0.00 (0/3)<tspan fill="#52514e">  tier1-only</tspan></text>
+
+<text x="80" y="352" font-size="12" fill="#0b0b0b">0.00 (0/3)<tspan fill="#52514e">  tier3-start</tspan></text>
+
+<text x="80" y="370" font-size="12" fill="#0b0b0b">0.00 (0/1)<tspan fill="#52514e">  ladder</tspan></text>
+<text x="20" y="442" font-size="11" fill="#52514e">Incomplete: tier1-only 2 scenarios skipped; tier3-start 2 scenarios skipped; ladder 2 scenarios skipped.</text>
+</svg>
