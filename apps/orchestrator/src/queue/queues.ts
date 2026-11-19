@@ -7,6 +7,11 @@ export const TRIAGE_QUEUE = 'triage' satisfies QueueName;
 export const NOTIFY_QUEUE = 'notify' satisfies QueueName;
 /** The node daemon sends one job here per finished fix run; RunsService records it. */
 export const RUN_FINISHED_QUEUE = 'run_finished' satisfies QueueName;
+/**
+ * run_finished's dead letter queue: pg-boss copies a result here once recording it has failed
+ * on every retry. RunsService.recordFailedResult fails the issue, so it never sits in `fixing`.
+ */
+export const RUN_FINISHED_FAILED_QUEUE = 'run_finished_failed';
 
 /** 3 tries with exponential backoff, for triage and for the call before SMS. */
 const RETRIES = { retryLimit: 3, retryDelay: 2, retryBackoff: true } as const;
@@ -46,7 +51,12 @@ export async function createJobQueues(boss: PgBoss): Promise<JobQueues> {
   await boss.createQueue(TRIAGE_QUEUE, { policy: 'exclusive', ...RETRIES });
   await boss.createQueue(NOTIFY_QUEUE, { policy: 'exclusive', ...RETRIES });
   // No singleton: a result must never be dropped as a duplicate. Recording one is idempotent.
-  await boss.createQueue(RUN_FINISHED_QUEUE, { ...RETRIES });
+  // The dead letter queue comes first, since a queue can only name one that exists.
+  await boss.createQueue(RUN_FINISHED_FAILED_QUEUE, { ...RETRIES });
+  const runFinished = { ...RETRIES, deadLetter: RUN_FINISHED_FAILED_QUEUE };
+  await boss.createQueue(RUN_FINISHED_QUEUE, runFinished);
+  // createQueue leaves an existing queue as it was, so a deployed one gets these here.
+  await boss.updateQueue(RUN_FINISHED_QUEUE, runFinished);
   return {
     sendTriage(issueId, fingerprint, trx) {
       const data = triageJobSchema.parse({ v: 1, issueId });

@@ -36,6 +36,9 @@ await startWorkers(deps.boss, {
   fixFailed: async (job, output) => {
     await runs.recordLost(job, failureMessage(output));
   },
+  runFinishedFailed: async (job, output) => {
+    await runs.recordFailedResult(job, failureMessage(output));
+  },
 });
 
 const report = 'GET /\n\nRangeError: Invalid currency code : US';

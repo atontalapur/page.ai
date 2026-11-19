@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { IssueEvent, JobPayload } from '@page/contracts';
-import type { Transaction } from 'kysely';
-import type { Database, Db } from '../db/database.ts';
+import type { Insertable, Transaction } from 'kysely';
+import type { Database, Db, RunsTable } from '../db/database.ts';
 import { IssuesService } from '../issues/issues.service.ts';
 import { issueLogger, type Logger } from '../logger.ts';
 import type { FixJob } from '../queue/fix-jobs.ts';
@@ -160,26 +160,11 @@ export class RunsService {
   async recordLost(job: FixJob, why: string): Promise<RecordOutcome> {
     const { issueId, runId, tier } = job;
     const log = issueLogger(this.logger, { issueId, runId, tier });
-
-    const outcome = await this.db.transaction().execute(async (trx): Promise<RecordOutcome> => {
-      const issue = await lockIssue(trx, issueId);
-      if (!issue) return { kind: 'no_issue' };
-      if (!isCurrent(issue, runId)) return { kind: 'stale' };
-      if (await this.jobs.runFinishedPending(runId, trx)) return { kind: 'result_pending' };
-
-      await trx
-        .insertInto('runs')
-        .values({ id: runId, issue_id: issueId, tier, status: 'failed', finished_at: new Date() })
-        .onConflict((oc) => oc.column('id').doNothing())
-        .execute();
-      const event: IssueEvent = {
-        type: 'fail',
-        runId,
-        reason: clip(`The fix job failed with no result from the node: ${why}`),
-      };
-      await this.issues.apply(issueId, event, { trx });
-      return { kind: 'applied', event: event.type };
-    });
+    const outcome = await this.failRun(
+      { id: runId, issue_id: issueId, tier, status: 'failed', finished_at: new Date() },
+      `The fix job failed with no result from the node: ${why}`,
+      { unlessResultPending: true },
+    );
 
     if (outcome.kind === 'no_issue') {
       log.error({ why }, 'fix job failed for an issue that does not exist');
@@ -189,6 +174,69 @@ export class RunsService {
       log.info({ why, outcome: outcome.kind }, 'fix job failed; issue left');
     }
     return outcome;
+  }
+
+  /**
+   * Fails the issue of a run whose run_finished job pg-boss failed for good: `record` threw on
+   * every retry, so the issue would otherwise stay in `fixing`. `why` is the error pg-boss
+   * kept. Writes the run's row without its diff, which a human taking over can do without, and
+   * applies `fail` in one transaction. Leaves the issue alone when the run is no longer
+   * current. Safe to retry.
+   */
+  async recordFailedResult(job: RunFinishedJob, why: string): Promise<RecordOutcome> {
+    const { issueId, tier, result } = job;
+    const log = issueLogger(this.logger, { issueId, runId: result.runId, tier });
+    const outcome = await this.failRun(
+      {
+        id: result.runId,
+        issue_id: issueId,
+        tier,
+        status: result.status,
+        started_at: new Date(job.startedAt),
+        finished_at: new Date(job.finishedAt),
+        pr_url: result.prUrl,
+      },
+      `The node's result for the run could not be recorded: ${why}`,
+      { unlessResultPending: false },
+    );
+
+    if (outcome.kind === 'no_issue') {
+      log.error({ why }, 'result could not be recorded for an issue that does not exist');
+    } else if (outcome.kind === 'applied') {
+      log.error({ why, status: result.status }, 'result could not be recorded; issue failed');
+    } else {
+      log.info({ why, outcome: outcome.kind }, 'result could not be recorded; issue left');
+    }
+    return outcome;
+  }
+
+  /**
+   * In one transaction: writes `run` unless the run already has a row, and fails its issue if
+   * the run is still current. With `unlessResultPending`, a run_finished job still queued for
+   * the run is left to move the issue instead.
+   */
+  private failRun(
+    run: Insertable<RunsTable>,
+    reason: string,
+    { unlessResultPending }: { unlessResultPending: boolean },
+  ): Promise<RecordOutcome> {
+    return this.db.transaction().execute(async (trx): Promise<RecordOutcome> => {
+      const issue = await lockIssue(trx, run.issue_id);
+      if (!issue) return { kind: 'no_issue' };
+      if (!isCurrent(issue, run.id)) return { kind: 'stale' };
+      if (unlessResultPending && (await this.jobs.runFinishedPending(run.id, trx))) {
+        return { kind: 'result_pending' };
+      }
+
+      await trx
+        .insertInto('runs')
+        .values(run)
+        .onConflict((oc) => oc.column('id').doNothing())
+        .execute();
+      const event: IssueEvent = { type: 'fail', runId: run.id, reason: clip(reason) };
+      await this.issues.apply(run.issue_id, event, { trx });
+      return { kind: 'applied', event: event.type };
+    });
   }
 }
 

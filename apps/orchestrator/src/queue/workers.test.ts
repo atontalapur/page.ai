@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createTestDeps } from '../db/test-utils.ts';
 import { jobFixtures } from '@page/contracts/fixtures';
@@ -11,8 +12,11 @@ afterAll(() => deps.close());
 const issueId = '7f6c2c1e-3d5b-4f0a-9a43-1c2b3d4e5f60';
 
 describe('workers', () => {
-  it('parses triage, notify, run_finished and failed fix jobs before the handler runs', async () => {
+  it('parses triage, notify, run_finished and dead-lettered jobs before the handler runs', async () => {
     const seen: string[] = [];
+    // A result the handler can't record. With no retries left, pg-boss dead letters it.
+    const run = jobFixtures.run_finished;
+    const unrecordable = { ...run, result: { ...run.result, runId: randomUUID() } };
     await startWorkers(deps.boss, {
       triage: (job) => {
         seen.push(`triage:${job.issueId}`);
@@ -23,11 +27,21 @@ describe('workers', () => {
         return Promise.resolve();
       },
       runFinished: (job) => {
+        if (job.result.runId === unrecordable.result.runId) {
+          return Promise.reject(new Error('deadlock detected'));
+        }
         seen.push(`run_finished:${job.result.status}`);
         return Promise.resolve();
       },
       fixFailed: (job, output) => {
         seen.push(`fix_failed:${job.tier}:${(output as { message?: string }).message}`);
+        return Promise.resolve();
+      },
+      runFinishedFailed: (job, output) => {
+        const { message } = output as { message?: string };
+        seen.push(
+          `run_finished_failed:${job.result.runId === unrecordable.result.runId}:${message}`,
+        );
         return Promise.resolve();
       },
     });
@@ -37,6 +51,7 @@ describe('workers', () => {
       'fp-worker-sms',
     );
     await deps.boss.send(RUN_FINISHED_QUEUE, jobFixtures.run_finished);
+    await deps.boss.send(RUN_FINISHED_QUEUE, unrecordable, { retryLimit: 0 });
     const fix = await deps.db
       .transaction()
       .execute((trx) =>
@@ -50,6 +65,7 @@ describe('workers', () => {
         'fix_failed:1:daemon broke',
         `notify:sms:0`,
         'run_finished:succeeded',
+        'run_finished_failed:true:deadlock detected',
         `triage:${issueId}`,
       ]);
 

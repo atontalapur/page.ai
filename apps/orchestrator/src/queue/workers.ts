@@ -7,7 +7,12 @@ import {
 } from '@page/contracts';
 import type { PgBoss } from 'pg-boss';
 import { FIX_FAILED_QUEUE } from './fix-jobs.ts';
-import { NOTIFY_QUEUE, RUN_FINISHED_QUEUE, TRIAGE_QUEUE } from './queues.ts';
+import {
+  NOTIFY_QUEUE,
+  RUN_FINISHED_FAILED_QUEUE,
+  RUN_FINISHED_QUEUE,
+  TRIAGE_QUEUE,
+} from './queues.ts';
 
 export interface NotifyAttempt {
   /** How many retries have already happened. The first try is 0. */
@@ -16,8 +21,8 @@ export interface NotifyAttempt {
 }
 
 /**
- * Claims triage, notify, run_finished and dead-lettered fix jobs, and parses each payload
- * before the handler sees it.
+ * Claims triage, notify, run_finished and dead-lettered fix and run_finished jobs, and parses
+ * each payload before the handler sees it.
  */
 export async function startWorkers(
   boss: PgBoss,
@@ -27,6 +32,8 @@ export async function startWorkers(
     runFinished(job: JobPayload<'run_finished'>): Promise<void>;
     /** A fix job pg-boss failed, and the error it kept for it (null if none). */
     fixFailed(job: JobPayload<'fix'>, output: unknown): Promise<void>;
+    /** A run_finished job pg-boss failed for good, and the error it kept for it. */
+    runFinishedFailed(job: JobPayload<'run_finished'>, output: unknown): Promise<void>;
   },
 ): Promise<void> {
   await boss.work(TRIAGE_QUEUE, async (jobs) => {
@@ -49,6 +56,11 @@ export async function startWorkers(
   await boss.work(FIX_FAILED_QUEUE, { includeMetadata: true }, async (jobs) => {
     for (const job of jobs) {
       await handlers.fixFailed(fixJobSchema.parse(job.data), job.sourceOutput);
+    }
+  });
+  await boss.work(RUN_FINISHED_FAILED_QUEUE, { includeMetadata: true }, async (jobs) => {
+    for (const job of jobs) {
+      await handlers.runFinishedFailed(runFinishedJobSchema.parse(job.data), job.sourceOutput);
     }
   });
 }

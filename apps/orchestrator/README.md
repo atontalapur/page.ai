@@ -75,6 +75,12 @@ which writes a `failed` runs row and applies `fail`, unless the run is no longer
 the daemon's `run_finished` job for it is still queued. Without this the issue would stay in
 `fixing`, where only `kill` gets it out.
 
+A result can also fail to record: `RunsService.record` throws on all 3 tries of a
+`run_finished` job. pg-boss then copies the job to the `run_finished_failed` dead letter queue,
+whose worker calls `RunsService.recordFailedResult`. It writes the run's row without its diff
+and applies `fail`, unless the run is no longer current. The daemon sends each result with the
+run id as its pg-boss job id, so `recordLost` finds a queued result by id.
+
 The run outcome events (`patch_ready`, `escalate`, `fail`) carry the `runId` of the job they
 report on, and only `RunsService` applies them. An event for any run other than the current
 one is refused, so a retried `escalate` cannot skip a tier. A repeat report with the same

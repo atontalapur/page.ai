@@ -93,6 +93,9 @@ try {
     fixFailed: async (job, output) => {
       await application.get(RunsService).recordLost(job, failureMessage(output));
     },
+    runFinishedFailed: async (job, output) => {
+      await application.get(RunsService).recordFailedResult(job, failureMessage(output));
+    },
   });
   await application.listen({ port: config.port, host: config.host });
 } catch (err) {

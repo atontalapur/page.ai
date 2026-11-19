@@ -276,6 +276,53 @@ describe('RunsService.recordLost', () => {
   });
 });
 
+describe('RunsService.recordFailedResult', () => {
+  it('fails the issue of a result that could not be recorded', async () => {
+    const { issue, job } = await fixing();
+    const result = { ...finished(job, escalation), diff: '--- a/x\n+++ b/x\n' };
+
+    expect(await runs.recordFailedResult(result, 'deadlock detected')).toEqual({
+      kind: 'applied',
+      event: 'fail',
+    });
+    expect(await issues.get(issue.id)).toMatchObject({ status: 'failed', currentTier: 1 });
+    expect((await issues.events(issue.id)).at(-1)?.event).toEqual({
+      type: 'fail',
+      runId: job.runId,
+      reason: "The node's result for the run could not be recorded: deadlock detected",
+    });
+    expect(await runRow(job.runId)).toMatchObject({
+      issue_id: issue.id,
+      tier: 1,
+      status: 'escalated',
+      started_at: new Date(at),
+      finished_at: new Date(later),
+      diff: null,
+    });
+    // The escalation the result asked for never happened.
+    const escalations = await deps.db
+      .selectFrom('escalations')
+      .selectAll()
+      .where('run_id', '=', job.runId)
+      .execute();
+    expect(escalations).toEqual([]);
+
+    // A retry leaves the issue failed.
+    expect(await runs.recordFailedResult(result, 'deadlock detected')).toEqual({ kind: 'stale' });
+  });
+
+  it('leaves an issue that moved on, or does not exist', async () => {
+    const { issue, job } = await fixing();
+    await issues.apply(issue.id, { type: 'kill' });
+    expect(await runs.recordFailedResult(finished(job), 'x')).toEqual({ kind: 'stale' });
+    expect((await issues.get(issue.id)).status).toBe('killed');
+    expect(await runRow(job.runId)).toBeUndefined();
+
+    const orphan = finished({ ...job, issueId: randomUUID() });
+    expect(await runs.recordFailedResult(orphan, 'x')).toEqual({ kind: 'no_issue' });
+  });
+});
+
 describe('failureMessage', () => {
   it("reads a thrown error's message and an expiry's", () => {
     expect(failureMessage({ name: 'Error', message: 'boom', stack: '...' })).toBe('boom');
