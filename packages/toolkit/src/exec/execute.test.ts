@@ -241,4 +241,60 @@ describe('execute host tools', () => {
       error: { type: 'failed', exitCode: 1, output: trimOutput('x'.repeat(500), 100) },
     });
   });
+
+  const unset = { kind: 'host_tool' as const, tool: 'ops.deleteConfig' as const, key: 'X' };
+
+  it('refuses the ops tools below Tier 3', async () => {
+    const { tools, calls } = hostTools();
+    const result = await execute(unset, {
+      tier: 2,
+      runner: new FakeRunner(),
+      steps: testSteps(),
+      hostTools: tools,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        input: '{"tool":"ops.deleteConfig","key":"X"}',
+        type: 'refused',
+        message: 'refused: ops.deleteConfig needs Tier 3; this run is Tier 2',
+      },
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it('refuses a tool the host tools say they do not handle, and logs it', async () => {
+    const sink = new InMemoryAuditSink();
+    const { tools, calls } = hostTools();
+    const result = await execute(unset, {
+      tier: 3,
+      runner: new FakeRunner(),
+      steps: testSteps(sink),
+      hostTools: { ...tools, handles: (tool) => !tool.startsWith('ops.') },
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      error: { type: 'refused', message: 'refused: ops.deleteConfig is not set up on this node' },
+    });
+    expect(calls).toEqual([]);
+    expect(sink.steps).toEqual([expect.objectContaining({ kind: 'host_tool', allowed: false })]);
+  });
+
+  it.each([
+    [{ kind: 'host_tool' as const, tool: 'ops.getConfig' as const }, '{"tool":"ops.getConfig"}'],
+    [
+      { kind: 'host_tool' as const, tool: 'ops.setConfig' as const, key: 'K', value: '5' },
+      '{"tool":"ops.setConfig","key":"K","value":"5"}',
+    ],
+    [{ kind: 'host_tool' as const, tool: 'ops.restart' as const }, '{"tool":"ops.restart"}'],
+  ])('logs %j with its arguments', async (call, input) => {
+    const sink = new InMemoryAuditSink();
+    await execute(call, {
+      tier: 3,
+      runner: new FakeRunner(),
+      steps: testSteps(sink),
+      hostTools: hostTools().tools,
+    });
+    expect(sink.steps).toEqual([expect.objectContaining({ input, allowed: true })]);
+  });
 });
