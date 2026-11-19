@@ -25,6 +25,21 @@ held-out run: the per-attempt wall clock under Arms reads 14 min, not 15. The ag
 14 min since #57 (the sandbox kills the container at 15, so each tier stops a minute before),
 and every dev run used 14. This corrects the text to match the code; no run changes.
 
+Amendment 4 (2026-11-19), committed before any ops run: the ops scenarios get a run of their
+own. In the frozen runs Tier 3 had no ops tools (Tier 1's commands plus the Tier 2 GitHub
+tools), so the runner skipped 024, 029 and 030. #147 and #148 give Tier 3 the ops tools
+(read the live settings, set or drop an override, restart), and #149 plays the ops scenarios
+against a live demo app. All three came after the threshold freeze (#114) and the held-out
+run, so the dev and held-out results stand as reported. The ops run plays the two dev ops
+scenarios, 029 and 030, 3 runs under each config, on `deepseek/deepseek-v4.1-flash` at the
+frozen limits (`threshold.ts` is unchanged since #114) and the same stop rules, with $0.75
+of budget per config. The configs run one after another, since they share one live app. It
+is reported as its own set, not folded into dev or held-out. The Tier 1 and Tier 2 prompts
+are unchanged; the Tier 3 prompt gains the ops blocks, so Tier 3 attempts in this run see a
+different prompt from the frozen runs. The bars are scored on dev only; the report shows the
+same checks on this set for comparison, as it does for held-out. 024 stays unrun: it is held
+out, its reservation is used, and its fix is a rollback, which has no agent tool yet.
+
 ## Bars
 
 lesson: how close the full ladder gets to the Tier 3 from-start fix rate while granting
