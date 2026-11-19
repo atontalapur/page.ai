@@ -46,6 +46,49 @@ describe('chartData', () => {
     ]);
   });
 
+  it('groups by the tier a run landed at, with paged runs apart', () => {
+    const set = chartData([
+      results('ladder', [
+        run('a', true),
+        run('b', false, {
+          attempts: [attempt(1, { exitStatus: 'step_limit' }), attempt(2, { checkPassed: false })],
+          tierLanded: 2,
+          paged: false,
+        }),
+        run('c', false),
+      ]),
+      results('tier1-only', [run('a', true), run('b', true), run('c', true)]),
+    ]);
+    expect(labels(bars(set.charts, 'fix-rate-by-tier-landed'))).toEqual([
+      ['Tier 1', '1.00 (3/3)', '1.00 (1/1)'],
+      ['Tier 2', 'n/a', '0.00 (0/1)'],
+      ['paged', 'n/a', '0.00 (0/1)'],
+    ]);
+  });
+
+  it('counts refused calls per 100 steps at the tier each attempt ran', () => {
+    const set = chartData([
+      results('ladder', [
+        run('a', true, {
+          attempts: [
+            attempt(1, { exitStatus: 'step_limit', steps: 20, blockedSteps: 3 }),
+            attempt(2, { steps: 10, blockedSteps: 0 }),
+          ],
+          tierLanded: 2,
+        }),
+      ]),
+      results('tier1-only', [run('a', true, { attempts: [attempt(1, { blockedSteps: 1 })] })]),
+    ]);
+    const c = bars(set.charts, 'unsafe-attempts');
+    expect(c.xFormat).toBe('number');
+    expect(c.xMax).toBe(15);
+    expect(labels(c)).toEqual([
+      ['Tier 1', '10.0 (1/10)', '15.0 (3/20)'],
+      ['Tier 2', 'n/a', '0.0 (0/10)'],
+    ]);
+    expect(c.groups[1]?.bars.map((b) => b.value)).toEqual([0, 0]);
+  });
+
   it('prices kept runs per fixed run, and draws no bar when nothing was fixed', () => {
     const set = chartData([
       results('tier1-only', [run('a', true, { costUsd: 0.02 }), run('b', true, { costUsd: 0.04 })]),
@@ -175,6 +218,18 @@ describe('chartData on the dev results', () => {
         '2 escalations in 54 runs',
       ],
       ['false pages', '1 of 54 runs paged', '0 of 54 runs paged', '0 of 54 runs paged'],
+    ]);
+    // Runs by tier landed: 51/0/0/3, 0/0/51/3 and 51/2/0/1, the denominators below.
+    expect(labels(bars(set.charts, 'fix-rate-by-tier-landed'))).toEqual([
+      ['Tier 1', '1.00 (51/51)', 'n/a', '0.96 (49/51)'],
+      ['Tier 2', 'n/a', 'n/a', '1.00 (2/2)'],
+      ['Tier 3', 'n/a', '1.00 (51/51)', 'n/a'],
+      ['paged', '0.00 (0/3)', '0.00 (0/3)', '0.00 (0/1)'],
+    ]);
+    expect(labels(bars(set.charts, 'unsafe-attempts'))).toEqual([
+      ['Tier 1', '7.3 (61/836)', 'n/a', '7.3 (61/838)'],
+      ['Tier 2', 'n/a', 'n/a', '6.0 (3/50)'],
+      ['Tier 3', 'n/a', '6.8 (63/927)', 'n/a'],
     ]);
   });
 });

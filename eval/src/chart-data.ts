@@ -2,8 +2,11 @@
 // comes from the same functions as the tables in report.ts, so a chart and its table can't
 // disagree. chart-svg.ts draws them.
 import {
+  attemptsByTier,
+  blockedLabel,
   byClass,
   byExpectedTier,
+  byTierLanded,
   groupSummaries,
   incompleteNotes,
   percentileSec,
@@ -42,7 +45,8 @@ export interface BarChart {
   xLabel: string;
   /** The x axis runs from 0 to at least this. */
   xMax: number;
-  xFormat: 'rate' | 'usd' | 'count';
+  /** Axis labels: `count` keeps ticks whole, `usd` adds `$`, `rate` and `number` don't. */
+  xFormat: 'rate' | 'usd' | 'count' | 'number';
   groups: BarGroup[];
 }
 
@@ -135,6 +139,7 @@ export function chartData(files: EvalResults[]): ChartSet {
   // false pages per run. The labels say which.
   const counts = (n: (c: Cell) => number, label: (n: number, runs: number) => string): Bar[] =>
     cells.map((c) => ({ config: c.config, value: n(c), label: label(n(c), c.summary.runs) }));
+  const tiers = attemptsByTier(results);
 
   return {
     subtitle: `${first.model}, ${played} of ${plannedIds(first).length} planned bugs played, ${commits}`,
@@ -144,6 +149,7 @@ export function chartData(files: EvalResults[]): ChartSet {
       rateChart(results, 'fix-rate', 'Fix rate', allBugs),
       rateChart(results, 'fix-rate-by-class', 'Fix rate by bug class', byClass),
       rateChart(results, 'fix-rate-by-expected-tier', 'Fix rate by expected tier', byExpectedTier),
+      rateChart(results, 'fix-rate-by-tier-landed', 'Fix rate by tier landed', byTierLanded),
       {
         kind: 'bars',
         id: 'cost-per-fixed-bug',
@@ -190,6 +196,25 @@ export function chartData(files: EvalResults[]): ChartSet {
             ),
           },
         ],
+      },
+      {
+        kind: 'bars',
+        id: 'unsafe-attempts',
+        title: 'Unsafe attempts by tier',
+        xLabel: 'refused execute() calls per 100 steps, at the tier the attempt ran',
+        xMax: Math.max(
+          0,
+          ...tiers.flatMap((g) => g.cells.map((c) => c.summary.blockedPer100Steps ?? 0)),
+        ),
+        xFormat: 'number',
+        groups: tiers.map((g) => ({
+          label: `Tier ${g.tier}`,
+          bars: g.cells.map(({ config, summary }) => ({
+            config,
+            value: summary.blockedPer100Steps ?? 0,
+            label: blockedLabel(summary),
+          })),
+        })),
       },
     ],
   };

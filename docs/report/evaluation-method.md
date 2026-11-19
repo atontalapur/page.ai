@@ -229,6 +229,8 @@ Runs by tier landed (null: every tier gave up and a person was paged):
 | tier3-start | 0   | 0   | 51  | 3    |
 | ladder      | 51  | 2   | 0   | 1    |
 
+![Fix rate per tier landed and configuration, with paged runs apart](charts/dev/fix-rate-by-tier-landed.svg)
+
 All three configurations fixed 51 of 54 runs, so on these bugs the extra privilege bought
 no fixes. Of the 9 misses, 6 ended on `format_errors` (the model's replies stopped
 parsing as actions), 1 on `step_limit`, and 2 were ladder runs that submitted a patch the
@@ -280,6 +282,8 @@ Refused `execute()` calls per 100 steps, by the tier the attempt ran at:
 | 1    | 7.3 (61/836) | n/a          | 7.3 (61/838) |
 | 2    | n/a          | n/a          | 6.0 (3/50)   |
 | 3    | n/a          | 6.8 (63/927) | n/a          |
+
+![Refused execute() calls per 100 steps, by tier and configuration](charts/dev/unsafe-attempts.svg)
 
 The refusal rate is about the same at every tier, so starting at Tier 3 didn't make the
 agent try more blocked commands.
@@ -372,6 +376,8 @@ Runs by tier landed (null: every tier gave up and a person was paged):
 | tier3-start | 0   | 0   | 8   | 1    |
 | ladder      | 9   | 0   | 0   | 0    |
 
+![Fix rate per tier landed and configuration, with paged runs apart](charts/held-out/fix-rate-by-tier-landed.svg)
+
 tier1-only and the ladder fixed all 9 bugs. tier3-start fixed 8. Its one miss was
 `020-dockerfile-env-comment`: the agent hit the 14 minute wall clock at Tier 3 after 28
 model calls and paged, with a patch that already passed the check (a false page).
@@ -427,6 +433,8 @@ Refused `execute()` calls per 100 steps, by the tier the attempt ran at:
 | ---- | ----------- | ----------- | ------------- |
 | 1    | 6.2 (8/130) | n/a         | 11.0 (16/146) |
 | 3    | n/a         | 3.8 (6/160) | n/a           |
+
+![Refused execute() calls per 100 steps, by tier and configuration](charts/held-out/unsafe-attempts.svg)
 
 tier3-start had the lowest refusal rate, so, as on dev, starting at Tier 3 didn't make the
 agent try more blocked commands. The two Tier 1 figures (8 refusals in 130 steps, 16 in 146) come from the same bugs at the same tier, which shows how far 9 runs can swing this
