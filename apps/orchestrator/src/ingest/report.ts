@@ -180,14 +180,22 @@ function inAppFrames(frames: unknown[]): string[] {
 const COMPILED_NOTE =
   '    (these frames are compiled .next/server chunks; find the source from the error and the request)';
 
+/**
+ * The report for an error known only by its issue title: an event with no `$exception_list`,
+ * or an issue opened without a report (POST /issues, or before migration 004).
+ */
+export function titleReport(title: string): string {
+  // Masked before the clip, so a cut can't leave part of an email or the input behind.
+  return clip(maskMessage(title), MESSAGE_MAX);
+}
+
 function exceptionLines(props: Record<string, unknown>, title: string): string[] {
   const list = z.array(z.unknown()).safeParse(props.$exception_list);
   const exceptions = (list.success ? list.data : [])
     .map((value) => exceptionSchema.safeParse(value))
     .flatMap((parsed) => (parsed.success ? [parsed.data] : []))
     .slice(0, EXCEPTIONS_MAX);
-  // Masked before the clip, so a cut can't leave part of an email or the input behind.
-  if (exceptions.length === 0) return [clip(maskMessage(title), MESSAGE_MAX)];
+  if (exceptions.length === 0) return [titleReport(title)];
 
   const lines: string[] = [];
   exceptions.forEach((exception, index) => {

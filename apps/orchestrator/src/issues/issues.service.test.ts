@@ -62,7 +62,7 @@ describe('IssuesService', () => {
     expect(again.issue).toMatchObject({ id: first.issue.id, occurrences: 2 });
   });
 
-  it('sends the stored report on every fix job, or the title without one', async () => {
+  it('sends the stored report on every fix job, or the masked title without one', async () => {
     const withReport = await service.report(
       { fingerprint: `fp-${++n}`, title: 'Boom' },
       'GET /\n\nError: Boom',
@@ -80,6 +80,14 @@ describe('IssuesService', () => {
 
     const issue = await fixingIssue();
     expect((await liveJob(issue.id)).data.report).toBe('TypeError in /api/cart');
+
+    const { issue: withEmail } = await service.report({
+      fingerprint: `fp-${++n}`,
+      title: 'Error: no account for jane@example.com',
+    });
+    await service.apply(withEmail.id, triage);
+    await service.apply(withEmail.id, { type: 'start_fix' });
+    expect((await liveJob(withEmail.id)).data.report).toBe('Error: no account for [email]');
   });
 
   it('fills in the report on a repeat when the issue had none', async () => {

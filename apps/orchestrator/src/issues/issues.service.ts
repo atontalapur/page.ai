@@ -10,6 +10,7 @@ import {
 } from '@page/contracts';
 import { sql, type Selectable, type Transaction } from 'kysely';
 import type { Database, Db, IssueEventsTable, IssuesTable } from '../db/database.ts';
+import { titleReport } from '../ingest/report.ts';
 import { issueLogger, type Logger } from '../logger.ts';
 import type { FixJobQueue } from '../queue/fix-jobs.ts';
 import { DB, FIX_JOB_QUEUE, LOGGER } from '../tokens.ts';
@@ -218,8 +219,9 @@ export class IssuesService {
           issueId: id,
           fingerprint: current.fingerprint,
           tier: next.currentTier,
-          // An issue opened without a report (POST /issues) still gives the agent its error.
-          report: current.report ?? current.title,
+          // An issue opened without a report still gives the agent its error, masked as
+          // ingest masks one, since a Tier 2 PR is public.
+          report: current.report ?? titleReport(current.title),
           ...(note === undefined ? {} : { escalationNote: note }),
         },
         trx,
