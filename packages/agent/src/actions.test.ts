@@ -251,6 +251,47 @@ describe('parseAction', () => {
     });
   });
 
+  it.each([
+    ['page_ops_config', 'ops.getConfig'],
+    ['page_ops_restart', 'ops.restart'],
+  ])('reads a %s block, empty or not, as %s', (tag, tool) => {
+    for (const body of ['', 'please\n']) {
+      expect(parseAction(fence(tag, body))).toEqual({
+        ok: true,
+        action: { kind: 'host_tool', call: { kind: 'host_tool', tool } },
+      });
+    }
+  });
+
+  it('reads a set block as KEY=value, trimmed, with = allowed in the value', () => {
+    expect(parseAction(fence('page_ops_set', '\n  SETTING_NAME = a=b  \n'))).toEqual({
+      ok: true,
+      action: {
+        kind: 'host_tool',
+        call: { kind: 'host_tool', tool: 'ops.setConfig', key: 'SETTING_NAME', value: 'a=b' },
+      },
+    });
+  });
+
+  it.each(['', 'SETTING_NAME', '=value', 'A=1\nB=2'])('refuses %j as a set block', (body) => {
+    expect(errorOf(fence('page_ops_set', body))).toBe(
+      'A page_ops_set block is one line, SETTING_NAME=value.',
+    );
+  });
+
+  it('reads an unset block as the setting name', () => {
+    expect(parseAction(fence('page_ops_unset', '\n SETTING_NAME \n'))).toEqual({
+      ok: true,
+      action: {
+        kind: 'host_tool',
+        call: { kind: 'host_tool', tool: 'ops.deleteConfig', key: 'SETTING_NAME' },
+      },
+    });
+    expect(errorOf(fence('page_ops_unset', 'A\nB'))).toBe(
+      "A page_ops_unset block is one line, the setting's name.",
+    );
+  });
+
   it('wants a commit message in a push block', () => {
     expect(errorOf(fence('page_push_branch', '  '))).toMatch(
       /commit message, and this one is empty/,

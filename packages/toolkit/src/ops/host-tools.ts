@@ -103,7 +103,7 @@ export class OpsHostTools implements HostTools {
 function keyRefusal(key: string): string | null {
   return SETTING_KEY.test(key)
     ? null
-    : `${JSON.stringify(key)} is not a setting name; names look like SHIPPING_FLAT_CENTS`;
+    : `${JSON.stringify(key)} is not a setting name; names are UPPER_SNAKE_CASE, as ops.getConfig lists them`;
 }
 
 /** The request, the status and the app's answer, ok on any 2xx. */

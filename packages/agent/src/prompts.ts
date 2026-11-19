@@ -1,4 +1,10 @@
-import type { ExecContext, ExecErr, ExecOk, Result } from '@page/toolkit';
+import {
+  MAX_RESTARTS,
+  type ExecContext,
+  type ExecErr,
+  type ExecOk,
+  type Result,
+} from '@page/toolkit';
 import { ACTION_TAGS } from './actions.ts';
 
 // Adapted from upstream mini-swe-agent's mini_textbased.yaml (SWE-agent/mini-swe-agent at
@@ -11,7 +17,17 @@ import { ACTION_TAGS } from './actions.ts';
 const APP = 'apps/demo-app';
 const PNPM = 'pnpm --filter @page/demo-app';
 
-const { exec: BASH, edit: EDIT, submit: SUBMIT, pushBranch: PUSH, openPr: OPEN_PR } = ACTION_TAGS;
+const {
+  exec: BASH,
+  edit: EDIT,
+  submit: SUBMIT,
+  pushBranch: PUSH,
+  openPr: OPEN_PR,
+  opsConfig: OPS_CONFIG,
+  opsSet: OPS_SET,
+  opsUnset: OPS_UNSET,
+  opsRestart: OPS_RESTART,
+} = ACTION_TAGS;
 const FENCE = '```';
 
 type Tier = ExecContext['tier'];
@@ -41,13 +57,50 @@ ${FENCE}
 
 `;
 
-export function systemPrompt(tier?: Tier): string {
+// Tier 3 also reads and changes the live app's settings through the ops tools.
+const operates = (tier: Tier | undefined) => tier !== undefined && tier >= 3;
+
+// Examples name no real setting, so they can't hint at a fix.
+const OPS_BLOCKS = `5. Reading the live app's settings: where each one comes from (its env value or a runtime config override) and what a restart would load:
+
+${FENCE}${OPS_CONFIG}
+${FENCE}
+
+6. Setting a runtime config override, as SETTING_NAME=value. It applies when the app restarts:
+
+${FENCE}${OPS_SET}
+SETTING_NAME=value
+${FENCE}
+
+7. Dropping a runtime config override, so the env value applies again when the app restarts:
+
+${FENCE}${OPS_UNSET}
+SETTING_NAME
+${FENCE}
+
+8. Restarting the live app so a settings change applies. It waits until the app answers again:
+
+${FENCE}${OPS_RESTART}
+${FENCE}
+
+`;
+
+/** The submit block's number and when to use it, for each tier's list of blocks. */
+function submitLine(tier: Tier | undefined): string {
+  if (operates(tier)) {
+    return `${PUBLISH_BLOCKS}${OPS_BLOCKS}9. Submitting your work, once the fix is in: for a code change, after the tests pass and the pull request is open; for a settings change, after the app has restarted with it`;
+  }
   const publish = publishes(tier);
+  return `${publish ? `${PUBLISH_BLOCKS}5` : '3'}. Submitting your work, once the fix is in and the tests pass${publish ? ' and the pull request is open' : ''}`;
+}
+
+export function systemPrompt(tier?: Tier): string {
+  const kinds = operates(tier) ? 'nine' : publishes(tier) ? 'five' : 'three';
   return `You are a careful software engineer fixing a bug in a TypeScript repository. You work by running shell commands and editing files, one action at a time.
 
 Your response must contain exactly ONE action block. Put a THOUGHT section before it that explains your reasoning.
 
-There are ${publish ? 'five' : 'three'} kinds of action block:
+There are ${kinds} kinds of action block:
 
 1. A shell command:
 
@@ -66,7 +119,7 @@ the new text
 >>>>>>> REPLACE
 ${FENCE}
 
-${publish ? `${PUBLISH_BLOCKS}5` : '3'}. Submitting your work, once the fix is in and the tests pass${publish ? ' and the pull request is open' : ''}:
+${submitLine(tier)}:
 
 ${FENCE}${SUBMIT}
 ${FENCE}
@@ -75,6 +128,12 @@ Failure to follow these rules will cause your response to be rejected.`;
 }
 
 const PUBLISH_STEP = `5. Push your changes with a ${PUSH} block, then open a pull request with a ${OPEN_PR} block.
+`;
+
+const OPS_SECTION = `## The live app's settings
+
+The bug may come from the live app's settings rather than its code. The app reads its shop settings from env values, and a runtime config override replaces one. A change to an override applies only after a restart. If the code handles its inputs correctly, read the live settings with a ${OPS_CONFIG} block. To fix a bad setting, drop or correct its override, restart the app with a ${OPS_RESTART} block, and then submit: a settings fix needs no code change or pull request. You may restart the app at most ${MAX_RESTARTS} times.
+
 `;
 
 export function instancePrompt({ task, tier }: AgentTask): string {
@@ -95,7 +154,7 @@ Work step by step so you can check each change as you go.
 4. Run the test again to confirm the fix, then the whole suite, lint and typecheck: \`${PNPM} test\`, \`${PNPM} lint\` and \`${PNPM} typecheck\`.
 ${publish ? `${PUBLISH_STEP}6` : '5'}. Submit with a ${SUBMIT} block. Do not put anything else in that response. After you submit, you cannot continue working on this task.
 
-## Rules
+${operates(tier) ? OPS_SECTION : ''}## Rules
 
 1. Every response must contain exactly one action block.
 2. Each command runs in a fresh shell in the repository root. The app is in \`${APP}\`. \`cd\` and environment variables do not carry over to the next command.
