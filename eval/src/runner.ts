@@ -125,6 +125,16 @@ export interface RunEvalOptions {
   signal?: AbortSignal;
   /** The results so far, after each planned run is kept or left out. */
   onCheckpoint?: (results: EvalResults) => void;
+  /**
+   * A live demo app is set up for the ops scenarios (Tier 3), which break and check that
+   * app rather than a sandbox. Without one they are skipped.
+   */
+  canPlayOps?: boolean;
+  /**
+   * Runs before each run's first tier, to put the scenario's bug in place: for an ops
+   * scenario, reset the live app and break it. A rejection drops the run as an error.
+   */
+  prepareRun?: (scenario: Scenario, signal: AbortSignal) => Promise<void>;
 }
 
 /**
@@ -209,9 +219,24 @@ interface RunOutcome {
 }
 
 /** What scenarios a run can't play, and why. Ops bugs live in a running app. */
-export function skipReason(scenario: Scenario): string | undefined {
-  if (scenario.kind === 'ops') return 'ops scenario: needs a live demo app (Tier 3 ops tools)';
+export function skipReason(scenario: Scenario, canPlayOps = false): string | undefined {
+  if (scenario.kind === 'ops' && !canPlayOps) {
+    return 'ops scenario: needs a live demo app (set DEMO_APP_URL and OPS_SECRET)';
+  }
   return undefined;
+}
+
+/**
+ * Runs `work` after every earlier call's work has settled. The ops scenarios share one live
+ * app, so their runs take turns; code runs keep their own sandboxes and don't wait.
+ */
+function oneAtATime(): <T>(work: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve();
+  return (work) => {
+    const next = tail.then(work, work);
+    tail = next.catch(() => undefined);
+    return next;
+  };
 }
 
 /**
@@ -240,7 +265,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
   let stoppedForProvider = false;
 
   const playable = options.scenarios.filter((scenario) => {
-    const reason = skipReason(scenario);
+    const reason = skipReason(scenario, options.canPlayOps);
     if (reason !== undefined) skipped.push({ scenario: scenario.id, reason });
     return reason === undefined;
   });
@@ -277,6 +302,17 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     // left out, and no attempt starts after it, in this run or any other. A run that
     // another run's stop cuts off is left out too.
     let cutShort = false;
+    if (options.prepareRun !== undefined && !signal.aborted) {
+      try {
+        await options.prepareRun(scenario, signal);
+      } catch (error) {
+        // Stopped by a pause: the run plays later. Anything else is a broken setup.
+        if (signal.aborted) return { errors: [] };
+        return {
+          errors: [{ scenario: scenario.id, run, tier: tiers[0], message: String(error) }],
+        };
+      }
+    }
     for (const tier of tiers) {
       if (signal.aborted) break;
       const limit = await budget.reserve(limitFor(tier));
@@ -378,12 +414,16 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     summary: summarize(runs),
   });
 
+  const opsTurn = oneAtATime();
   await runInOrder(
     planned,
     options.concurrency ?? 1,
     // A run planned after the eval stopped isn't played.
-    ({ scenario, run }) =>
-      budget.stopped ? Promise.resolve<RunOutcome>({ errors: [] }) : play(scenario, run),
+    ({ scenario, run }) => {
+      const go = () =>
+        budget.stopped ? Promise.resolve<RunOutcome>({ errors: [] }) : play(scenario, run);
+      return scenario.kind === 'ops' ? opsTurn(go) : go();
+    },
     (outcome, { scenario, run }) => {
       errors.push(...outcome.errors);
       if (outcome.result === undefined) {

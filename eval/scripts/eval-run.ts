@@ -18,7 +18,10 @@ import {
 import { resultsFileName, runEval } from '../src/runner.ts';
 import { listScenarioIds, loadScenario, ScenarioError, type Scenario } from '../src/scenario.ts';
 import { loadSplit, splitIds } from '../src/split.ts';
+import { resetOverrides } from '../src/live-app.ts';
 import { dockerAttempt } from './attempt.ts';
+import { liveAppFromEnv } from './host.ts';
+import { lockLiveApp, opsApi, prepareOpsRun } from './ops-run.ts';
 
 const USAGE = `usage: OPENROUTER_API_KEY=... node eval/scripts/eval-run.ts <image> --config <${Object.keys(EVAL_CONFIGS).join('|')}>
   [--model <id>] [--runs <n>] [--max-cost <usd>] [--concurrency <n>] [--set dev|held-out]
@@ -38,7 +41,11 @@ const USAGE = `usage: OPENROUTER_API_KEY=... node eval/scripts/eval-run.ts <imag
               its spend included.
 
 The results file is rewritten after every run. Ctrl-C pauses: attempts in flight stop,
-the file is written, and --resume <file> picks up later. A second Ctrl-C quits at once.`;
+the file is written, and --resume <file> picks up later. A second Ctrl-C quits at once.
+
+Ops scenarios (Tier 3) play only with DEMO_APP_URL and OPS_SECRET set for a live demo app
+(docker compose up demo-app), and are skipped otherwise. Their runs take turns on that app,
+and one eval process at a time may use it.`;
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -106,6 +113,18 @@ for (const id of ids) {
   } catch (err) {
     if (err instanceof ScenarioError) fail(err.message);
     throw err;
+  }
+}
+
+// Ops scenarios need the live app. Without it the runner lists them as skipped.
+const liveApp = liveAppFromEnv();
+const playsOps = liveApp !== undefined && scenarios.some((sc) => sc.kind === 'ops');
+let releaseApp = () => {};
+if (playsOps) {
+  try {
+    releaseApp = lockLiveApp(liveApp);
+  } catch (err) {
+    fail(err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -208,7 +227,9 @@ const results = await runEval({
   model,
   gitSha,
   limits: ESCALATION_THRESHOLD,
-  attempt: dockerAttempt(image, client),
+  attempt: dockerAttempt(image, client, liveApp === undefined ? {} : { liveApp }),
+  canPlayOps: liveApp !== undefined,
+  ...(liveApp === undefined ? {} : { prepareRun: prepareOpsRun(liveApp) }),
   ...(resume === undefined ? {} : { resume }),
   signal: pause.signal,
   onCheckpoint: save,
@@ -220,6 +241,17 @@ const results = await runEval({
 });
 
 save(results);
+
+// The last ops run leaves its bug, and maybe the agent's overrides, on the app.
+if (playsOps) {
+  try {
+    const dropped = await resetOverrides(opsApi(liveApp));
+    console.log(`live app reset${dropped.length > 0 ? `: dropped ${dropped.join(', ')}` : ''}`);
+  } catch (err) {
+    console.warn(`warning: resetting the live app failed: ${String(err)}`);
+  }
+  releaseApp();
+}
 
 const s = results.summary;
 for (const skip of results.skipped) console.log(`  ${skip.scenario}: skipped, ${skip.reason}`);

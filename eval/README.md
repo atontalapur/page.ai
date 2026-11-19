@@ -17,8 +17,8 @@ format.
   set; the held-out bugs run once, after the escalation threshold is frozen.
   `src/split.test.ts` checks that every scenario is in one set and that the file equals
   what `deriveSplit` gives for the seed, so nobody hand-picked them. The three ops
-  scenarios (024, 029, 030) are in the split, but the runner can't play them yet and
-  lists them as skipped.
+  scenarios (024, 029, 030) are in the split. The runner plays them only against a live
+  demo app (below) and lists them as skipped without one.
 
 ## Eval runner (#15)
 
@@ -83,7 +83,15 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   `--config`, `--model` and `--runs` default to the file's, and the commit has to match,
   so check out the file's `gitSha` first if `main` moved. `--max-cost` is the total, the
   earlier spend included. Don't let the laptop sleep mid-run: pause first.
-- Ops scenarios (Tier 3) are skipped with a reason for now: they need a live demo app.
+- Ops scenarios (Tier 3) break a live demo app, not the sandbox, so they need one: set
+  `DEMO_APP_URL` and `OPS_SECRET` (for example `docker compose up demo-app` with
+  `OPS_SECRET` set). Without them they are skipped with a reason. Before each run the
+  runner drops every runtime config override on the app, restarts it and runs
+  `break-ops.sh`. Tier 3 attempts get the ops tools on that app (`page_ops_*` blocks);
+  code scenarios at Tier 3 get them on an in-memory fake. `check.sh` runs on the host as
+  soon as the agent stops, before the next tier can change the app. Ops runs take turns
+  on the app (code runs don't wait), one eval process at a time may hold it, and the
+  eval resets it when it ends. 024 needs a rollback, which has no agent tool yet.
 - An attempt that throws (a sandbox or `break.sh` failure) goes in `errors` and its run
   is left out; the eval goes on. If it failed after the agent ran (the diff or the check
   sandbox), the agent's real cost counts against the budget; otherwise its spend is

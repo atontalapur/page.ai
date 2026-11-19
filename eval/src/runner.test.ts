@@ -193,6 +193,89 @@ describe('runEval', () => {
     expect(results.summary).toMatchObject({ runs: 0, fixRate: 0, blockedPer100Steps: null });
   });
 
+  it('plays ops scenarios with a live app, preparing each run before its first tier', async () => {
+    const order: string[] = [];
+    const { fn, calls } = scripted([{ exitStatus: 'step_limit' }, {}, {}]);
+    const results = await runEval(
+      base(
+        (s, tier, limit, signal) => {
+          order.push(`T${tier} ${s.id}`);
+          return fn(s, tier, limit, signal);
+        },
+        {
+          config: 'tier3-start',
+          scenarios: [scenario('029-ops', 3)],
+          runsPerScenario: 2,
+          canPlayOps: true,
+          prepareRun: (s) => {
+            order.push(`prepare ${s.id}`);
+            return Promise.resolve();
+          },
+        },
+      ),
+    );
+    expect(results.skipped).toEqual([]);
+    expect(order).toEqual(['prepare 029-ops', 'T3 029-ops', 'prepare 029-ops', 'T3 029-ops']);
+    expect(calls).toHaveLength(2);
+    expect(results.runs.map((r) => r.tierLanded)).toEqual([null, 3]);
+  });
+
+  it('drops a run whose setup fails, and plays the next', async () => {
+    const { fn, calls } = scripted([{}]);
+    let prepared = 0;
+    const results = await runEval(
+      base(fn, {
+        config: 'tier3-start',
+        scenarios: [scenario('029-ops', 3)],
+        runsPerScenario: 2,
+        canPlayOps: true,
+        prepareRun: () => {
+          prepared += 1;
+          return prepared === 1
+            ? Promise.reject(new Error('break-ops.sh exited 1'))
+            : Promise.resolve();
+        },
+      }),
+    );
+    expect(results.errors).toEqual([
+      { scenario: '029-ops', run: 1, tier: 3, message: 'Error: break-ops.sh exited 1' },
+    ]);
+    expect(calls).toHaveLength(1);
+    expect(results.runs.map((r) => r.run)).toEqual([2]);
+  });
+
+  it('plays ops runs one at a time on the shared app, while code runs go on', async () => {
+    const { fn, started, settle } = manual();
+    const prepared: string[] = [];
+    const done = runEval(
+      base(fn, {
+        config: 'tier3-start',
+        scenarios: [scenario('029-a', 3), scenario('030-b', 3), scenario('001-c')],
+        concurrency: 3,
+        maxCostUsd: 10,
+        canPlayOps: true,
+        prepareRun: (s) => {
+          prepared.push(s.id);
+          return Promise.resolve();
+        },
+      }),
+    );
+    const ids = () => started.map((s) => s.id).sort();
+    const at = (id: string) => started.findIndex((s) => s.id === id);
+    await flush();
+    // 030 waits for 029's run; 001 is a code scenario and starts at once.
+    expect(ids()).toEqual(['001-c', '029-a']);
+    expect(prepared.sort()).toEqual(['001-c', '029-a']);
+    settle(at('029-a'));
+    await flush();
+    await flush();
+    expect(ids()).toEqual(['001-c', '029-a', '030-b']);
+    settle(at('001-c'));
+    settle(at('030-b'));
+    const results = await done;
+    expect(results.runs.map((r) => r.scenario)).toEqual(['029-a', '030-b', '001-c']);
+  });
+
   it('lowers the last attempt to the budget left, then stops and drops the cut-short run', async () => {
     const { fn, calls } = scripted([
       { costUsd: 0.7 },

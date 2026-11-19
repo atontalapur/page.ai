@@ -50,7 +50,12 @@ export function runHost(
   });
 }
 
+/** The env an ops scenario's scripts read the live app from. */
+export function appEnv(app: LiveApp): NodeJS.ProcessEnv {
+  return { DEMO_APP_URL: app.url, OPS_SECRET: app.opsSecret };
+}
+
 /** Runs each script with `sh <path>` from the repo root, with the app in its env. */
 export function hostShell(app: LiveApp): HostShell {
-  return (path) => runHost('sh', [path], { DEMO_APP_URL: app.url, OPS_SECRET: app.opsSecret });
+  return (path) => runHost('sh', [path], appEnv(app));
 }

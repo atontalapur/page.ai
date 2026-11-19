@@ -1,22 +1,31 @@
 // One eval attempt in real sandboxes: break.sh and the agent at one tier, then check.sh
 // on the agent's diff in a second sandbox, which the runner starts while it plays on.
+// An ops scenario's bug is in the live app instead (prepareOpsRun planted it), so its
+// sandbox is clean, Tier 3 gets ops tools on that app, and check.sh runs on the host
+// against it as soon as the agent stops.
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { budgetFor, runAgent } from '@page/agent';
 import type { ModelClient } from '@page/model-client';
 import {
+  combineHostTools,
   DEFAULT_TIMEOUT_MS,
   DockerExecRunner,
   execute,
   FakeGitHub,
+  FakeOps,
   GitHubHostTools,
   InMemoryAuditSink,
+  OpsHostTools,
   StepLog,
+  type HostTools,
 } from '@page/toolkit';
 import type { Attempt } from '../src/results.ts';
 import { AttemptError, ProviderError, type AgentAttempt, type AttemptFn } from '../src/runner.ts';
 import type { Scenario } from '../src/scenario.ts';
+import type { LiveApp } from './host.ts';
+import { checkLive, opsApi } from './ops-run.ts';
 import {
   agentDiff,
   checkInFreshSandbox,
@@ -34,10 +43,16 @@ interface Scripts {
   checkScript: string;
 }
 
-export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
-  // Every tier and run of a scenario uses the same two scripts.
+export function dockerAttempt(
+  image: string,
+  model: ModelClient,
+  { liveApp }: { liveApp?: LiveApp } = {},
+): AttemptFn {
+  // Every tier and run of a scenario uses the same two scripts. An ops scenario plants
+  // nothing in the sandbox, and its check.sh runs on the host from its file.
   const scripts = new Map<string, Promise<Scripts>>();
   const scriptsFor = (scenario: Scenario) => {
+    if (scenario.kind === 'ops') return Promise.resolve({ breakScript: 'true', checkScript: '' });
     let read = scripts.get(scenario.dir);
     if (read === undefined) {
       read = Promise.all(
@@ -54,6 +69,10 @@ export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
   // Async start and stop: several attempts and checks run at once, and a blocking docker
   // call would stall them all.
   return async (scenario, tier, costLimitUsd, signal): Promise<AgentAttempt> => {
+    const app = scenario.kind === 'ops' ? liveApp : undefined;
+    if (scenario.kind === 'ops' && app === undefined) {
+      throw new Error(`${scenario.id} is an ops scenario, and no live app is set`);
+    }
     const { breakScript, checkScript } = await scriptsFor(scenario);
     // Set once the agent has run. Anything that fails after that reports it, so the
     // runner charges the budget what was really spent.
@@ -78,10 +97,19 @@ export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
         const steps = new StepLog({ sink, issueId, runId });
         // From Tier 2 the agent pushes and opens a PR. An eval run must not touch the real
         // demo repo, so those go to an in-memory GitHub.
-        const hostTools =
+        const github =
           tier >= 2
             ? new GitHubHostTools({ github: new FakeGitHub(), workspace: runner, issueId, runId })
             : undefined;
+        // Tier 3 gets the ops tools: on the live app for an ops scenario, and in memory for a
+        // code scenario, whose bug isn't in any app's settings.
+        const ops =
+          tier >= 3
+            ? new OpsHostTools({ ops: app ? opsApi(app) : new FakeOps(), signal })
+            : undefined;
+        const parts = [github, ops].filter((p): p is NonNullable<typeof p> => p !== undefined);
+        const hostTools: HostTools | undefined =
+          parts.length === 0 ? undefined : combineHostTools(...parts);
 
         const run = await runAgent(
           { task: scenario.meta.report, tier },
@@ -117,7 +145,7 @@ export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
         agent = {
           tier,
           exitStatus: run.exitStatus,
-          prOpened: hostTools?.prUrl != null,
+          prOpened: github?.prUrl != null,
           modelCalls: run.modelCalls,
           costUsd: run.costUsd,
           durationMs: Date.now() - startedAt,
@@ -130,6 +158,12 @@ export function dockerAttempt(image: string, model: ModelClient): AttemptFn {
         await stopSandboxAsync(name);
       }
 
+      // The live app holds the outcome, and the next tier may change it, so the check runs
+      // now rather than alongside that tier.
+      if (app !== undefined) {
+        const passed = await checkLive(scenario, app, signal);
+        return { agent, check: () => Promise.resolve(passed) };
+      }
       // check.sh never enters the agent's sandbox. It runs on every outcome, so an
       // escalated patch that already works is counted.
       return {
