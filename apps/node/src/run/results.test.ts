@@ -9,13 +9,13 @@ const logger = pino({ enabled: false });
 
 /** A pg-boss stand-in whose `send` fails `failures` times before it works. */
 function boss(failures: number) {
-  const sent: [string, unknown][] = [];
+  const sent: [string, unknown, unknown][] = [];
   let calls = 0;
   const fake = {
-    send(name: string, data: unknown) {
+    send(name: string, data: unknown, options: unknown) {
       calls += 1;
       if (calls <= failures) return Promise.reject(new Error('connection reset'));
-      sent.push([name, data]);
+      sent.push([name, data, options]);
       return Promise.resolve('job-id');
     },
   };
@@ -23,10 +23,10 @@ function boss(failures: number) {
 }
 
 describe('PgBossRunResults', () => {
-  it('sends the checked result to the run_finished queue', async () => {
+  it('sends the checked result to the run_finished queue under the run id', async () => {
     const b = boss(0);
     await new PgBossRunResults({ boss: b.boss, logger }).send(job);
-    expect(b.sent).toEqual([[RUN_FINISHED_QUEUE, job]]);
+    expect(b.sent).toEqual([[RUN_FINISHED_QUEUE, job, { id: job.result.runId }]]);
   });
 
   it('retries a failed send, then gives up and rejects', async () => {

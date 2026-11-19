@@ -51,6 +51,8 @@ export const MAX_RUN_DIFF_CHARS = 1_000_000;
  * Sent by the node daemon when a fix run ends, so the orchestrator records it (#136). The
  * queue is durable where the socket is best effort: the `runs` row, the issue event, the
  * escalation and the next tier's job all come from this. `result` is `node.run.finished`.
+ * The daemon sends it with `result.runId` as the pg-boss job id, so it is queued once and
+ * the orchestrator finds it by that id.
  */
 export const runFinishedJobSchema = z
   .strictObject({

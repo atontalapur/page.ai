@@ -58,10 +58,8 @@ export async function createJobQueues(boss: PgBoss): Promise<JobQueues> {
       return boss.send(NOTIFY_QUEUE, data, { singletonKey, ...dbOpt(trx) });
     },
     async runFinishedPending(runId, trx) {
-      const jobs = await boss.findJobs(RUN_FINISHED_QUEUE, {
-        data: { result: { runId } },
-        ...dbOpt(trx),
-      });
+      // The daemon sends each result with the run id as its job id: a key lookup, not a scan.
+      const jobs = await boss.findJobs(RUN_FINISHED_QUEUE, { id: runId, ...dbOpt(trx) });
       return jobs.some((job) => PENDING_STATES.has(job.state));
     },
   };

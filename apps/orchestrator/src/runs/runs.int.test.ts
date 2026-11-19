@@ -88,15 +88,17 @@ describe('fix runs on real Postgres', () => {
         toTier: 2,
         note: escalationNoteFixture,
       }),
+      { id: tier1.runId },
     );
     const tier2 = await claim();
     expect(tier2).toMatchObject({ tier: 2, report, escalationNote: escalationNoteFixture });
 
     const diff = '--- a/src/shop/money.ts\n+++ b/src/shop/money.ts\n';
-    await deps.boss.send(RUN_FINISHED_QUEUE, {
-      ...finished(tier2, { status: 'succeeded', note: null }),
-      diff,
-    });
+    await deps.boss.send(
+      RUN_FINISHED_QUEUE,
+      { ...finished(tier2, { status: 'succeeded', note: null }), diff },
+      { id: tier2.runId },
+    );
     await expect
       .poll(async () => (await issues.get(issue.id)).status, { timeout: 10_000 })
       .toBe('awaiting_approval');

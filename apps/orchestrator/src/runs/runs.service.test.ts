@@ -251,7 +251,7 @@ describe('RunsService.recordLost', () => {
     const { issue, job } = await fixing();
     // The daemon queued its result, then its cleanup threw and the fix job failed too.
     const result = finished(job, escalation);
-    await deps.boss.send(RUN_FINISHED_QUEUE, result);
+    await deps.boss.send(RUN_FINISHED_QUEUE, result, { id: job.runId });
     const letter = await deadLetter(job, new Error('docker rm failed'));
 
     expect(await runs.recordLost(letter.data, 'docker rm failed')).toEqual({

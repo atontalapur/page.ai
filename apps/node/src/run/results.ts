@@ -51,7 +51,9 @@ export class PgBossRunResults implements RunResults {
     const { runId } = data.result;
     for (let attempt = 1; ; attempt++) {
       try {
-        await this.boss.send(RUN_FINISHED_QUEUE, data);
+        // The run id is the job id, so the orchestrator looks the job up by it, and a retry
+        // after a send that went through finds the id taken: pg-boss skips it and returns null.
+        await this.boss.send(RUN_FINISHED_QUEUE, data, { id: runId });
         return;
       } catch (error) {
         if (attempt >= this.attempts) {
