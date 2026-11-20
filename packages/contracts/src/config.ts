@@ -56,6 +56,34 @@ function requireUnlessFake(keys: readonly string[]) {
   return [check, { when: () => true }] as const;
 }
 
+// The demo app refuses an ops secret under 32 characters (apps/demo-app/src/ops/auth.ts).
+const MIN_OPS_SECRET_LENGTH = 32;
+
+/**
+ * OPS_APP_URL needs an OPS_SECRET the demo app accepts. The secret alone is checked only when
+ * the URL is set, since it may be there for docker compose. Runs even when other fields fail.
+ */
+function opsSecretForApp() {
+  const check = (config: Record<string, unknown> | undefined, ctx: z.RefinementCtx) => {
+    if (config?.OPS_APP_URL === undefined) return;
+    const secret = config.OPS_SECRET;
+    if (typeof secret !== 'string') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['OPS_SECRET'],
+        message: 'OPS_SECRET is required with OPS_APP_URL',
+      });
+    } else if (secret.length < MIN_OPS_SECRET_LENGTH) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['OPS_SECRET'],
+        message: `OPS_SECRET is under ${MIN_OPS_SECRET_LENGTH} characters, which the demo app refuses`,
+      });
+    }
+  };
+  return [check, { when: () => true }] as const;
+}
+
 export const orchestratorConfigSchema = envSchema(
   baseConfigSchema
     .extend({
@@ -111,6 +139,12 @@ export const nodeConfigSchema = envSchema(
         .string()
         .regex(/^[\w.-]+\/[\w.-]+$/, 'owner/name')
         .optional(),
+      // The live demo app whose ops API Tier 3 runs get (#155). Unset, they get none. Not
+      // DEMO_APP_URL: .env keeps staging's app there for the e2e test, and a local daemon
+      // must not change staging by accident.
+      OPS_APP_URL: z.url({ protocol: /^https?$/ }).optional(),
+      // That app's OPS_SECRET. Also docker compose's, so it may be set without OPS_APP_URL.
+      OPS_SECRET: secret.optional(),
     })
     .superRefine(
       ...requireUnlessFake([
@@ -119,7 +153,8 @@ export const nodeConfigSchema = envSchema(
         'GITHUB_TOKEN',
         'GITHUB_REPO',
       ]),
-    ),
+    )
+    .superRefine(...opsSecretForApp()),
 );
 
 export type NodeConfig = z.infer<typeof nodeConfigSchema>;

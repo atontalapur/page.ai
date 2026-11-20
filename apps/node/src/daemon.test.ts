@@ -1,8 +1,9 @@
-import { jobFixtures } from '@page/contracts/fixtures';
-import { FakeGitHub, FakeRunner, InMemoryAuditSink } from '@page/toolkit';
+import { jobFixtures, nodeEnvFixture } from '@page/contracts/fixtures';
+import { FakeGitHub, FakeOps, FakeRunner, HttpOps, InMemoryAuditSink } from '@page/toolkit';
 import { pino } from 'pino';
 import { describe, expect, it, vi } from 'vitest';
-import { createDaemon, type Adapters } from './daemon.ts';
+import { loadConfig } from './config.ts';
+import { createDaemon, opsFor, type Adapters } from './daemon.ts';
 import { FakeJobSource } from './jobs/fake-job-source.ts';
 import { FakeLink } from './link/fake-link.ts';
 import { bashReply, ScriptedModel, submitReply } from './model/scripted-model.ts';
@@ -142,5 +143,56 @@ describe('createDaemon', () => {
       { status: 'succeeded' },
       { status: 'killed' },
     ]);
+  });
+
+  it('gives a Tier 3 job the ops API', async () => {
+    const ops = new FakeOps();
+    const a = {
+      ...adapters(),
+      ops,
+      model: new ScriptedModel(['```page_ops_config\n```', submitReply()]),
+    };
+    const daemon = createDaemon(a, pino({ enabled: false }));
+    await daemon.start();
+    await a.jobs.deliver({ ...jobFixtures.fix, tier: 3 });
+    expect(ops.calls).toEqual(['getConfig']);
+  });
+});
+
+describe('opsFor', () => {
+  const capture = () => {
+    const lines: { level: number; msg: string }[] = [];
+    const logger = pino(
+      {},
+      { write: (line: string) => void lines.push(JSON.parse(line) as (typeof lines)[number]) },
+    );
+    return { logger, lines };
+  };
+  const config = (env: Record<string, string>) => {
+    const result = loadConfig({ ...nodeEnvFixture, ...env });
+    if (!result.ok) throw new Error(result.error);
+    return result.value;
+  };
+
+  it('talks to the live demo app when its URL and ops secret are set', () => {
+    const { logger, lines } = capture();
+    const env = { OPS_APP_URL: 'https://demo.example.com', OPS_SECRET: 'a'.repeat(32) };
+    expect(opsFor(config(env), logger)).toBeInstanceOf(HttpOps);
+    expect(lines).toEqual([]);
+  });
+
+  it('gives no ops API without them, and says so once', () => {
+    const { logger, lines } = capture();
+    // Staging's app in DEMO_APP_URL must not reach the daemon.
+    const env = { DEMO_APP_URL: 'https://staging.example.com', OPS_SECRET: 'a'.repeat(32) };
+    expect(opsFor(config(env), logger)).toBeUndefined();
+    expect(lines).toMatchObject([
+      { level: 40, msg: 'OPS_APP_URL is unset: Tier 3 runs get no ops tools' },
+    ]);
+  });
+
+  it('uses an in-memory ops API with fakes on', () => {
+    const { logger } = capture();
+    expect(opsFor(config({ USE_FAKE_ADAPTERS: 'true' }), logger)).toBeInstanceOf(FakeOps);
   });
 });
