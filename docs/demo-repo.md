@@ -139,6 +139,10 @@ bug only. The script refuses any scenario outside the dev set in `eval/split.jso
 running a held-out bug before the held-out eval spends it (#114). The demo image fails
 `smoke.sh` on the demo app's tests, because the bug is there. That is expected.
 
+The deployed app is built with `next build`, and 001 throws while it prerenders, so 001 runs
+only under `next dev` (the e2e test's local target). Staging's page-demo `main` holds
+`016-product-id-or-slug` instead (since 2026-11-19).
+
 `demo-sync.sh` builds both images and opens a PR on page-demo that puts `main` on the demo
 image's tree. Run it once to seed `main`, and again after every demo PR merges to put the
 bug back:
@@ -152,5 +156,6 @@ gh pr merge -R atontalapur/page-demo --squash --delete-branch pageagents/demo-re
 The PR comes from a `pageagents/demo-reset-*` branch, the only branches the rulesets let
 anyone create, and the owner merges it like any other PR. If `main` already matches, the
 script says so and opens nothing. Leave an agent's demo PR unmerged and closing it works as
-well, but a merged one needs the reset before the next demo. Restart the deployed app on the
-reset tree too, or it keeps serving the fix.
+well, but a merged one needs the reset before the next demo. Railway's `demo-app` service
+builds page-demo `main`, so merging either PR redeploys staging: an agent's fix takes the bug
+off staging, and the reset puts it back.
