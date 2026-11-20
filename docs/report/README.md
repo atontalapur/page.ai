@@ -14,8 +14,8 @@ they're wrong.
 | System: agent loop and escalation thresholds               | Arjun    | not started                              |                                                              |
 | System: node daemon, sandbox, tiered toolkit and demo app  | Advaith  | not started                              |                                                              |
 | System: dashboard                                          | Daniyal  | not started                              |                                                              |
-| Evaluation method                                          | Advaith  | drafted, needs review (#17)              | [evaluation-method.md](evaluation-method.md)                 |
-| Results (dev, held-out and ops)                            | Advaith  | drafted, needs review (#17)              | [evaluation-method.md#results](evaluation-method.md#results) |
+| Evaluation method                                          | Advaith  | reviewed (#17)                           | [evaluation-method.md](evaluation-method.md)                 |
+| Results (dev, held-out and ops)                            | Advaith  | reviewed (#17)                           | [evaluation-method.md#results](evaluation-method.md#results) |
 | Discussion and limitations                                 | open     | not started                              |                                                              |
 | Appendix: eval preregistration                             | Advaith  | done                                     | [eval-prereg.md](eval-prereg.md)                             |
 | Contributions                                              | everyone | ongoing, due Dec 4                       | [contributions.md](../contributions.md)                      |
