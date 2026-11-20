@@ -15,8 +15,8 @@
     "test:integration": "vitest run --project integration"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.15",
-    "@nestjs/testing": "^12.4.0",
+    "@electric-sql/pglite": "^0.5.16",
+    "@nestjs/testing": "^12.5.0",
     "@page/config": "workspace:*",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
@@ -26,13 +26,13 @@
     "vitest": "catalog:"
   },
   "dependencies": {
-    "@nestjs/common": "^12.4.0",
-    "@nestjs/core": "^12.4.0",
-    "@nestjs/platform-fastify": "^12.4.0",
+    "@nestjs/common": "^12.5.0",
+    "@nestjs/core": "^12.5.0",
+    "@nestjs/platform-fastify": "^12.5.0",
     "@page/contracts": "workspace:*",
     "@page/db-migrations": "workspace:*",
     "@page/model-client": "workspace:*",
-    "kysely": "^0.29.8",
+    "kysely": "^0.29.9",
     "pg": "catalog:",
     "pg-boss": "catalog:",
     "pino": "catalog:",
