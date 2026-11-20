@@ -1,0 +1,495 @@
+{
+  "v": 1,
+  "prepare": null,
+  "runs": [
+    {
+      "v": 1,
+      "scenario": "016-product-id-or-slug",
+      "target": "staging",
+      "expect": "approval",
+      "startedAt": "2026-11-20T01:06:15.398Z",
+      "passed": true,
+      "failedStep": null,
+      "error": null,
+      "steps": [
+        {
+          "step": "seed",
+          "offsetMs": 1,
+          "durationMs": 147,
+          "ok": true,
+          "detail": "016-product-id-or-slug on staging"
+        },
+        {
+          "step": "trigger",
+          "offsetMs": 148,
+          "durationMs": 582,
+          "ok": true,
+          "detail": "500"
+        },
+        {
+          "step": "issue",
+          "offsetMs": 730,
+          "durationMs": 6066,
+          "ok": true,
+          "detail": "7622a3c9-34b8-4706-9f3c-1b6d24fb3092 \"error: operator does not exist: text = integer\""
+        },
+        {
+          "step": "triage",
+          "offsetMs": 6796,
+          "durationMs": 3043,
+          "ok": true,
+          "detail": "backend-api/high"
+        },
+        {
+          "step": "claim",
+          "offsetMs": 9839,
+          "durationMs": 204,
+          "ok": true,
+          "detail": "run 5ab07c12-857d-474f-b72b-43743e56cb77 at tier 1"
+        },
+        {
+          "step": "fix",
+          "offsetMs": 10043,
+          "durationMs": 256272,
+          "ok": true,
+          "detail": "issue awaiting_approval, tiers 1"
+        },
+        {
+          "step": "outcome",
+          "offsetMs": 266320,
+          "durationMs": 63,
+          "ok": true,
+          "detail": "issue awaiting_approval"
+        },
+        {
+          "step": "assert",
+          "offsetMs": 266383,
+          "durationMs": 44,
+          "ok": true,
+          "detail": "9 checks, 2 warnings"
+        },
+        {
+          "step": "reset",
+          "offsetMs": 266427,
+          "durationMs": 476,
+          "ok": true,
+          "detail": "kill issue 7622a3c9-34b8-4706-9f3c-1b6d24fb3092, find the runs of issue 7622a3c9-34b8-4706-9f3c-1b6d24fb3092, close PR of 5ab07c12-857d-474f-b72b-43743e56cb77, unseed"
+        }
+      ],
+      "issueId": "7622a3c9-34b8-4706-9f3c-1b6d24fb3092",
+      "runs": [
+        {
+          "runId": "5ab07c12-857d-474f-b72b-43743e56cb77",
+          "tier": 1
+        }
+      ],
+      "prUrl": null,
+      "timeToOutcomeMs": 266235,
+      "checks": [
+        {
+          "name": "issue.status",
+          "level": "error",
+          "ok": true,
+          "detail": "awaiting_approval, want awaiting_approval or fixing with a pending approval"
+        },
+        {
+          "name": "issue.triaged",
+          "level": "error",
+          "ok": true,
+          "detail": "class backend-api, severity high"
+        },
+        {
+          "name": "issue.class",
+          "level": "warn",
+          "ok": false,
+          "detail": "backend-api, scenario says database"
+        },
+        {
+          "name": "run.current",
+          "level": "error",
+          "ok": true,
+          "detail": "issue on 5ab07c12-857d-474f-b72b-43743e56cb77, test followed 5ab07c12-857d-474f-b72b-43743e56cb77"
+        },
+        {
+          "name": "run.tier",
+          "level": "warn",
+          "ok": false,
+          "detail": "tier 1, scenario expects 2"
+        },
+        {
+          "name": "run.steps",
+          "level": "error",
+          "ok": true,
+          "detail": "19 steps recorded"
+        },
+        {
+          "name": "run.job",
+          "level": "error",
+          "ok": true,
+          "detail": "fix job completed"
+        },
+        {
+          "name": "run.row",
+          "level": "error",
+          "ok": true,
+          "detail": "runs row succeeded"
+        },
+        {
+          "name": "time.outcome",
+          "level": "error",
+          "ok": true,
+          "detail": "4m26s from trigger, budget 48m00s"
+        }
+      ],
+      "reset": [
+        {
+          "action": "kill issue 7622a3c9-34b8-4706-9f3c-1b6d24fb3092",
+          "ok": true,
+          "detail": "was awaiting_approval"
+        },
+        {
+          "action": "find the runs of issue 7622a3c9-34b8-4706-9f3c-1b6d24fb3092",
+          "ok": true,
+          "detail": "1 runs"
+        },
+        {
+          "action": "close PR of 5ab07c12-857d-474f-b72b-43743e56cb77",
+          "ok": true,
+          "detail": "none open"
+        },
+        {
+          "action": "unseed",
+          "ok": true,
+          "detail": "staging"
+        }
+      ],
+      "seedLogs": null
+    },
+    {
+      "v": 1,
+      "scenario": "016-product-id-or-slug",
+      "target": "staging",
+      "expect": "approval",
+      "startedAt": "2026-11-20T01:10:42.301Z",
+      "passed": true,
+      "failedStep": null,
+      "error": null,
+      "steps": [
+        {
+          "step": "seed",
+          "offsetMs": 1,
+          "durationMs": 144,
+          "ok": true,
+          "detail": "016-product-id-or-slug on staging"
+        },
+        {
+          "step": "trigger",
+          "offsetMs": 155,
+          "durationMs": 393,
+          "ok": true,
+          "detail": "500"
+        },
+        {
+          "step": "issue",
+          "offsetMs": 548,
+          "durationMs": 3043,
+          "ok": true,
+          "detail": "af6f59af-d957-4468-80bb-37f3db336464 \"error: operator does not exist: text = integer\""
+        },
+        {
+          "step": "triage",
+          "offsetMs": 3591,
+          "durationMs": 3040,
+          "ok": true,
+          "detail": "backend-api/high"
+        },
+        {
+          "step": "claim",
+          "offsetMs": 6631,
+          "durationMs": 44,
+          "ok": true,
+          "detail": "run febb94de-cc9b-42a7-b270-2d08361c06ad at tier 1"
+        },
+        {
+          "step": "fix",
+          "offsetMs": 6676,
+          "durationMs": 149342,
+          "ok": true,
+          "detail": "issue awaiting_approval, tiers 1"
+        },
+        {
+          "step": "outcome",
+          "offsetMs": 156020,
+          "durationMs": 41,
+          "ok": true,
+          "detail": "issue awaiting_approval"
+        },
+        {
+          "step": "assert",
+          "offsetMs": 156062,
+          "durationMs": 43,
+          "ok": true,
+          "detail": "9 checks, 2 warnings"
+        },
+        {
+          "step": "reset",
+          "offsetMs": 156105,
+          "durationMs": 376,
+          "ok": true,
+          "detail": "kill issue af6f59af-d957-4468-80bb-37f3db336464, find the runs of issue af6f59af-d957-4468-80bb-37f3db336464, close PR of febb94de-cc9b-42a7-b270-2d08361c06ad, unseed"
+        }
+      ],
+      "issueId": "af6f59af-d957-4468-80bb-37f3db336464",
+      "runs": [
+        {
+          "runId": "febb94de-cc9b-42a7-b270-2d08361c06ad",
+          "tier": 1
+        }
+      ],
+      "prUrl": null,
+      "timeToOutcomeMs": 155906,
+      "checks": [
+        {
+          "name": "issue.status",
+          "level": "error",
+          "ok": true,
+          "detail": "awaiting_approval, want awaiting_approval or fixing with a pending approval"
+        },
+        {
+          "name": "issue.triaged",
+          "level": "error",
+          "ok": true,
+          "detail": "class backend-api, severity high"
+        },
+        {
+          "name": "issue.class",
+          "level": "warn",
+          "ok": false,
+          "detail": "backend-api, scenario says database"
+        },
+        {
+          "name": "run.current",
+          "level": "error",
+          "ok": true,
+          "detail": "issue on febb94de-cc9b-42a7-b270-2d08361c06ad, test followed febb94de-cc9b-42a7-b270-2d08361c06ad"
+        },
+        {
+          "name": "run.tier",
+          "level": "warn",
+          "ok": false,
+          "detail": "tier 1, scenario expects 2"
+        },
+        {
+          "name": "run.steps",
+          "level": "error",
+          "ok": true,
+          "detail": "23 steps recorded"
+        },
+        {
+          "name": "run.job",
+          "level": "error",
+          "ok": true,
+          "detail": "fix job completed"
+        },
+        {
+          "name": "run.row",
+          "level": "error",
+          "ok": true,
+          "detail": "runs row succeeded"
+        },
+        {
+          "name": "time.outcome",
+          "level": "error",
+          "ok": true,
+          "detail": "2m36s from trigger, budget 48m00s"
+        }
+      ],
+      "reset": [
+        {
+          "action": "kill issue af6f59af-d957-4468-80bb-37f3db336464",
+          "ok": true,
+          "detail": "was awaiting_approval"
+        },
+        {
+          "action": "find the runs of issue af6f59af-d957-4468-80bb-37f3db336464",
+          "ok": true,
+          "detail": "1 runs"
+        },
+        {
+          "action": "close PR of febb94de-cc9b-42a7-b270-2d08361c06ad",
+          "ok": true,
+          "detail": "none open"
+        },
+        {
+          "action": "unseed",
+          "ok": true,
+          "detail": "staging"
+        }
+      ],
+      "seedLogs": null
+    },
+    {
+      "v": 1,
+      "scenario": "016-product-id-or-slug",
+      "target": "staging",
+      "expect": "approval",
+      "startedAt": "2026-11-20T01:13:18.782Z",
+      "passed": true,
+      "failedStep": null,
+      "error": null,
+      "steps": [
+        {
+          "step": "seed",
+          "offsetMs": 0,
+          "durationMs": 153,
+          "ok": true,
+          "detail": "016-product-id-or-slug on staging"
+        },
+        {
+          "step": "trigger",
+          "offsetMs": 153,
+          "durationMs": 393,
+          "ok": true,
+          "detail": "500"
+        },
+        {
+          "step": "issue",
+          "offsetMs": 546,
+          "durationMs": 6072,
+          "ok": true,
+          "detail": "74884a3d-2a35-4a03-b2ef-2ac9065b109e \"error: operator does not exist: text = integer\""
+        },
+        {
+          "step": "triage",
+          "offsetMs": 6618,
+          "durationMs": 22,
+          "ok": true,
+          "detail": "backend-api/high"
+        },
+        {
+          "step": "claim",
+          "offsetMs": 6640,
+          "durationMs": 3085,
+          "ok": true,
+          "detail": "run c929efd4-b228-46df-9dbf-cc90d5be8de6 at tier 1"
+        },
+        {
+          "step": "fix",
+          "offsetMs": 9725,
+          "durationMs": 234719,
+          "ok": true,
+          "detail": "issue awaiting_approval, tiers 1"
+        },
+        {
+          "step": "outcome",
+          "offsetMs": 244463,
+          "durationMs": 114,
+          "ok": true,
+          "detail": "issue awaiting_approval"
+        },
+        {
+          "step": "assert",
+          "offsetMs": 244577,
+          "durationMs": 53,
+          "ok": true,
+          "detail": "9 checks, 2 warnings"
+        },
+        {
+          "step": "reset",
+          "offsetMs": 244630,
+          "durationMs": 525,
+          "ok": true,
+          "detail": "kill issue 74884a3d-2a35-4a03-b2ef-2ac9065b109e, find the runs of issue 74884a3d-2a35-4a03-b2ef-2ac9065b109e, close PR of c929efd4-b228-46df-9dbf-cc90d5be8de6, unseed"
+        }
+      ],
+      "issueId": "74884a3d-2a35-4a03-b2ef-2ac9065b109e",
+      "runs": [
+        {
+          "runId": "c929efd4-b228-46df-9dbf-cc90d5be8de6",
+          "tier": 1
+        }
+      ],
+      "prUrl": null,
+      "timeToOutcomeMs": 244424,
+      "checks": [
+        {
+          "name": "issue.status",
+          "level": "error",
+          "ok": true,
+          "detail": "awaiting_approval, want awaiting_approval or fixing with a pending approval"
+        },
+        {
+          "name": "issue.triaged",
+          "level": "error",
+          "ok": true,
+          "detail": "class backend-api, severity high"
+        },
+        {
+          "name": "issue.class",
+          "level": "warn",
+          "ok": false,
+          "detail": "backend-api, scenario says database"
+        },
+        {
+          "name": "run.current",
+          "level": "error",
+          "ok": true,
+          "detail": "issue on c929efd4-b228-46df-9dbf-cc90d5be8de6, test followed c929efd4-b228-46df-9dbf-cc90d5be8de6"
+        },
+        {
+          "name": "run.tier",
+          "level": "warn",
+          "ok": false,
+          "detail": "tier 1, scenario expects 2"
+        },
+        {
+          "name": "run.steps",
+          "level": "error",
+          "ok": true,
+          "detail": "19 steps recorded"
+        },
+        {
+          "name": "run.job",
+          "level": "error",
+          "ok": true,
+          "detail": "fix job completed"
+        },
+        {
+          "name": "run.row",
+          "level": "error",
+          "ok": true,
+          "detail": "runs row succeeded"
+        },
+        {
+          "name": "time.outcome",
+          "level": "error",
+          "ok": true,
+          "detail": "4m04s from trigger, budget 48m00s"
+        }
+      ],
+      "reset": [
+        {
+          "action": "kill issue 74884a3d-2a35-4a03-b2ef-2ac9065b109e",
+          "ok": true,
+          "detail": "was awaiting_approval"
+        },
+        {
+          "action": "find the runs of issue 74884a3d-2a35-4a03-b2ef-2ac9065b109e",
+          "ok": true,
+          "detail": "1 runs"
+        },
+        {
+          "action": "close PR of c929efd4-b228-46df-9dbf-cc90d5be8de6",
+          "ok": true,
+          "detail": "none open"
+        },
+        {
+          "action": "unseed",
+          "ok": true,
+          "detail": "staging"
+        }
+      ],
+      "seedLogs": null
+    }
+  ]
+}

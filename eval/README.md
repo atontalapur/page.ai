@@ -146,7 +146,7 @@ pnpm eval:tune eval/results/<dev-run>-*.json
 
 ```sh
 pnpm e2e 001-bad-currency-code --target local
-pnpm e2e 001-bad-currency-code --target staging --runs 3
+pnpm e2e 016-product-id-or-slug --target staging --expect approval --runs 3
 ```
 
 `pnpm e2e` plays one scenario through the live pipeline: it seeds the bug, runs
@@ -259,6 +259,34 @@ so a code scenario's bug must already be live there: staging serves the seeded d
 `/api/health`, and since the reset closes the agent's PR, `main` keeps the bug for the next
 run. An ops scenario runs `break-ops.sh` and `fix-ops.sh` there. A bad deploy (024) needs
 the compose stand-in and is refused.
+
+Railway's `demo-app` service builds page-demo `main`, so merging a `demo-sync.sh` PR deploys
+the bug. The bug has to survive `next build`: 001 throws while prerendering, so staging can't
+serve it. Staging is seeded with 016-product-id-or-slug. A live fix always starts at Tier 1
+(`start_fix` in `apps/orchestrator/src/issues/transitions.ts`), and Tier 1 can't push, so a
+bug that Tier 1 fixes ends on `awaiting_approval`. Pass `--expect approval` for it.
+
+A staging run, step by step:
+
+1. On the Railway orchestrator, set `AUTO_START_FIX=true`, and `AUTO_START_FIX_MAX_PER_HOUR`
+   above `--runs`. Every pass opens a new issue, and every new issue pages on-call. To record
+   the pages without sending them, unset `NOTIFY_TO_NUMBERS` and save its value first.
+   Redeploy the orchestrator.
+2. Add a TCP proxy to the `db` service. The daemon and the test both connect through it.
+   Add `?sslmode=no-verify` to the URL: the Postgres template's certificate is self-signed,
+   so the connection is encrypted but the server isn't verified.
+3. Start the daemon on this machine with `DATABASE_URL` on the proxy, staging's
+   `ORCHESTRATOR_URL` and `NODE_SHARED_SECRET`, and `SANDBOX_IMAGE=page-sandbox:demo` from
+   the same `demo-sync.sh` run. It logs `cannot reach the orchestrator` every few seconds,
+   since the gateway is still a stub. Results go back through pg-boss either way.
+4. Run the test. Then undo step 1 (delete the two `AUTO_START_FIX` variables, put
+   `NOTIFY_TO_NUMBERS` back) and remove the proxy.
+
+The first staging run (2026-11-19, `results/e2e/2026-11-20T01-06-15Z-staging-016.json`)
+passed 3 of 3 in a row. Each issue opened 3 to 6 s after the trigger, triage took up to 3 s,
+the claim under 4 s, and the Tier 1 fix 2m29s to 4m16s. Each run's patch fixed the query and
+added a test. Triage filed the bug as `backend-api` where the scenario says `database`, which
+the test reports as a warning.
 
 On both targets, the daemon has to run `SANDBOX_IMAGE=page-sandbox:demo` built for the same
 scenario, and page-demo `main` has to hold the same tree (`demo-sync.sh <id>`), or the PR's
