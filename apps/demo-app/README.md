@@ -38,8 +38,8 @@ each deploy, and gates on `/api/health`. One-time service setup:
    runs the pre-deploy command without a shell, which is why it is one `db.ts` call.
 3. Add a Postgres service and set `DATABASE_URL=${{Postgres.DATABASE_URL}}` on this one.
 4. Generate a public domain. Optional shop settings are listed in `.env.example`.
-   Set `OPS_SECRET` (`openssl rand -hex 32`) and give the same value to the orchestrator
-   to turn on the ops API below.
+   Set `OPS_SECRET` (`openssl rand -hex 32`) to turn on the ops API below, and give the
+   node daemon the same value with this app's URL as `OPS_APP_URL` for Tier 3 runs.
 5. Set `POSTHOG_KEY` (and `POSTHOG_HOST` if the project isn't on US cloud) so errors
    reach PostHog Error Tracking. Railway's `RAILWAY_GIT_COMMIT_SHA` tags each error with
    its release. The Dockerfile takes all three as build args, since the browser's copy is
@@ -59,7 +59,7 @@ isn't reported; one that escapes them is a 500 and is reported like any other cr
 
 ## Ops API (Tier 3)
 
-For the orchestrator's Tier 3 executors (#13). Every call needs
+For Tier 3 runs (#13): the node daemon's ops tools and the eval runner call it. Every call needs
 `Authorization: Bearer $OPS_SECRET`; with `OPS_SECRET` unset (or under 32 characters) it
 answers 503. Each takes `?dryRun=true`, which returns the same preview and changes
 nothing. Any other query parameter is a 400, so a misspelt dry run can't run for real.

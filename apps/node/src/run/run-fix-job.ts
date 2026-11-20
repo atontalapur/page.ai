@@ -2,13 +2,17 @@ import { budgetFor, runAgent, type AgentConfig, type ExecuteFn } from '@page/age
 import { MAX_RUN_DIFF_CHARS, type Tier } from '@page/contracts';
 import type { ModelClient } from '@page/model-client';
 import {
+  combineHostTools,
   DEFAULT_TIMEOUT_MS,
   execute,
   GitHubHostTools,
+  OpsHostTools,
   SAFE_GIT,
   StepLog,
   type AuditSink,
   type GitHub,
+  type HostTools,
+  type OpsApi,
 } from '@page/toolkit';
 import type { Logger } from 'pino';
 import type { ClaimedJob } from '../jobs/job-source.ts';
@@ -34,6 +38,11 @@ export interface RunDeps {
    * refuses below Tier 2. Without it, every host tool call is refused.
    */
   github?: GitHub;
+  /**
+   * The live demo app's ops API. With it, a Tier 3 run gets the ops tools; runs below Tier 3
+   * never get them. Without it, every ops tool call is refused.
+   */
+  ops?: OpsApi;
   logger: Logger;
   agentConfig?: Partial<AgentConfig>;
   /** Milliseconds; injectable so tests control the wall clock. */
@@ -66,11 +75,11 @@ export async function runFixJob(
   const now = deps.now ?? Date.now;
   const tried: string[] = [];
   const claimedAt = new Date(now()).toISOString();
-  let hostTools: GitHubHostTools | undefined;
+  let githubTools: GitHubHostTools | undefined;
   let diff: string | null = null;
 
   const finish = async (end: RunEnd): Promise<RunFinished> => {
-    const event = finishedEvent(runId, tier, end, tried, hostTools?.prUrl ?? null);
+    const event = finishedEvent(runId, tier, end, tried, githubTools?.prUrl ?? null);
     deps.link.send('node.run.finished', event);
     await deps.results.send({
       v: 1,
@@ -141,7 +150,7 @@ export async function runFixJob(
       logger,
     });
     if (deps.github !== undefined) {
-      hostTools = new GitHubHostTools({
+      githubTools = new GitHubHostTools({
         github: deps.github,
         workspace: sandbox.runner,
         issueId,
@@ -151,6 +160,17 @@ export async function runFixJob(
         ...(job.escalationNote === undefined ? {} : { escalationNote: job.escalationNote }),
       });
     }
+    // Built at Tier 3 only, though execute() refuses the ops tools below it anyway. The
+    // signal stops any further request to the live app once the run is stopped.
+    const opsTools =
+      tier >= 3 && deps.ops !== undefined
+        ? new OpsHostTools({ ops: deps.ops, signal: stopped })
+        : undefined;
+    const parts = [githubTools, opsTools].filter(
+      (p): p is NonNullable<typeof p> => p !== undefined,
+    );
+    const hostTools: HostTools | undefined =
+      parts.length === 0 ? undefined : combineHostTools(...parts);
     const run: ExecuteFn = (call, { timeoutMs = Infinity }) =>
       execute(call, {
         tier,
@@ -190,7 +210,9 @@ export async function runFixJob(
     // A kill or expiry that lands after the agent returned (say during sendDiff) still
     // ends the run, and removing the sandbox may have cost it the diff.
     const final = stoppedEnd() ?? end;
-    if (hostTools !== undefined) await closeUnfinishedPr(hostTools, final, runId, tier, logger);
+    if (githubTools !== undefined) {
+      await closeUnfinishedPr(githubTools, final, runId, tier, logger);
+    }
     // Awaited here, so the result is queued before the sandbox goes in `finally`.
     return await finish(final);
   } finally {

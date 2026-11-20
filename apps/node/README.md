@@ -37,12 +37,14 @@ pnpm --filter @page/node start
 | `OPENROUTER_API_KEY`          |                | Required unless `USE_FAKE_ADAPTERS`     |
 | `OPENROUTER_MODEL`            |                | Required unless `USE_FAKE_ADAPTERS`     |
 | `GITHUB_TOKEN`, `GITHUB_REPO` |                | Required unless fakes; Tier 2 tools     |
+| `OPS_APP_URL`                 |                | Optional; the app for Tier 3 ops tools  |
+| `OPS_SECRET`                  |                | That app's ops secret; needs 32+ chars  |
 | `USE_FAKE_ADAPTERS`           | `false`        | See below                               |
 | `LOG_LEVEL`                   | `info`         |                                         |
 
 With `USE_FAKE_ADAPTERS=true` there is no Docker, model, GitHub or socket. Each run gets a
 fake sandbox whose commands exit 0, a scripted model that runs `git status` and submits, an
-in-memory GitHub, and a link that logs events instead of sending them. Postgres stays real, so steps still land in
+in-memory GitHub, an in-memory ops API, and a link that logs events instead of sending them. Postgres stays real, so steps still land in
 the `steps` table.
 
 Two things have to exist before a job will run:
@@ -71,6 +73,22 @@ and run, and `node.run.finished` carries its URL as `prUrl`.
 The sandbox workspace has to match the demo repo's `main`, since paths and contents are
 copied across as they are. Setting up the repo and the token is in
 [`docs/demo-repo.md`](../../docs/demo-repo.md).
+
+## Tier 3: the live app's ops tools
+
+Tier 3 runs also get the ops tools on the live demo app: `ops.getConfig`
+(`page_ops_config`), `ops.setConfig` (`page_ops_set`), `ops.deleteConfig`
+(`page_ops_unset`) and `ops.restart` (`page_ops_restart`), at most 3 restarts a run. They
+call the app's ops API at `OPS_APP_URL` (http or https) with `OPS_SECRET` as the bearer
+token, so set `OPS_SECRET` to the app's own value (32 characters or more). Runs below Tier 3
+are never given them. A job expiry, or a kill once the orchestrator relays one, aborts the
+request in flight and stops any further one.
+
+Without `OPS_APP_URL` the daemon logs once at startup that Tier 3 runs get no ops tools, and
+every ops call is refused as `not set up on this node`. The daemon never reads
+`DEMO_APP_URL`, which `.env` keeps for staging's app, so a local daemon changes staging only
+if `OPS_APP_URL` names it. A daemon pointed at staging changes staging's live settings and
+restarts it, and nothing undoes an override a failed run left.
 
 ## Tests
 
