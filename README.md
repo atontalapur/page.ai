@@ -196,10 +196,10 @@ $2.09 of the OpenRouter share.
 
 ## Team
 
-- Daniyal: dashboard and product lead; demo and report
-- Nidheesh: ingest pipeline, error-tracking agent, Twilio
-- Arjun: orchestrator, tiering, escalation logic
-- Advaith: CLI toolkits, sandboxing, demo app and evaluation
+- Daniyal: dashboard lead; demo and report
+- Nidheesh: ingest pipeline, error-tracking agent, PostHog
+- Arjun: orchestrator, tiering, escalation logic, Twilio
+- Advaith: CLI toolkits, sandboxing, demo app and evaluation, PostHog
 
 ## License
 
