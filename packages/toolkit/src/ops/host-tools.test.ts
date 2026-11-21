@@ -147,4 +147,142 @@ describe('OpsHostTools', () => {
       output: 'ops.getConfig stopped: the run was stopped',
     });
   });
+
+  it('refuses every call, sending nothing, when given a refusal', async () => {
+    const ops = new FakeOps();
+    const tools = new OpsHostTools({ ops, refusal: 'the app is in use' });
+    expect(await tools.run(set('A', '1'), 1000)).toEqual({
+      ok: false,
+      output: 'the app is in use',
+    });
+    expect(await tools.run(get, 1000)).toEqual({ ok: false, output: 'the app is in use' });
+    expect(ops.calls).toEqual([]);
+    expect(await tools.undo()).toMatchObject({ unknown: [], restarted: false });
+  });
+
+  describe('undo', () => {
+    it('puts back every override the run changed, and restarts if the run had', async () => {
+      const ops = new FakeOps({ SHIPPING_FLAT_CENTS: '2500000000' });
+      const tools = new OpsHostTools({ ops });
+      await tools.run(set('SHIPPING_FLAT_CENTS', '500'), 1000);
+      await tools.run(unset('SHIPPING_FLAT_CENTS'), 1000);
+      await tools.run(set('TAX_RATE', '0.2'), 1000);
+      await tools.run(restart, 1000);
+      ops.calls.length = 0;
+
+      expect(await tools.undo()).toEqual({
+        restored: ['SHIPPING_FLAT_CENTS', 'TAX_RATE'],
+        unknown: [],
+        restarted: true,
+        failed: [],
+      });
+      expect(ops.calls).toEqual([
+        'setConfig SHIPPING_FLAT_CENTS=2500000000',
+        'deleteConfig TAX_RATE',
+        'restart',
+      ]);
+      expect(Object.fromEntries(ops.overrides)).toEqual({ SHIPPING_FLAT_CENTS: '2500000000' });
+      expect(ops.served).toEqual({ SHIPPING_FLAT_CENTS: '2500000000' });
+      // Done once: a second undo has nothing left to put back.
+      expect(await tools.undo()).toEqual({
+        restored: [],
+        unknown: [],
+        restarted: false,
+        failed: [],
+      });
+    });
+
+    it('restarts when the run served a change it later took back itself', async () => {
+      const ops = new FakeOps();
+      const tools = new OpsHostTools({ ops });
+      await tools.run(set('X', 'a'), 1000);
+      await tools.run(restart, 1000);
+      await tools.run(unset('X'), 1000);
+      expect(ops.served).toEqual({ X: 'a' });
+
+      expect(await tools.undo()).toMatchObject({ restored: [], restarted: true, failed: [] });
+      expect(ops.served).toEqual({});
+    });
+
+    it('needs no restart when the run never restarted, and skips what it put back', async () => {
+      const ops = new FakeOps({ A: '1' });
+      const tools = new OpsHostTools({ ops });
+      await tools.run(set('A', '2'), 1000);
+      await tools.run(set('A', '1'), 1000);
+      await tools.run(set('B', '3'), 1000);
+      ops.calls.length = 0;
+
+      expect(await tools.undo()).toMatchObject({ restored: ['B'], restarted: false });
+      expect(ops.calls).toEqual(['deleteConfig B']);
+    });
+
+    it('leaves alone a change that failed, and names one that never answered', async () => {
+      const ops = opsWith({
+        setConfig: (key) =>
+          key === 'LOST'
+            ? Promise.reject(new OpsError('ops API PUT failed: reset'))
+            : Promise.resolve({ status: 400, body: { error: 'invalid_value' } }),
+      });
+      const tools = new OpsHostTools({ ops });
+      expect((await tools.run(set('BAD', 'x'), 1000)).ok).toBe(false);
+      expect((await tools.run(set('LOST', 'x'), 1000)).ok).toBe(false);
+
+      expect(await tools.undo()).toEqual({
+        restored: [],
+        unknown: ['LOST'],
+        restarted: false,
+        failed: [],
+      });
+    });
+
+    it('puts back a setting whose later change never answered', async () => {
+      let lost = false;
+      const fake = new FakeOps({ A: '1' });
+      const ops = opsWith({
+        setConfig: (key, value) =>
+          lost ? Promise.reject(new OpsError('reset')) : fake.setConfig(key, value),
+        deleteConfig: (key) => fake.deleteConfig(key),
+      });
+      const tools = new OpsHostTools({ ops });
+      await tools.run(set('A', '2'), 1000);
+      lost = true;
+      await tools.run(set('A', '1'), 1000);
+      lost = false;
+
+      expect(await tools.undo()).toMatchObject({ restored: ['A'], unknown: [] });
+      expect(fake.overrides.get('A')).toBe('1');
+    });
+
+    it('tries every setting and the restart, and reports what failed', async () => {
+      const fake = new FakeOps();
+      const ops = opsWith({
+        setConfig: (key, value) => fake.setConfig(key, value),
+        deleteConfig: (key) =>
+          key === 'A'
+            ? Promise.resolve({ status: 500, body: 'down' })
+            : key === 'B'
+              ? Promise.reject(new OpsError('refused'))
+              : fake.deleteConfig(key),
+        restart: () =>
+          Promise.resolve({ status: 202, body: {}, healthy: { ok: false, afterMs: 1 } }),
+      });
+      const tools = new OpsHostTools({ ops });
+      await tools.run(set('A', '1'), 1000);
+      await tools.run(set('B', '1'), 1000);
+      await tools.run(set('C', '1'), 1000);
+      await tools.run(restart, 1000);
+
+      expect(await tools.undo()).toEqual({
+        restored: ['C'],
+        unknown: [],
+        restarted: false,
+        failed: [
+          'putting A back: 500 down',
+          'putting B back: refused',
+          'restarting the app: 202 {}',
+        ],
+      });
+      expect(fake.overrides.has('C')).toBe(false);
+    });
+  });
 });

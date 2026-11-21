@@ -21,14 +21,15 @@ export type {
   RunOutcome,
   ToolCall,
 } from './exec/types.ts';
-export { combineHostTools } from './exec/combine.ts';
+export { combineHostTools, hostToolsFor } from './exec/combine.ts';
 export { OpsError, SETTING_KEY } from './ops/ops.ts';
 export type { OpsApi, OpsReply, RestartReply } from './ops/ops.ts';
 export { FakeOps } from './ops/fake-ops.ts';
 export { HttpOps, HEALTH_TIMEOUT_MS, OPS_TIMEOUT_MS, RESTART_GRACE_MS } from './ops/http-ops.ts';
 export type { HttpOpsOptions } from './ops/http-ops.ts';
 export { MAX_RESTARTS, MAX_SETTING_VALUE, OpsHostTools } from './ops/host-tools.ts';
-export type { OpsHostToolsOptions } from './ops/host-tools.ts';
+export type { OpsHostToolsOptions, OpsUndo } from './ops/host-tools.ts';
+export { liveAppKey, liveAppLockDir, tryLockLiveApp } from './ops/live-app-lock.ts';
 export { DockerExecRunner } from './exec/docker-runner.ts';
 export type { DockerExecRunnerOptions } from './exec/docker-runner.ts';
 export { FakeRunner } from './exec/fake-runner.ts';

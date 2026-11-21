@@ -1,10 +1,7 @@
 // What an eval run of an ops scenario (Tier 3) does on the host, against the live demo app:
 // reset and break it before the run, and check it after each attempt.
-import { createHash } from 'node:crypto';
-import { mkdirSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { HttpOps } from '@page/toolkit';
+import { HttpOps, liveAppLockDir, tryLockLiveApp } from '@page/toolkit';
 import { checkVerdict, resetOverrides } from '../src/live-app.ts';
 import type { Scenario } from '../src/scenario.ts';
 import { appEnv, runHost, type LiveApp } from './host.ts';
@@ -35,24 +32,17 @@ export async function checkLive(
 }
 
 /**
- * Claims the live app for this process, so two evals can't break and fix it under each
- * other. Resolves a release function, or throws naming the lock if another eval holds it.
+ * Claims the live app for this process, so two evals, or an eval and a daemon on this
+ * machine, can't break and fix it under each other. Returns a release function, or throws
+ * naming the lock if another process holds it.
  */
 export function lockLiveApp(app: LiveApp): () => void {
-  const hash = createHash('sha256').update(app.url).digest('hex').slice(0, 12);
-  const dir = join(tmpdir(), `page-eval-ops-${hash}.lock`);
-  try {
-    mkdirSync(dir);
-  } catch {
+  const release = tryLockLiveApp(app.url);
+  if (release === null) {
     throw new Error(
-      `another eval is playing ops scenarios against ${app.url}. If none is, remove ${dir}.`,
+      `another eval or daemon run is changing ${app.url}. If none is, remove ` +
+        `${liveAppLockDir(app.url)}.`,
     );
   }
-  let held = true;
-  const release = () => {
-    if (held) rmSync(dir, { recursive: true, force: true });
-    held = false;
-  };
-  process.once('exit', release);
   return release;
 }

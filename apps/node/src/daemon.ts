@@ -2,10 +2,13 @@ import type { NodeConfig } from '@page/contracts';
 import { OpenRouterClient, withRetries, type ModelClient } from '@page/model-client';
 import {
   FakeGitHub,
+  FakeOps,
+  HttpOps,
   PostgresAuditSink,
   RestGitHub,
   type AuditSink,
   type GitHub,
+  type OpsApi,
 } from '@page/toolkit';
 import pg from 'pg';
 import { PgBoss } from 'pg-boss';
@@ -16,6 +19,7 @@ import { FakeLink } from './link/fake-link.ts';
 import type { OrchestratorLink } from './link/link.ts';
 import { SocketIoLink } from './link/socket-io-link.ts';
 import { ScriptedModel } from './model/scripted-model.ts';
+import { liveAppLock, type OpsLock } from './run/ops-lock.ts';
 import { PgBossRunResults, type RunResults } from './run/results.ts';
 import { runFixJob } from './run/run-fix-job.ts';
 import { DockerSandboxes } from './sandbox/docker-sandboxes.ts';
@@ -33,6 +37,10 @@ export interface Adapters {
   model: ModelClient;
   /** The demo repo Tier 2 runs push to and open PRs on. */
   github: GitHub;
+  /** The live demo app's ops API for Tier 3 runs. Without it, they get no ops tools. */
+  ops?: OpsApi;
+  /** Claims that live app for one Tier 3 run at a time, across daemons sharing the database. */
+  opsLock?: OpsLock;
   /** Closes connections the adapters opened, after the daemon stops claiming jobs. */
   close(): Promise<void>;
 }
@@ -49,7 +57,7 @@ export interface Daemon {
  * may hold it, or it already finished.
  */
 export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
-  const { jobs, sandboxes, sink, link, results, model, github } = adapters;
+  const { jobs, sandboxes, sink, link, results, model, github, ops, opsLock } = adapters;
   // Each run's kill switch, with a logger that carries the run's issueId, runId and tier.
   const runs = new Map<string, { kill: AbortController; logger: Logger }>();
   // The link has no `off`, so the kill handler goes on once however often start() runs.
@@ -84,7 +92,16 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
         try {
           await runFixJob(
             claimed,
-            { sandboxes, sink, link, results, model, github, logger },
+            {
+              sandboxes,
+              sink,
+              link,
+              results,
+              model,
+              github,
+              ...withOps(ops, opsLock),
+              logger,
+            },
             entry.kill.signal,
           );
         } finally {
@@ -138,6 +155,7 @@ export async function createAdapters(config: NodeConfig, logger: Logger): Promis
     results: new PgBossRunResults({ boss, logger }),
     model: fake ? new ScriptedModel() : withRetries(openRouter(config)),
     github: fake ? new FakeGitHub() : gitHub(config),
+    ...withOps(opsFor(config, logger), opsLockFor(config, pool, logger)),
     async close() {
       const results = await Promise.allSettled([
         link.close(),
@@ -154,6 +172,34 @@ export async function createAdapters(config: NodeConfig, logger: Logger): Promis
     },
   };
 }
+
+/**
+ * The live demo app's ops API for Tier 3 runs, from OPS_APP_URL and OPS_SECRET, or an
+ * in-memory one with fakes on. Without OPS_APP_URL it is undefined, which is logged here,
+ * once at startup, rather than on every Tier 3 run.
+ */
+export function opsFor(config: NodeConfig, logger: Logger): OpsApi | undefined {
+  if (config.USE_FAKE_ADAPTERS) return new FakeOps();
+  const { OPS_APP_URL: url, OPS_SECRET: secret } = config;
+  if (url === undefined) {
+    logger.warn('OPS_APP_URL is unset: Tier 3 runs get no ops tools');
+    return undefined;
+  }
+  // The config schema requires a usable OPS_SECRET with OPS_APP_URL.
+  if (secret === undefined) throw new Error('OPS_SECRET is required with OPS_APP_URL');
+  return new HttpOps({ url, secret });
+}
+
+/** The claim on OPS_APP_URL's app for each Tier 3 run. In-memory ops need none. */
+export function opsLockFor(config: NodeConfig, pool: pg.Pool, logger: Logger): OpsLock | undefined {
+  if (config.USE_FAKE_ADAPTERS || config.OPS_APP_URL === undefined) return undefined;
+  return liveAppLock(pool, config.OPS_APP_URL, logger);
+}
+
+const withOps = (ops: OpsApi | undefined, opsLock: OpsLock | undefined) => ({
+  ...(ops === undefined ? {} : { ops }),
+  ...(opsLock === undefined ? {} : { opsLock }),
+});
 
 function openRouter(config: NodeConfig): ModelClient {
   const { OPENROUTER_API_KEY: apiKey, OPENROUTER_MODEL: model } = config;

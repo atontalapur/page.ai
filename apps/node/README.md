@@ -37,12 +37,14 @@ pnpm --filter @page/node start
 | `OPENROUTER_API_KEY`          |                | Required unless `USE_FAKE_ADAPTERS`     |
 | `OPENROUTER_MODEL`            |                | Required unless `USE_FAKE_ADAPTERS`     |
 | `GITHUB_TOKEN`, `GITHUB_REPO` |                | Required unless fakes; Tier 2 tools     |
+| `OPS_APP_URL`                 |                | Optional; the app for Tier 3 ops tools  |
+| `OPS_SECRET`                  |                | That app's ops secret; needs 32+ chars  |
 | `USE_FAKE_ADAPTERS`           | `false`        | See below                               |
 | `LOG_LEVEL`                   | `info`         |                                         |
 
 With `USE_FAKE_ADAPTERS=true` there is no Docker, model, GitHub or socket. Each run gets a
 fake sandbox whose commands exit 0, a scripted model that runs `git status` and submits, an
-in-memory GitHub, and a link that logs events instead of sending them. Postgres stays real, so steps still land in
+in-memory GitHub, an in-memory ops API, and a link that logs events instead of sending them. Postgres stays real, so steps still land in
 the `steps` table.
 
 Two things have to exist before a job will run:
@@ -71,6 +73,41 @@ and run, and `node.run.finished` carries its URL as `prUrl`.
 The sandbox workspace has to match the demo repo's `main`, since paths and contents are
 copied across as they are. Setting up the repo and the token is in
 [`docs/demo-repo.md`](../../docs/demo-repo.md).
+
+## Tier 3: the live app's ops tools
+
+Tier 3 runs also get the ops tools on the live demo app: `ops.getConfig`
+(`page_ops_config`), `ops.setConfig` (`page_ops_set`), `ops.deleteConfig`
+(`page_ops_unset`) and `ops.restart` (`page_ops_restart`), at most 3 restarts a run. They
+call the app's ops API at `OPS_APP_URL` with `OPS_SECRET` as the bearer token, so set
+`OPS_SECRET` to the app's own value (32 characters or more, surrounding spaces trimmed).
+`OPS_APP_URL` must be https, or plain http for `localhost`, `127.0.0.1` or `[::1]` only,
+and takes no user, password, query or fragment. Runs below Tier 3 are never given the
+tools. A job expiry, or a kill once the orchestrator relays one, aborts the agent's request
+in flight and stops any further one.
+
+A Tier 3 run claims the app before it starts, and holds it until it finishes, so two runs
+can't change and restart the app under each other. The claim is a Postgres advisory lock
+keyed on `OPS_APP_URL`, which every daemon on the same database sees, plus the lock
+directory `pnpm eval:run` takes on this machine. While someone else holds the app, each ops
+call is refused with `the live app is in use by another run or eval`, and the agent can
+escalate. A daemon killed outright leaves that directory behind, which then refuses every
+Tier 3 run on the machine; the warning logs its path (`lockDir`), so remove it once nothing
+is using the app. An eval on another machine doesn't see the claim, so don't run one
+against an app a daemon is using.
+
+A Tier 3 run that ends any way but submitted (it fails, escalates, expires or is killed)
+puts back each override it changed, and restarts the app if it restarted it after a change,
+so the tier above starts from the app this run found. These requests go out after the run
+has stopped, kill included, and before its result is queued. It is best effort, like
+closing the PR of a run that didn't succeed: it tries every setting and the restart, and
+logs each one the app wouldn't take. A change whose request never answered, say because a
+kill cut it off, may have landed, and is logged by name and left as it is.
+
+Without `OPS_APP_URL` the daemon logs once at startup that Tier 3 runs get no ops tools, and
+every ops call is refused as `not set up on this node`. The daemon never reads
+`DEMO_APP_URL`, which `.env` keeps for staging's app, so a local daemon changes staging only
+if `OPS_APP_URL` names it.
 
 ## Tests
 

@@ -114,6 +114,61 @@ describe('nodeConfigSchema', () => {
   it('rejects a GITHUB_REPO that is not owner/name', () => {
     expect(() => nodeConfigSchema.parse({ ...nodeEnvFixture, GITHUB_REPO: 'page-demo' })).toThrow();
   });
+
+  describe('the ops app', () => {
+    const secret = 'a'.repeat(32);
+    const parse = (env: Record<string, string | undefined>) =>
+      nodeConfigSchema.safeParse({ ...nodeEnvFixture, ...env });
+    const issues = (env: Record<string, string | undefined>) => {
+      const result = parse(env);
+      return result.success ? [] : result.error.issues.map((i) => i.message);
+    };
+
+    it('takes https anywhere and http on this machine only', () => {
+      expect(parse({ OPS_APP_URL: 'https://demo.example.com', OPS_SECRET: secret }).success).toBe(
+        true,
+      );
+      expect(parse({ OPS_APP_URL: 'http://[::1]:3000', OPS_SECRET: secret }).success).toBe(true);
+      expect(issues({ OPS_APP_URL: 'http://demo.example.com', OPS_SECRET: secret })).toEqual([
+        expect.stringContaining('so OPS_SECRET is not sent in the clear'),
+      ]);
+    });
+
+    it.each([
+      'https://u:p@demo.example.com',
+      'https://u@demo.example.com',
+      'https://d.example.com?a',
+      'https://d.example.com#a',
+    ])('refuses %s', (url) => {
+      expect(issues({ OPS_APP_URL: url, OPS_SECRET: secret })).toEqual([
+        'takes no user, password, query or fragment',
+      ]);
+    });
+
+    it.each(['not a url', 'localhost:3000', 'ftp://demo.example.com'])(
+      'reports %s as one URL error rather than throwing',
+      (url) => {
+        expect(issues({ OPS_APP_URL: url, OPS_SECRET: secret })).toEqual([
+          expect.stringMatching(/invalid url/i),
+        ]);
+      },
+    );
+
+    it('trims the secret, and checks it only with the URL and real adapters', () => {
+      const ok = parse({ OPS_APP_URL: 'https://d.example.com', OPS_SECRET: `  ${secret} ` });
+      expect(ok.success && ok.data.OPS_SECRET).toBe(secret);
+      expect(issues({ OPS_APP_URL: 'https://d.example.com', OPS_SECRET: ' short ' })).toEqual([
+        expect.stringContaining('OPS_SECRET is under 32 characters'),
+      ]);
+      expect(issues({ OPS_APP_URL: 'https://d.example.com' })).toEqual([
+        'OPS_SECRET is required with OPS_APP_URL',
+      ]);
+      expect(parse({ OPS_SECRET: 'short' }).success).toBe(true);
+      expect(
+        parse({ OPS_APP_URL: 'http://localhost:3000', USE_FAKE_ADAPTERS: 'true' }).success,
+      ).toBe(true);
+    });
+  });
 });
 
 describe('demoAppConfigSchema', () => {

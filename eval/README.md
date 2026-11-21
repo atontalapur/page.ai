@@ -92,8 +92,8 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   `break-ops.sh`. Tier 3 attempts get the ops tools on that app (`page_ops_*` blocks);
   code scenarios at Tier 3 get them on an in-memory fake. `check.sh` runs on the host as
   soon as the agent stops, before the next tier can change the app. Ops runs take turns
-  on the app (code runs don't wait), one eval process at a time may hold it, and the
-  eval resets it when it ends. 024 needs a rollback, which has no agent tool yet.
+  on the app (code runs don't wait), one eval process at a time may hold it (a daemon's
+  Tier 3 run on the same machine takes the same lock), and the eval resets it when it ends. 024 needs a rollback, which has no agent tool yet.
 - An attempt that throws (a sandbox or `break.sh` failure) goes in `errors` and its run
   is left out; the eval goes on. If it failed after the agent ran (the diff or the check
   sandbox), the agent's real cost counts against the budget; otherwise its spend is
@@ -211,7 +211,8 @@ the trigger with the report's title, and kills it and closes its PRs the same wa
 
 The kill can't stop a run a daemon has already claimed: it only cancels the pg-boss job,
 and the daemon stops on a `kill` the gateway relays, which is still a stub. So such a run
-can open its PR after the close pass. The reset prints a warning naming every run it saw
+can open its PR after the close pass, and a Tier 3 run on a daemon with `OPS_APP_URL` can
+still change and restart that app after the unseed. The reset prints a warning naming every run it saw
 claimed and not finished, then watches each one's `pageagents/<runId>` branch, closing any
 PR that opens, for what is left of the run's share of the `fix` limit (16m per tier by
 default) since the test first saw it claimed. `--drain 5m` sets that window, and `--drain
@@ -251,7 +252,9 @@ daemon can be the Railway ones or local ones.
   `E2E_LOCAL_APP_URL` (default `http://localhost:${DEMO_APP_PORT:-3000}`, where
   `docker-compose.yml` publishes it), started with `OPS_SECRET` set. It never reads
   `DEMO_APP_URL`, which is staging's, and refuses a URL whose host isn't `localhost`,
-  `127.0.0.1` or `::1`, so a local run can't break a deployed app.
+  `127.0.0.1` or `::1`, so a local run can't break a deployed app. The daemon's ops tools go
+  to its own `OPS_APP_URL`, so for a local run leave it unset or point it at the compose
+  app, never at staging.
 
 `--target staging` runs against the deployed app at `DEMO_APP_URL`. The test never deploys,
 so a code scenario's bug must already be live there: staging serves the seeded demo baseline
@@ -277,10 +280,14 @@ A staging run, step by step:
    so the connection is encrypted but the server isn't verified.
 3. Start the daemon on this machine with `DATABASE_URL` on the proxy, staging's
    `ORCHESTRATOR_URL` and `NODE_SHARED_SECRET`, and `SANDBOX_IMAGE=page-sandbox:demo` from
-   the same `demo-sync.sh` run. It logs `cannot reach the orchestrator` every few seconds,
-   since the gateway is still a stub. Results go back through pg-boss either way.
+   the same `demo-sync.sh` run. For an ops scenario to reach Tier 3's ops tools, also set
+   `OPS_APP_URL` to staging's app and `OPS_SECRET` to its secret. It logs `cannot reach the
+orchestrator` every few seconds, since the gateway is still a stub. Results go back
+   through pg-boss either way.
 4. Run the test. Then undo step 1 (delete the two `AUTO_START_FIX` variables, put
-   `NOTIFY_TO_NUMBERS` back) and remove the proxy.
+   `NOTIFY_TO_NUMBERS` back), remove the proxy, and unset `OPS_APP_URL` from step 3. Leave
+   `OPS_SECRET`: docker compose's local demo app reads it. A daemon started later with
+   `OPS_APP_URL` still on staging would reconfigure and restart staging in its Tier 3 runs.
 
 The first staging run (2026-11-19, `results/e2e/2026-11-20T01-06-15Z-staging-016.json`)
 passed 3 of 3 in a row. Each issue opened 3 to 6 s after the trigger, triage took up to 3 s,

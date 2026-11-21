@@ -3,6 +3,7 @@ import { jobFixtures } from '@page/contracts/fixtures';
 import type { CompleteOptions, CompletionResult, ModelClient } from '@page/model-client';
 import {
   FakeGitHub,
+  FakeOps,
   FakeRunner,
   InMemoryAuditSink,
   SAFE_GIT,
@@ -13,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { FakeLink } from '../link/fake-link.ts';
 import { bashReply, ScriptedModel, submitReply } from '../model/scripted-model.ts';
 import { FakeSandboxes } from '../sandbox/fake-sandboxes.ts';
+import type { OpsLock } from './ops-lock.ts';
 import { FakeRunResults, type RunResults } from './results.ts';
 import { runFixJob, type RunDeps } from './run-fix-job.ts';
 
@@ -472,5 +474,225 @@ describe('runFixJob', () => {
         { allowed: false, outputTrimmed: 'refused: git.pushBranch is not set up on this node' },
       ]);
     });
+  });
+
+  describe('Tier 3 ops tools', () => {
+    const configReply = '```page_ops_config\n```';
+    const setReply = '```page_ops_set\nSHIPPING_FLAT_CENTS=500\n```';
+    const unsetReply = '```page_ops_unset\nSHIPPING_FLAT_CENTS\n```';
+    const restartReply = '```page_ops_restart\n```';
+    const atTier = (tier: 1 | 2 | 3) => ({ ...claim(), job: { ...job, tier } });
+
+    it('reads, sets and drops a setting on the live app and restarts it', async () => {
+      const ops = new FakeOps({ SHIPPING_FLAT_CENTS: '2500000000' });
+      const { deps, sink } = setup(
+        [configReply, setReply, unsetReply, restartReply, submitReply()],
+        undefined,
+        { ops },
+      );
+      const finished = await runFixJob(atTier(3), deps);
+
+      expect(ops.calls).toEqual([
+        'getConfig',
+        'setConfig SHIPPING_FLAT_CENTS=500',
+        'deleteConfig SHIPPING_FLAT_CENTS',
+        'restart',
+      ]);
+      expect(ops.served).toEqual({});
+      expect(sink.steps).toMatchObject(
+        Array.from({ length: 4 }, () => ({ kind: 'host_tool', allowed: true, exitCode: 0 })),
+      );
+      expect(finished).toMatchObject({ status: 'succeeded' });
+    });
+
+    it('keeps the GitHub tools next to the ops tools', async () => {
+      const ops = new FakeOps();
+      const github = new FakeGitHub({ 'a.ts': 'x\n' });
+      const pushReply = '```page_push_branch\nfix: shipping\n```';
+      const workspace = ({ command }: RunRequest) => {
+        if (command.startsWith(`${SAFE_GIT} status`)) return FakeRunner.exited(0, ` M a.ts\0`);
+        if (command.startsWith('stat -c')) return FakeRunner.exited(0, '2 644 regular file\n');
+        if (command.startsWith('base64')) return FakeRunner.exited(0, 'eQo=\n.\n');
+        return FakeRunner.exited(0, '');
+      };
+      const { deps, sink } = setup([configReply, pushReply, submitReply()], workspace, {
+        ops,
+        github,
+      });
+      await runFixJob(atTier(3), deps);
+
+      expect(ops.calls).toEqual(['getConfig']);
+      expect(github.head(`pageagents/${job.runId}`)).toBeDefined();
+      expect(sink.steps).toMatchObject([{ allowed: true }, { allowed: true }]);
+    });
+
+    it.each([1, 2] as const)('never reaches the ops API at Tier %i', async (tier) => {
+      const ops = new FakeOps();
+      const { deps, sink } = setup([configReply, restartReply, submitReply()], undefined, {
+        ops,
+      });
+      await runFixJob(atTier(tier), deps);
+
+      expect(ops.calls).toEqual([]);
+      expect(sink.steps).toMatchObject([
+        {
+          allowed: false,
+          outputTrimmed: `refused: ops.getConfig needs Tier 3; this run is Tier ${tier}`,
+        },
+        {
+          allowed: false,
+          outputTrimmed: `refused: ops.restart needs Tier 3; this run is Tier ${tier}`,
+        },
+      ]);
+    });
+
+    it('refuses the ops tools when the node has no ops API', async () => {
+      const { deps, sink } = setup([configReply, submitReply()]);
+      await runFixJob(atTier(3), deps);
+      expect(sink.steps).toMatchObject([
+        { allowed: false, outputTrimmed: 'refused: ops.getConfig is not set up on this node' },
+      ]);
+    });
+
+    it('puts back the ops changes of a run that did not succeed', async () => {
+      const ops = new FakeOps({ SHIPPING_FLAT_CENTS: '2500000000' });
+      const { deps } = setup([unsetReply, restartReply], undefined, {
+        ops,
+        agentConfig: { stepLimit: 2 },
+      });
+      const finished = await runFixJob(atTier(3), deps);
+
+      // Tier 3 is the top tier, so a run out of steps fails rather than escalates.
+      expect(finished).toMatchObject({ status: 'failed' });
+      expect(ops.calls).toEqual([
+        'deleteConfig SHIPPING_FLAT_CENTS',
+        'restart',
+        'setConfig SHIPPING_FLAT_CENTS=2500000000',
+        'restart',
+      ]);
+      expect(ops.served).toEqual({ SHIPPING_FLAT_CENTS: '2500000000' });
+    });
+
+    it('puts back the ops changes of a killed run', async () => {
+      const kill = new AbortController();
+      class KilledAfterSet extends FakeOps {
+        override async setConfig(key: string, value: string) {
+          const reply = await super.setConfig(key, value);
+          if (key === 'SHIPPING_FLAT_CENTS' && value === '500') kill.abort();
+          return reply;
+        }
+      }
+      const ops = new KilledAfterSet();
+      const { deps } = setup([setReply, submitReply()], undefined, { ops });
+      const finished = await runFixJob(atTier(3), deps, kill.signal);
+
+      expect(finished).toMatchObject({ status: 'killed' });
+      expect(ops.calls).toEqual([
+        'setConfig SHIPPING_FLAT_CENTS=500',
+        'deleteConfig SHIPPING_FLAT_CENTS',
+      ]);
+      expect(ops.overrides.size).toBe(0);
+    });
+
+    it('still reports the run when the app refuses to take a change back', async () => {
+      class RefusesUndo extends FakeOps {
+        override deleteConfig(key: string) {
+          return this.calls.length > 0
+            ? Promise.resolve({ status: 500, body: 'down' })
+            : super.deleteConfig(key);
+        }
+      }
+      const { deps } = setup([setReply], undefined, {
+        ops: new RefusesUndo(),
+        agentConfig: { stepLimit: 1 },
+      });
+      expect(await runFixJob(atTier(3), deps)).toMatchObject({ status: 'failed' });
+    });
+
+    describe('the claim on the live app', () => {
+      const lock = (acquire: OpsLock['tryAcquire']) => {
+        const held = { claims: 0, releases: 0 };
+        const opsLock: OpsLock = {
+          tryAcquire: async () => {
+            held.claims += 1;
+            return acquire();
+          },
+        };
+        return { held, opsLock };
+      };
+
+      it('is held for the run and released after it', async () => {
+        const ops = new FakeOps();
+        const state = { releases: 0 };
+        const { held, opsLock } = lock(() =>
+          Promise.resolve(async () => {
+            state.releases += 1;
+            await Promise.resolve();
+          }),
+        );
+        const { deps } = setup([configReply, submitReply()], undefined, { ops, opsLock });
+        await runFixJob(atTier(3), deps);
+
+        expect(held.claims).toBe(1);
+        expect(state.releases).toBe(1);
+        expect(ops.calls).toEqual(['getConfig']);
+      });
+
+      it('is not taken below Tier 3', async () => {
+        const { held, opsLock } = lock(() => Promise.resolve(null));
+        const { deps } = setup([submitReply()], undefined, { ops: new FakeOps(), opsLock });
+        await runFixJob(atTier(2), deps);
+        expect(held.claims).toBe(0);
+      });
+
+      it.each([
+        [
+          'held elsewhere',
+          () => Promise.resolve(null),
+          'the live app is in use by another run or eval, so this run may not change it',
+        ],
+        [
+          'that cannot be taken',
+          () => Promise.reject(new Error('database is down')),
+          'could not claim the live app: Error: database is down',
+        ],
+      ])('refuses every ops call when the claim is %s', async (_, acquire, refusal) => {
+        const ops = new FakeOps();
+        const { opsLock } = lock(acquire);
+        const { deps, sink } = setup([configReply, restartReply, submitReply()], undefined, {
+          ops,
+          opsLock,
+        });
+        await runFixJob(atTier(3), deps);
+
+        expect(ops.calls).toEqual([]);
+        expect(sink.steps).toMatchObject([
+          { allowed: true, exitCode: 1, outputTrimmed: refusal },
+          { allowed: true, exitCode: 1, outputTrimmed: refusal },
+        ]);
+      });
+    });
+
+    it.each(['kill', 'expiry'] as const)(
+      'aborts an ops call in flight when the %s fires',
+      async (stop) => {
+        const kill = new AbortController();
+        const expiry = new AbortController();
+        let seen: AbortSignal | undefined;
+        // The run is stopped while the app is restarting.
+        class StoppedMidRestart extends FakeOps {
+          override restart(signal?: AbortSignal) {
+            seen = signal;
+            (stop === 'kill' ? kill : expiry).abort();
+            return super.restart();
+          }
+        }
+        const { deps } = setup([restartReply, submitReply()], undefined, {
+          ops: new StoppedMidRestart(),
+        });
+        await runFixJob({ ...atTier(3), signal: expiry.signal }, deps, kill.signal);
+        expect(seen?.aborted).toBe(true);
+      },
+    );
   });
 });
