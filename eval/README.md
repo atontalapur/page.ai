@@ -92,8 +92,8 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   `break-ops.sh`. Tier 3 attempts get the ops tools on that app (`page_ops_*` blocks);
   code scenarios at Tier 3 get them on an in-memory fake. `check.sh` runs on the host as
   soon as the agent stops, before the next tier can change the app. Ops runs take turns
-  on the app (code runs don't wait), one eval process at a time may hold it, and the
-  eval resets it when it ends. 024 needs a rollback, which has no agent tool yet.
+  on the app (code runs don't wait), one eval process at a time may hold it (a daemon's
+  Tier 3 run on the same machine takes the same lock), and the eval resets it when it ends. 024 needs a rollback, which has no agent tool yet.
 - An attempt that throws (a sandbox or `break.sh` failure) goes in `errors` and its run
   is left out; the eval goes on. If it failed after the agent ran (the diff or the check
   sandbox), the agent's real cost counts against the budget; otherwise its spend is
@@ -281,10 +281,13 @@ A staging run, step by step:
 3. Start the daemon on this machine with `DATABASE_URL` on the proxy, staging's
    `ORCHESTRATOR_URL` and `NODE_SHARED_SECRET`, and `SANDBOX_IMAGE=page-sandbox:demo` from
    the same `demo-sync.sh` run. For an ops scenario to reach Tier 3's ops tools, also set
-   `OPS_APP_URL` to staging's app and `OPS_SECRET` to its secret; unset it again after. It logs `cannot reach the orchestrator` every few seconds,
-   since the gateway is still a stub. Results go back through pg-boss either way.
+   `OPS_APP_URL` to staging's app and `OPS_SECRET` to its secret. It logs `cannot reach the
+orchestrator` every few seconds, since the gateway is still a stub. Results go back
+   through pg-boss either way.
 4. Run the test. Then undo step 1 (delete the two `AUTO_START_FIX` variables, put
-   `NOTIFY_TO_NUMBERS` back) and remove the proxy.
+   `NOTIFY_TO_NUMBERS` back), remove the proxy, and unset `OPS_APP_URL` from step 3. Leave
+   `OPS_SECRET`: docker compose's local demo app reads it. A daemon started later with
+   `OPS_APP_URL` still on staging would reconfigure and restart staging in its Tier 3 runs.
 
 The first staging run (2026-11-19, `results/e2e/2026-11-20T01-06-15Z-staging-016.json`)
 passed 3 of 3 in a row. Each issue opened 3 to 6 s after the trigger, triage took up to 3 s,
