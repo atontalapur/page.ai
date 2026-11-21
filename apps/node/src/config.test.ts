@@ -55,13 +55,50 @@ describe('loadConfig', () => {
       );
     });
 
-    it.each(['localhost:3000', 'ftp://demo.example.com', 'javascript:alert(1)'])(
-      'refuses %s as the app URL',
-      (bad) => {
-        const result = loadConfig({ ...nodeEnvFixture, OPS_APP_URL: bad, OPS_SECRET: secret });
-        expect(result.ok ? '' : result.error).toContain('OPS_APP_URL');
+    it.each([
+      'localhost:3000',
+      'ftp://demo.example.com',
+      'javascript:alert(1)',
+      // The bearer secret would go out in the clear.
+      'http://page-demo.up.railway.app',
+      // The ops client can't send credentials in a URL, or join paths onto a query.
+      'https://user:pass@demo.example.com',
+      'https://demo.example.com/?x=1',
+      'https://demo.example.com/#top',
+    ])('refuses %s as the app URL', (bad) => {
+      const result = loadConfig({ ...nodeEnvFixture, OPS_APP_URL: bad, OPS_SECRET: secret });
+      expect(result.ok ? '' : result.error).toContain('OPS_APP_URL');
+    });
+
+    it.each(['http://localhost:3000', 'http://127.0.0.1:3000', 'http://[::1]:3000'])(
+      'takes plain http for %s',
+      (local) => {
+        const result = loadConfig({ ...nodeEnvFixture, OPS_APP_URL: local, OPS_SECRET: secret });
+        expect(result).toMatchObject({ ok: true, value: { OPS_APP_URL: local } });
       },
     );
+
+    it('trims the ops secret before checking its length, as the eval does', () => {
+      const padded = loadConfig({
+        ...nodeEnvFixture,
+        OPS_APP_URL: url,
+        OPS_SECRET: ` ${secret}\n`,
+      });
+      expect(padded).toMatchObject({ ok: true, value: { OPS_SECRET: secret } });
+
+      const short = ` ${'a'.repeat(30)} `;
+      const result = loadConfig({ ...nodeEnvFixture, OPS_APP_URL: url, OPS_SECRET: short });
+      expect(result.ok ? '' : result.error).toContain('OPS_SECRET is under 32 characters');
+    });
+
+    it('needs no ops secret with fakes on, which ignore the app URL', () => {
+      const env = {
+        ...nodeEnvFixture,
+        USE_FAKE_ADAPTERS: 'true',
+        OPS_APP_URL: 'http://localhost:3000',
+      };
+      expect(loadConfig(env)).toMatchObject({ ok: true });
+    });
   });
 
   it('reports every missing var at once', () => {
