@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FakeOps } from '../ops/fake-ops.ts';
 import { OpsHostTools } from '../ops/host-tools.ts';
-import { combineHostTools } from './combine.ts';
+import { combineHostTools, hostToolsFor } from './combine.ts';
 import type { HostToolCall, HostTools } from './types.ts';
 
 const github: HostTools = {
@@ -27,5 +27,24 @@ describe('combineHostTools', () => {
       ok: false,
       output: 'ops.restart is not set up on this node',
     });
+  });
+});
+
+describe('hostToolsFor', () => {
+  const ops = new OpsHostTools({ ops: new FakeOps() });
+
+  it('gives the GitHub tools from Tier 2 and the ops tools from Tier 3', () => {
+    expect(hostToolsFor(1, { github, ops })).toBeUndefined();
+    const tier2 = hostToolsFor(2, { github, ops });
+    expect(tier2?.handles?.('git.pushBranch')).toBe(true);
+    expect(tier2?.handles?.('ops.restart')).toBe(false);
+    const tier3 = hostToolsFor(3, { github, ops });
+    expect(tier3?.handles?.('git.pushBranch')).toBe(true);
+    expect(tier3?.handles?.('ops.restart')).toBe(true);
+  });
+
+  it('gives nothing when no part is set up', () => {
+    expect(hostToolsFor(3, {})).toBeUndefined();
+    expect(hostToolsFor(3, { ops })?.handles?.('github.openPr')).toBe(false);
   });
 });

@@ -1,9 +1,10 @@
 import { jobFixtures, nodeEnvFixture } from '@page/contracts/fixtures';
 import { FakeGitHub, FakeOps, FakeRunner, HttpOps, InMemoryAuditSink } from '@page/toolkit';
+import type pg from 'pg';
 import { pino } from 'pino';
 import { describe, expect, it, vi } from 'vitest';
 import { loadConfig } from './config.ts';
-import { createDaemon, opsFor, type Adapters } from './daemon.ts';
+import { createDaemon, opsFor, opsLockFor, type Adapters } from './daemon.ts';
 import { FakeJobSource } from './jobs/fake-job-source.ts';
 import { FakeLink } from './link/fake-link.ts';
 import { bashReply, ScriptedModel, submitReply } from './model/scripted-model.ts';
@@ -194,5 +195,22 @@ describe('opsFor', () => {
   it('uses an in-memory ops API with fakes on', () => {
     const { logger } = capture();
     expect(opsFor(config({ USE_FAKE_ADAPTERS: 'true' }), logger)).toBeInstanceOf(FakeOps);
+  });
+});
+
+describe('opsLockFor', () => {
+  const pool = {} as pg.Pool;
+  const logger = pino({ enabled: false });
+  const config = (env: Record<string, string>) => {
+    const result = loadConfig({ ...nodeEnvFixture, ...env });
+    if (!result.ok) throw new Error(result.error);
+    return result.value;
+  };
+
+  it('claims the app at OPS_APP_URL, and nothing without it or with fakes on', () => {
+    const env = { OPS_APP_URL: 'https://demo.example.com', OPS_SECRET: 'a'.repeat(32) };
+    expect(opsLockFor(config(env), pool, logger)).toBeDefined();
+    expect(opsLockFor(config({}), pool, logger)).toBeUndefined();
+    expect(opsLockFor(config({ ...env, USE_FAKE_ADAPTERS: 'true' }), pool, logger)).toBeUndefined();
   });
 });

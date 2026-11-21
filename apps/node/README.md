@@ -79,16 +79,35 @@ copied across as they are. Setting up the repo and the token is in
 Tier 3 runs also get the ops tools on the live demo app: `ops.getConfig`
 (`page_ops_config`), `ops.setConfig` (`page_ops_set`), `ops.deleteConfig`
 (`page_ops_unset`) and `ops.restart` (`page_ops_restart`), at most 3 restarts a run. They
-call the app's ops API at `OPS_APP_URL` (http or https) with `OPS_SECRET` as the bearer
-token, so set `OPS_SECRET` to the app's own value (32 characters or more). Runs below Tier 3
-are never given them. A job expiry, or a kill once the orchestrator relays one, aborts the
-request in flight and stops any further one.
+call the app's ops API at `OPS_APP_URL` with `OPS_SECRET` as the bearer token, so set
+`OPS_SECRET` to the app's own value (32 characters or more, surrounding spaces trimmed).
+`OPS_APP_URL` must be https, or plain http for `localhost`, `127.0.0.1` or `[::1]` only,
+and takes no user, password, query or fragment. Runs below Tier 3 are never given the
+tools. A job expiry, or a kill once the orchestrator relays one, aborts the agent's request
+in flight and stops any further one.
+
+A Tier 3 run claims the app before it starts, and holds it until it finishes, so two runs
+can't change and restart the app under each other. The claim is a Postgres advisory lock
+keyed on `OPS_APP_URL`, which every daemon on the same database sees, plus the lock
+directory `pnpm eval:run` takes on this machine. While someone else holds the app, each ops
+call is refused with `the live app is in use by another run or eval`, and the agent can
+escalate. A daemon killed outright leaves that directory behind, which then refuses every
+Tier 3 run on the machine; the warning logs its path (`lockDir`), so remove it once nothing
+is using the app. An eval on another machine doesn't see the claim, so don't run one
+against an app a daemon is using.
+
+A Tier 3 run that ends any way but submitted (it fails, escalates, expires or is killed)
+puts back each override it changed, and restarts the app if it restarted it after a change,
+so the tier above starts from the app this run found. These requests go out after the run
+has stopped, kill included, and before its result is queued. It is best effort, like
+closing the PR of a run that didn't succeed: it tries every setting and the restart, and
+logs each one the app wouldn't take. A change whose request never answered, say because a
+kill cut it off, may have landed, and is logged by name and left as it is.
 
 Without `OPS_APP_URL` the daemon logs once at startup that Tier 3 runs get no ops tools, and
 every ops call is refused as `not set up on this node`. The daemon never reads
 `DEMO_APP_URL`, which `.env` keeps for staging's app, so a local daemon changes staging only
-if `OPS_APP_URL` names it. A daemon pointed at staging changes staging's live settings and
-restarts it, and nothing undoes an override a failed run left.
+if `OPS_APP_URL` names it.
 
 ## Tests
 

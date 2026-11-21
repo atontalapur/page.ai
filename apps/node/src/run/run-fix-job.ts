@@ -2,22 +2,22 @@ import { budgetFor, runAgent, type AgentConfig, type ExecuteFn } from '@page/age
 import { MAX_RUN_DIFF_CHARS, type Tier } from '@page/contracts';
 import type { ModelClient } from '@page/model-client';
 import {
-  combineHostTools,
   DEFAULT_TIMEOUT_MS,
   execute,
   GitHubHostTools,
+  hostToolsFor,
   OpsHostTools,
   SAFE_GIT,
   StepLog,
   type AuditSink,
   type GitHub,
-  type HostTools,
   type OpsApi,
 } from '@page/toolkit';
 import type { Logger } from 'pino';
 import type { ClaimedJob } from '../jobs/job-source.ts';
 import type { OrchestratorLink } from '../link/link.ts';
 import type { Sandbox, Sandboxes } from '../sandbox/sandbox.ts';
+import type { OpsLock, ReleaseOps } from './ops-lock.ts';
 import { finishedEvent, type RunEnd, type RunFinished } from './outcome.ts';
 import type { RunResults } from './results.ts';
 import { StreamingAuditSink } from './streaming-sink.ts';
@@ -43,6 +43,11 @@ export interface RunDeps {
    * never get them. Without it, every ops tool call is refused.
    */
   ops?: OpsApi;
+  /**
+   * Claims the live app for a Tier 3 run, so no other run or eval changes it meanwhile. While
+   * someone else holds it, the run's ops calls are refused. Without it, nothing is claimed.
+   */
+  opsLock?: OpsLock;
   logger: Logger;
   agentConfig?: Partial<AgentConfig>;
   /** Milliseconds; injectable so tests control the wall clock. */
@@ -76,6 +81,8 @@ export async function runFixJob(
   const tried: string[] = [];
   const claimedAt = new Date(now()).toISOString();
   let githubTools: GitHubHostTools | undefined;
+  let opsTools: OpsHostTools | undefined;
+  let releaseOps: ReleaseOps | undefined;
   let diff: string | null = null;
 
   const finish = async (end: RunEnd): Promise<RunFinished> => {
@@ -160,17 +167,18 @@ export async function runFixJob(
         ...(job.escalationNote === undefined ? {} : { escalationNote: job.escalationNote }),
       });
     }
-    // Built at Tier 3 only, though execute() refuses the ops tools below it anyway. The
-    // signal stops any further request to the live app once the run is stopped.
-    const opsTools =
-      tier >= 3 && deps.ops !== undefined
-        ? new OpsHostTools({ ops: deps.ops, signal: stopped })
-        : undefined;
-    const parts = [githubTools, opsTools].filter(
-      (p): p is NonNullable<typeof p> => p !== undefined,
-    );
-    const hostTools: HostTools | undefined =
-      parts.length === 0 ? undefined : combineHostTools(...parts);
+    // Built at Tier 3 only, once the run holds the app. The signal stops any further
+    // request to the live app once the run is stopped.
+    if (tier >= 3 && deps.ops !== undefined) {
+      const claim = await claimOps(deps.opsLock, logger);
+      releaseOps = claim.release;
+      opsTools = new OpsHostTools({
+        ops: deps.ops,
+        signal: stopped,
+        ...(claim.refusal === undefined ? {} : { refusal: claim.refusal }),
+      });
+    }
+    const hostTools = hostToolsFor(tier, { github: githubTools, ops: opsTools });
     const run: ExecuteFn = (call, { timeoutMs = Infinity }) =>
       execute(call, {
         tier,
@@ -213,13 +221,19 @@ export async function runFixJob(
     if (githubTools !== undefined) {
       await closeUnfinishedPr(githubTools, final, runId, tier, logger);
     }
+    if (opsTools !== undefined) await undoUnfinishedOps(opsTools, final, logger);
     // Awaited here, so the result is queued before the sandbox goes in `finally`.
     return await finish(final);
   } finally {
     stopped.removeEventListener('abort', onAbort);
-    // Try again if the removal on abort failed, so cleanup still runs on every path.
-    if (!(await (removing ?? Promise.resolve(false)))) await deps.sandboxes.stop(sandbox);
-    logger.info({ container: sandbox.name }, 'sandbox removed');
+    try {
+      // Try again if the removal on abort failed, so cleanup still runs on every path.
+      if (!(await (removing ?? Promise.resolve(false)))) await deps.sandboxes.stop(sandbox);
+      logger.info({ container: sandbox.name }, 'sandbox removed');
+    } finally {
+      // After the sandbox, so a slow unlock doesn't hold it up. Undo has already run.
+      await releaseOps?.();
+    }
   }
 }
 
@@ -246,6 +260,60 @@ async function closeUnfinishedPr(
     logger.info({ pr: pr.url }, 'closed the PR of a run that did not succeed');
   } catch (error) {
     logger.warn({ err: error, pr: pr.url }, 'could not close the PR of a run that did not succeed');
+  }
+}
+
+/**
+ * Claims the live app for the run. A claim held elsewhere, or one that can't be taken, gives
+ * the run a refusal for each ops call instead, which the agent sees and can escalate on.
+ */
+async function claimOps(
+  lock: OpsLock | undefined,
+  logger: Logger,
+): Promise<{ release?: ReleaseOps; refusal?: string }> {
+  if (lock === undefined) return {};
+  try {
+    const release = await lock.tryAcquire();
+    if (release !== null) return { release };
+    logger.warn('another run or eval holds the live app; refusing this run its ops calls');
+    return {
+      refusal: 'the live app is in use by another run or eval, so this run may not change it',
+    };
+  } catch (error) {
+    logger.error({ err: error }, 'could not claim the live app; refusing this run its ops calls');
+    return { refusal: `could not claim the live app: ${String(error)}` };
+  }
+}
+
+/**
+ * A Tier 3 run that didn't succeed puts back the overrides it changed, so the tier above
+ * starts from the app this run found. Best effort, like closeUnfinishedPr: a change that
+ * won't go back is logged, and the run still reported.
+ */
+async function undoUnfinishedOps(tools: OpsHostTools, end: RunEnd, logger: Logger): Promise<void> {
+  if (end.kind === 'agent' && end.run.exitStatus === 'submitted') return;
+  try {
+    const { restored, unknown, restarted, failed } = await tools.undo();
+    if (failed.length > 0) {
+      logger.warn(
+        { failed },
+        'could not put back all the ops changes of a run that did not succeed',
+      );
+    }
+    if (restored.length > 0 || restarted) {
+      logger.info(
+        { restored, restarted },
+        'put back the ops changes of a run that did not succeed',
+      );
+    }
+    if (unknown.length > 0) {
+      logger.warn(
+        { settings: unknown },
+        'ops changes that never answered may have landed; left as they are',
+      );
+    }
+  } catch (error) {
+    logger.warn({ err: error }, 'could not put back the ops changes of a run that did not succeed');
   }
 }
 

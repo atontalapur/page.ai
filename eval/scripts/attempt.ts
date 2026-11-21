@@ -9,17 +9,16 @@ import { join } from 'node:path';
 import { budgetFor, runAgent } from '@page/agent';
 import type { ModelClient } from '@page/model-client';
 import {
-  combineHostTools,
   DEFAULT_TIMEOUT_MS,
   DockerExecRunner,
   execute,
   FakeGitHub,
   FakeOps,
   GitHubHostTools,
+  hostToolsFor,
   InMemoryAuditSink,
   OpsHostTools,
   StepLog,
-  type HostTools,
 } from '@page/toolkit';
 import type { Attempt } from '../src/results.ts';
 import { AttemptError, ProviderError, type AgentAttempt, type AttemptFn } from '../src/runner.ts';
@@ -107,9 +106,7 @@ export function dockerAttempt(
           tier >= 3
             ? new OpsHostTools({ ops: app ? opsApi(app) : new FakeOps(), signal })
             : undefined;
-        const parts = [github, ops].filter((p): p is NonNullable<typeof p> => p !== undefined);
-        const hostTools: HostTools | undefined =
-          parts.length === 0 ? undefined : combineHostTools(...parts);
+        const hostTools = hostToolsFor(tier, { github, ops });
 
         const run = await runAgent(
           { task: scenario.meta.report, tier },

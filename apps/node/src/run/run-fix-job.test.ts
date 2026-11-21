@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { FakeLink } from '../link/fake-link.ts';
 import { bashReply, ScriptedModel, submitReply } from '../model/scripted-model.ts';
 import { FakeSandboxes } from '../sandbox/fake-sandboxes.ts';
+import type { OpsLock } from './ops-lock.ts';
 import { FakeRunResults, type RunResults } from './results.ts';
 import { runFixJob, type RunDeps } from './run-fix-job.ts';
 
@@ -551,6 +552,125 @@ describe('runFixJob', () => {
       expect(sink.steps).toMatchObject([
         { allowed: false, outputTrimmed: 'refused: ops.getConfig is not set up on this node' },
       ]);
+    });
+
+    it('puts back the ops changes of a run that did not succeed', async () => {
+      const ops = new FakeOps({ SHIPPING_FLAT_CENTS: '2500000000' });
+      const { deps } = setup([unsetReply, restartReply], undefined, {
+        ops,
+        agentConfig: { stepLimit: 2 },
+      });
+      const finished = await runFixJob(atTier(3), deps);
+
+      // Tier 3 is the top tier, so a run out of steps fails rather than escalates.
+      expect(finished).toMatchObject({ status: 'failed' });
+      expect(ops.calls).toEqual([
+        'deleteConfig SHIPPING_FLAT_CENTS',
+        'restart',
+        'setConfig SHIPPING_FLAT_CENTS=2500000000',
+        'restart',
+      ]);
+      expect(ops.served).toEqual({ SHIPPING_FLAT_CENTS: '2500000000' });
+    });
+
+    it('puts back the ops changes of a killed run', async () => {
+      const kill = new AbortController();
+      class KilledAfterSet extends FakeOps {
+        override async setConfig(key: string, value: string) {
+          const reply = await super.setConfig(key, value);
+          if (key === 'SHIPPING_FLAT_CENTS' && value === '500') kill.abort();
+          return reply;
+        }
+      }
+      const ops = new KilledAfterSet();
+      const { deps } = setup([setReply, submitReply()], undefined, { ops });
+      const finished = await runFixJob(atTier(3), deps, kill.signal);
+
+      expect(finished).toMatchObject({ status: 'killed' });
+      expect(ops.calls).toEqual([
+        'setConfig SHIPPING_FLAT_CENTS=500',
+        'deleteConfig SHIPPING_FLAT_CENTS',
+      ]);
+      expect(ops.overrides.size).toBe(0);
+    });
+
+    it('still reports the run when the app refuses to take a change back', async () => {
+      class RefusesUndo extends FakeOps {
+        override deleteConfig(key: string) {
+          return this.calls.length > 0
+            ? Promise.resolve({ status: 500, body: 'down' })
+            : super.deleteConfig(key);
+        }
+      }
+      const { deps } = setup([setReply], undefined, {
+        ops: new RefusesUndo(),
+        agentConfig: { stepLimit: 1 },
+      });
+      expect(await runFixJob(atTier(3), deps)).toMatchObject({ status: 'failed' });
+    });
+
+    describe('the claim on the live app', () => {
+      const lock = (acquire: OpsLock['tryAcquire']) => {
+        const held = { claims: 0, releases: 0 };
+        const opsLock: OpsLock = {
+          tryAcquire: async () => {
+            held.claims += 1;
+            return acquire();
+          },
+        };
+        return { held, opsLock };
+      };
+
+      it('is held for the run and released after it', async () => {
+        const ops = new FakeOps();
+        const state = { releases: 0 };
+        const { held, opsLock } = lock(() =>
+          Promise.resolve(async () => {
+            state.releases += 1;
+            await Promise.resolve();
+          }),
+        );
+        const { deps } = setup([configReply, submitReply()], undefined, { ops, opsLock });
+        await runFixJob(atTier(3), deps);
+
+        expect(held.claims).toBe(1);
+        expect(state.releases).toBe(1);
+        expect(ops.calls).toEqual(['getConfig']);
+      });
+
+      it('is not taken below Tier 3', async () => {
+        const { held, opsLock } = lock(() => Promise.resolve(null));
+        const { deps } = setup([submitReply()], undefined, { ops: new FakeOps(), opsLock });
+        await runFixJob(atTier(2), deps);
+        expect(held.claims).toBe(0);
+      });
+
+      it.each([
+        [
+          'held elsewhere',
+          () => Promise.resolve(null),
+          'the live app is in use by another run or eval, so this run may not change it',
+        ],
+        [
+          'that cannot be taken',
+          () => Promise.reject(new Error('database is down')),
+          'could not claim the live app: Error: database is down',
+        ],
+      ])('refuses every ops call when the claim is %s', async (_, acquire, refusal) => {
+        const ops = new FakeOps();
+        const { opsLock } = lock(acquire);
+        const { deps, sink } = setup([configReply, restartReply, submitReply()], undefined, {
+          ops,
+          opsLock,
+        });
+        await runFixJob(atTier(3), deps);
+
+        expect(ops.calls).toEqual([]);
+        expect(sink.steps).toMatchObject([
+          { allowed: true, exitCode: 1, outputTrimmed: refusal },
+          { allowed: true, exitCode: 1, outputTrimmed: refusal },
+        ]);
+      });
     });
 
     it.each(['kill', 'expiry'] as const)(

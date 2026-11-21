@@ -1,3 +1,4 @@
+import type { Tier } from '@page/contracts';
 import type { HostToolName, HostTools } from './types.ts';
 
 /**
@@ -16,4 +17,19 @@ export function combineHostTools(...parts: HostTools[]): HostTools {
         : part.run(call, timeoutMs);
     },
   };
+}
+
+/**
+ * The host tools one run gets at `tier`: the GitHub tools from Tier 2 and the ops tools from
+ * Tier 3, combined. The daemon and the eval both build a run's host tools with it, so the
+ * eval measures what the daemon runs. execute() still refuses each tool below its tier.
+ */
+export function hostToolsFor(
+  tier: Tier,
+  { github, ops }: { github?: HostTools | undefined; ops?: HostTools | undefined },
+): HostTools | undefined {
+  const parts = [tier >= 2 ? github : undefined, tier >= 3 ? ops : undefined].filter(
+    (part): part is HostTools => part !== undefined,
+  );
+  return parts.length === 0 ? undefined : combineHostTools(...parts);
 }
