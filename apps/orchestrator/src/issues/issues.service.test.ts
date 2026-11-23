@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { IssueEvent } from '@page/contracts';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestDeps } from '../db/test-utils.ts';
@@ -187,6 +188,8 @@ describe('IssuesService', () => {
   it('keeps a recurring issue at the top of the list', async () => {
     const { issue: old } = await report();
     await report();
+    // PGlite's now() counts whole milliseconds, so a repeat in the same one would tie.
+    await sleep(5);
     await service.report({ fingerprint: `fp-${n - 1}`, title: 'TypeError in /api/cart' });
     expect((await service.list())[0]?.id).toBe(old.id);
   });
