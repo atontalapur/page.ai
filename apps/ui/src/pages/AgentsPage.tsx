@@ -1,30 +1,15 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Activity,
-  Bot,
-  CheckCircle2,
-  CircleAlert,
-  Search,
-  Plus,
-} from 'lucide-react';
+import { Activity, Bot, CheckCircle2, CircleAlert, Search, Plus } from 'lucide-react';
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@page/design-system/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
 import { Badge } from '@page/design-system/components/ui/badge';
 import { Input } from '@page/design-system/components/ui/input';
 import { Button } from '@page/design-system/components/ui/button';
 
 import AssignTaskDialog from '../components/agents/AssignTaskDialog';
 
-import {
-  mockAgents,
-  type AgentStatus,
-} from '../data/mockAgents';
+import { mockAgents, type AgentStatus } from '../data/mockAgents';
 
 const statusStyles: Record<AgentStatus, string> = {
   Running: 'border-green-200 bg-green-100 text-green-700',
@@ -44,24 +29,17 @@ export default function AgentsPage() {
         agent.id.toLowerCase().includes(search.toLowerCase()) ||
         agent.type.toLowerCase().includes(search.toLowerCase());
 
-      const matchesStatus =
-        statusFilter === 'All' || agent.status === statusFilter;
+      const matchesStatus = statusFilter === 'All' || agent.status === statusFilter;
 
       return matchesSearch && matchesStatus;
     });
   }, [search, statusFilter]);
 
-  const running = mockAgents.filter(
-    (agent) => agent.status === 'Running'
-  ).length;
+  const running = mockAgents.filter((agent) => agent.status === 'Running').length;
 
-  const idle = mockAgents.filter(
-    (agent) => agent.status === 'Idle'
-  ).length;
+  const idle = mockAgents.filter((agent) => agent.status === 'Idle').length;
 
-  const failed = mockAgents.filter(
-    (agent) => agent.status === 'Failed'
-  ).length;
+  const failed = mockAgents.filter((agent) => agent.status === 'Failed').length;
 
   const metrics = [
     { label: 'Total Agents', value: mockAgents.length, icon: Bot },
@@ -74,9 +52,7 @@ export default function AgentsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">
-            Agents
-          </h2>
+          <h2 className="text-2xl font-bold tracking-tight">Agents</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Monitor AI agents and their current investigations.
           </p>
@@ -92,16 +68,12 @@ export default function AgentsPage() {
         {metrics.map((metric) => (
           <Card key={metric.label}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">
-                {metric.label}
-              </CardTitle>
+              <CardTitle className="text-sm font-medium">{metric.label}</CardTitle>
               <metric.icon className="size-4 text-muted-foreground" />
             </CardHeader>
 
             <CardContent>
-              <p className="text-3xl font-bold">
-                {metric.value}
-              </p>
+              <p className="text-3xl font-bold">{metric.value}</p>
             </CardContent>
           </Card>
         ))}
@@ -142,43 +114,30 @@ export default function AgentsPage() {
                   </div>
 
                   <div className="min-w-0">
-                    <CardTitle className="truncate text-base">
-                      {agent.name}
-                    </CardTitle>
+                    <CardTitle className="truncate text-base">{agent.name}</CardTitle>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {agent.id} · {agent.type}
                     </p>
                   </div>
                 </div>
 
-                <Badge
-                  variant="outline"
-                  className={statusStyles[agent.status]}
-                >
+                <Badge variant="outline" className={statusStyles[agent.status]}>
                   {agent.status}
                 </Badge>
               </div>
             </CardHeader>
 
             <CardContent className="flex flex-1 flex-col gap-5">
-              <p className="text-sm text-muted-foreground">
-                {agent.description}
-              </p>
+              <p className="text-sm text-muted-foreground">{agent.description}</p>
 
               <div className="grid grid-cols-2 gap-4 rounded-lg bg-muted/50 p-3">
                 <div>
-                  <p className="text-xs text-muted-foreground">
-                    Tasks Completed
-                  </p>
-                  <p className="mt-1 text-lg font-semibold">
-                    {agent.tasksCompleted}
-                  </p>
+                  <p className="text-xs text-muted-foreground">Tasks Completed</p>
+                  <p className="mt-1 text-lg font-semibold">{agent.tasksCompleted}</p>
                 </div>
 
                 <div>
-                  <p className="text-xs text-muted-foreground">
-                    Current Incident
-                  </p>
+                  <p className="text-xs text-muted-foreground">Current Incident</p>
 
                   {agent.currentIncident ? (
                     <Link
@@ -188,16 +147,13 @@ export default function AgentsPage() {
                       {agent.currentIncident}
                     </Link>
                   ) : (
-                    <p className="mt-1 text-sm font-semibold">
-                      None
-                    </p>
+                    <p className="mt-1 text-sm font-semibold">None</p>
                   )}
                 </div>
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Last active:{' '}
-                {new Date(agent.lastActive).toLocaleString()}
+                Last active: {new Date(agent.lastActive).toLocaleString()}
               </p>
 
               <Link
@@ -217,11 +173,7 @@ export default function AgentsPage() {
         )}
       </div>
 
-      <AssignTaskDialog
-        open={assignDialogOpen}
-        onClose={() => setAssignDialogOpen(false)}
-      />
+      <AssignTaskDialog open={assignDialogOpen} onClose={() => setAssignDialogOpen(false)} />
     </div>
   );
 }
-

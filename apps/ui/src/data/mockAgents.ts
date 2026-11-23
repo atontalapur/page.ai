@@ -1,11 +1,6 @@
-
 export type AgentStatus = 'Running' | 'Idle' | 'Failed';
 
-export type AgentType =
-  | 'Diagnostic'
-  | 'Fix'
-  | 'Review'
-  | 'Monitoring';
+export type AgentType = 'Diagnostic' | 'Fix' | 'Review' | 'Monitoring';
 
 export interface Agent {
   id: string;
@@ -35,8 +30,7 @@ export const mockAgents: Agent[] = [
     name: 'Fix Agent',
     type: 'Fix',
     status: 'Running',
-    description:
-      'Generates proposed code changes and prepares fixes for review.',
+    description: 'Generates proposed code changes and prepares fixes for review.',
     currentIncident: 'INC-003',
     tasksCompleted: 28,
     lastActive: '2026-11-22T09:10:00',
@@ -46,8 +40,7 @@ export const mockAgents: Agent[] = [
     name: 'Review Agent',
     type: 'Review',
     status: 'Idle',
-    description:
-      'Reviews proposed fixes, checks code quality, and evaluates test results.',
+    description: 'Reviews proposed fixes, checks code quality, and evaluates test results.',
     currentIncident: null,
     tasksCompleted: 35,
     lastActive: '2026-11-21T14:20:00',
@@ -57,8 +50,7 @@ export const mockAgents: Agent[] = [
     name: 'Monitoring Agent',
     type: 'Monitoring',
     status: 'Failed',
-    description:
-      'Monitors application events and identifies unusual error patterns.',
+    description: 'Monitors application events and identifies unusual error patterns.',
     currentIncident: null,
     tasksCompleted: 19,
     lastActive: '2026-11-21T11:30:00',

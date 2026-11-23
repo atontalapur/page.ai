@@ -1,9 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  type ReactNode,
-} from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 
 import {
   initialMockTasks,
@@ -59,16 +54,12 @@ export function TaskProvider({ children }: { children: ReactNode }) {
               ...task,
               status,
               startedAt:
-                status === 'Running' && !task.startedAt
-                  ? new Date().toISOString()
-                  : task.startedAt,
+                status === 'Running' && !task.startedAt ? new Date().toISOString() : task.startedAt,
               completedAt:
-                status === 'Completed' || status === 'Failed'
-                  ? new Date().toISOString()
-                  : null,
+                status === 'Completed' || status === 'Failed' ? new Date().toISOString() : null,
             }
-          : task
-      )
+          : task,
+      ),
     );
   };
 

@@ -2,12 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Search } from 'lucide-react';
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@page/design-system/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
 import { Badge } from '@page/design-system/components/ui/badge';
 import { Input } from '@page/design-system/components/ui/input';
 import {
@@ -19,11 +14,7 @@ import {
   TableRow,
 } from '@page/design-system/components/ui/table';
 
-import {
-  mockIncidents,
-  type IncidentSeverity,
-  type IncidentStatus,
-} from '../data/mockIncidents';
+import { mockIncidents, type IncidentSeverity, type IncidentStatus } from '../data/mockIncidents';
 
 const severityStyles: Record<IncidentSeverity, string> = {
   Critical: 'border-red-200 bg-red-100 text-red-700',
@@ -50,25 +41,19 @@ export default function IncidentsPage() {
         incident.title.toLowerCase().includes(search.toLowerCase()) ||
         incident.id.toLowerCase().includes(search.toLowerCase());
 
-      const matchesStatus =
-        status === 'All' || incident.status === status;
+      const matchesStatus = status === 'All' || incident.status === status;
 
-      const matchesSeverity =
-        severity === 'All' || incident.severity === severity;
+      const matchesSeverity = severity === 'All' || incident.severity === severity;
 
       return matchesSearch && matchesStatus && matchesSeverity;
     });
   }, [search, status, severity]);
 
   const total = mockIncidents.length;
-  const active = mockIncidents.filter(
-    (incident) => incident.status !== 'Resolved'
-  ).length;
-  const critical = mockIncidents.filter(
-    (incident) => incident.severity === 'Critical'
-  ).length;
+  const active = mockIncidents.filter((incident) => incident.status !== 'Resolved').length;
+  const critical = mockIncidents.filter((incident) => incident.severity === 'Critical').length;
   const awaitingApproval = mockIncidents.filter(
-    (incident) => incident.status === 'Awaiting Approval'
+    (incident) => incident.status === 'Awaiting Approval',
   ).length;
 
   return (
@@ -89,9 +74,7 @@ export default function IncidentsPage() {
         ].map((metric) => (
           <Card key={metric.label}>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">
-                {metric.label}
-              </CardTitle>
+              <CardTitle className="text-sm font-medium">{metric.label}</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold">{metric.value}</p>
@@ -173,38 +156,26 @@ export default function IncidentsPage() {
                         to={`/incidents/${incident.id}`}
                         className="block max-w-64 hover:underline"
                       >
-                        <span className="block font-medium">
-                          {incident.title}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {incident.id}
-                        </span>
+                        <span className="block font-medium">{incident.title}</span>
+                        <span className="text-xs text-muted-foreground">{incident.id}</span>
                       </Link>
                     </TableCell>
 
                     <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={severityStyles[incident.severity]}
-                      >
+                      <Badge variant="outline" className={severityStyles[incident.severity]}>
                         {incident.severity}
                       </Badge>
                     </TableCell>
 
                     <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={statusStyles[incident.status]}
-                      >
+                      <Badge variant="outline" className={statusStyles[incident.status]}>
                         {incident.status}
                       </Badge>
                     </TableCell>
 
                     <TableCell>{incident.occurrences}</TableCell>
 
-                    <TableCell>
-                      {incident.assignedAgent ?? 'Unassigned'}
-                    </TableCell>
+                    <TableCell>{incident.assignedAgent ?? 'Unassigned'}</TableCell>
 
                     <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                       {new Date(incident.updatedAt).toLocaleString()}
@@ -214,10 +185,7 @@ export default function IncidentsPage() {
 
                 {filteredIncidents.length === 0 && (
                   <TableRow>
-                    <TableCell
-                      colSpan={6}
-                      className="py-10 text-center text-muted-foreground"
-                    >
+                    <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                       No incidents match your filters.
                     </TableCell>
                   </TableRow>

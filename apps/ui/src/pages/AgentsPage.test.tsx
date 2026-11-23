@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 import AgentsPage from './AgentsPage';
@@ -23,7 +17,7 @@ function renderAgentsPage() {
       <TaskProvider>
         <AgentsPage />
       </TaskProvider>
-    </MemoryRouter>
+    </MemoryRouter>,
   );
 }
 
@@ -31,15 +25,9 @@ describe('AgentsPage', () => {
   it('renders the page heading', () => {
     renderAgentsPage();
 
-    expect(
-      screen.getByRole('heading', { name: 'Agents' })
-    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Agents' })).toBeTruthy();
 
-    expect(
-      screen.getByText(
-        'Monitor AI agents and their current investigations.'
-      )
-    ).toBeTruthy();
+    expect(screen.getByText('Monitor AI agents and their current investigations.')).toBeTruthy();
   });
 
   it('renders all agent metrics', () => {
@@ -47,17 +35,11 @@ describe('AgentsPage', () => {
 
     expect(screen.getByText('Total Agents')).toBeTruthy();
 
-    const running = mockAgents.filter(
-      (agent) => agent.status === 'Running'
-    ).length;
+    const running = mockAgents.filter((agent) => agent.status === 'Running').length;
 
-    const idle = mockAgents.filter(
-      (agent) => agent.status === 'Idle'
-    ).length;
+    const idle = mockAgents.filter((agent) => agent.status === 'Idle').length;
 
-    const failed = mockAgents.filter(
-      (agent) => agent.status === 'Failed'
-    ).length;
+    const failed = mockAgents.filter((agent) => agent.status === 'Failed').length;
 
     expect(mockAgents).toHaveLength(4);
     expect(running).toBe(2);
@@ -76,9 +58,7 @@ describe('AgentsPage', () => {
   it('filters agents by name', () => {
     renderAgentsPage();
 
-    const searchInput = screen.getByPlaceholderText(
-      'Search agents...'
-    );
+    const searchInput = screen.getByPlaceholderText('Search agents...');
 
     fireEvent.change(searchInput, {
       target: { value: 'Diagnostic' },
@@ -94,12 +74,9 @@ describe('AgentsPage', () => {
   it('filters agents by ID', () => {
     renderAgentsPage();
 
-    fireEvent.change(
-      screen.getByPlaceholderText('Search agents...'),
-      {
-        target: { value: 'AG-003' },
-      }
-    );
+    fireEvent.change(screen.getByPlaceholderText('Search agents...'), {
+      target: { value: 'AG-003' },
+    });
 
     expect(screen.getByText('Review Agent')).toBeTruthy();
 
@@ -128,18 +105,11 @@ describe('AgentsPage', () => {
   it('displays an empty state when no agents match', () => {
     renderAgentsPage();
 
-    fireEvent.change(
-      screen.getByPlaceholderText('Search agents...'),
-      {
-        target: { value: 'nonexistent-agent-xyz' },
-      }
-    );
+    fireEvent.change(screen.getByPlaceholderText('Search agents...'), {
+      target: { value: 'nonexistent-agent-xyz' },
+    });
 
-    expect(
-      screen.getByText(
-        'No agents match your search or filters.'
-      )
-    ).toBeTruthy();
+    expect(screen.getByText('No agents match your search or filters.')).toBeTruthy();
   });
 
   it('renders workspace links for every agent', () => {
@@ -154,20 +124,14 @@ describe('AgentsPage', () => {
     for (const agent of mockAgents) {
       const expectedPath = `/agents/${agent.id}`;
 
-      expect(
-        workspaceLinks.some(
-          (link) => link.getAttribute('href') === expectedPath
-        )
-      ).toBe(true);
+      expect(workspaceLinks.some((link) => link.getAttribute('href') === expectedPath)).toBe(true);
     }
   });
 
   it('renders incident links for assigned agents', () => {
     renderAgentsPage();
 
-    const agentsWithIncidents = mockAgents.filter(
-      (agent) => agent.currentIncident !== null
-    );
+    const agentsWithIncidents = mockAgents.filter((agent) => agent.currentIncident !== null);
 
     for (const agent of agentsWithIncidents) {
       const incidentLinks = screen.getAllByRole('link', {
@@ -176,10 +140,8 @@ describe('AgentsPage', () => {
 
       expect(
         incidentLinks.some(
-          (link) =>
-            link.getAttribute('href') ===
-            `/incidents/${agent.currentIncident}`
-        )
+          (link) => link.getAttribute('href') === `/incidents/${agent.currentIncident}`,
+        ),
       ).toBe(true);
     }
   });
@@ -189,34 +151,23 @@ describe('AgentsPage', () => {
 
     expect(screen.queryByRole('dialog')).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Assign Task' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Assign Task' }));
 
     const dialog = screen.getByRole('dialog');
 
     expect(dialog).toBeTruthy();
 
-    expect(
-      within(dialog).getByText('Assign New Task')
-    ).toBeTruthy();
+    expect(within(dialog).getByText('Assign New Task')).toBeTruthy();
   });
 
   it('closes the assignment dialog', () => {
     renderAgentsPage();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Assign Task' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Assign Task' }));
 
     expect(screen.getByRole('dialog')).toBeTruthy();
 
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole(
-        'button',
-        { name: 'Cancel' }
-      )
-    );
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
 
     expect(screen.queryByRole('dialog')).toBeNull();
   });
@@ -224,12 +175,9 @@ describe('AgentsPage', () => {
   it('combines search and status filtering', () => {
     renderAgentsPage();
 
-    fireEvent.change(
-      screen.getByPlaceholderText('Search agents...'),
-      {
-        target: { value: 'Agent' },
-      }
-    );
+    fireEvent.change(screen.getByPlaceholderText('Search agents...'), {
+      target: { value: 'Agent' },
+    });
 
     fireEvent.change(
       screen.getByRole('combobox', {
@@ -237,7 +185,7 @@ describe('AgentsPage', () => {
       }),
       {
         target: { value: 'Failed' },
-      }
+      },
     );
 
     expect(screen.getByText('Monitoring Agent')).toBeTruthy();

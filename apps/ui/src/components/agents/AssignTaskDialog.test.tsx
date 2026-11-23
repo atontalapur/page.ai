@@ -1,11 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 import { TaskProvider } from '../../context/TaskContext';
 import AssignTaskDialog from './AssignTaskDialog';
@@ -19,7 +14,7 @@ function renderDialog(open = true, onClose = vi.fn()) {
   render(
     <TaskProvider>
       <AssignTaskDialog open={open} onClose={onClose} />
-    </TaskProvider>
+    </TaskProvider>,
   );
 
   return { onClose };
@@ -38,17 +33,11 @@ describe('AssignTaskDialog', () => {
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(screen.getByText('Assign New Task')).toBeTruthy();
 
-    expect(
-      screen.getByRole('textbox', { name: 'Task Title' })
-    ).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Task Title' })).toBeTruthy();
 
-    expect(
-      screen.getByRole('textbox', { name: 'Instructions' })
-    ).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Instructions' })).toBeTruthy();
 
-    expect(
-      screen.getByRole('combobox', { name: 'Assign Agent' })
-    ).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Assign Agent' })).toBeTruthy();
   });
 
   it('allows entering a task title', () => {
@@ -76,9 +65,7 @@ describe('AssignTaskDialog', () => {
       target: { value: 'Analyze slow API responses' },
     });
 
-    expect(instructionsInput.value).toBe(
-      'Analyze slow API responses'
-    );
+    expect(instructionsInput.value).toBe('Analyze slow API responses');
   });
 
   it('allows selecting an agent', () => {
@@ -114,9 +101,7 @@ describe('AssignTaskDialog', () => {
 
     renderDialog(true, onClose);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Cancel' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(onClose).toHaveBeenCalledOnce();
   });
@@ -126,9 +111,7 @@ describe('AssignTaskDialog', () => {
 
     renderDialog(true, onClose);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Close dialog' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
 
     expect(onClose).toHaveBeenCalledOnce();
   });

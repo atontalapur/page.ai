@@ -1,10 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  cleanup,
-  render,
-  screen,
-} from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 import AgentWorkspacePage from './AgentWorkspacePage';
@@ -20,13 +16,10 @@ function renderWorkspace(agentId: string) {
     <MemoryRouter initialEntries={[`/agents/${agentId}`]}>
       <TaskProvider>
         <Routes>
-          <Route
-            path="/agents/:id"
-            element={<AgentWorkspacePage />}
-          />
+          <Route path="/agents/:id" element={<AgentWorkspacePage />} />
         </Routes>
       </TaskProvider>
-    </MemoryRouter>
+    </MemoryRouter>,
   );
 }
 

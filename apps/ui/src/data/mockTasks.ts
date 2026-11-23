@@ -1,9 +1,4 @@
-export type TaskStatus =
-  | 'Queued'
-  | 'Running'
-  | 'Awaiting Approval'
-  | 'Completed'
-  | 'Failed';
+export type TaskStatus = 'Queued' | 'Running' | 'Awaiting Approval' | 'Completed' | 'Failed';
 
 export type TaskPriority = 'Critical' | 'High' | 'Medium' | 'Low';
 
@@ -24,8 +19,7 @@ export const initialMockTasks: AgentTask[] = [
   {
     id: 'TASK-001',
     title: 'Investigate database connection timeout',
-    instructions:
-      'Analyze the connection timeout and identify the root cause.',
+    instructions: 'Analyze the connection timeout and identify the root cause.',
     agentId: 'AG-001',
     incidentId: 'INC-001',
     priority: 'Critical',
@@ -37,8 +31,7 @@ export const initialMockTasks: AgentTask[] = [
   {
     id: 'TASK-002',
     title: 'Generate fix for memory leak',
-    instructions:
-      'Inspect the background worker and propose a fix for the memory leak.',
+    instructions: 'Inspect the background worker and propose a fix for the memory leak.',
     agentId: 'AG-002',
     incidentId: 'INC-003',
     priority: 'High',
@@ -49,16 +42,10 @@ export const initialMockTasks: AgentTask[] = [
   },
 ];
 
-export function getTasksByAgent(
-  tasks: AgentTask[],
-  agentId: string
-): AgentTask[] {
+export function getTasksByAgent(tasks: AgentTask[], agentId: string): AgentTask[] {
   return tasks.filter((task) => task.agentId === agentId);
 }
 
-export function getTaskById(
-  tasks: AgentTask[],
-  taskId: string
-): AgentTask | undefined {
+export function getTaskById(tasks: AgentTask[], taskId: string): AgentTask | undefined {
   return tasks.find((task) => task.id === taskId);
 }

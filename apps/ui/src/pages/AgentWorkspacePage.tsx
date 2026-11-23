@@ -13,12 +13,7 @@ import {
   XCircle,
 } from 'lucide-react';
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@page/design-system/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
 import { Badge } from '@page/design-system/components/ui/badge';
 import { Button } from '@page/design-system/components/ui/button';
 
@@ -57,11 +52,7 @@ const executionSteps = [
   },
 ] as const;
 
-const mockFiles = [
-  'src/db/connection.ts',
-  'src/services/users.ts',
-  'src/config/database.ts',
-];
+const mockFiles = ['src/db/connection.ts', 'src/services/users.ts', 'src/config/database.ts'];
 
 const mockDiff = [
   { type: 'context', text: 'async function connectDatabase() {' },
@@ -101,9 +92,7 @@ export default function AgentWorkspacePage() {
 
   const agent = id ? getAgentById(id) : undefined;
 
-  const incident = agent?.currentIncident
-    ? getIncidentById(agent.currentIncident)
-    : undefined;
+  const incident = agent?.currentIncident ? getIncidentById(agent.currentIncident) : undefined;
 
   const reviewStatus = id ? (reviews[id] ?? 'Pending') : 'Pending';
 
@@ -111,13 +100,8 @@ export default function AgentWorkspacePage() {
     return (
       <div className="space-y-4">
         <h2 className="text-2xl font-bold">Agent not found</h2>
-        <p className="text-sm text-muted-foreground">
-          The requested agent does not exist.
-        </p>
-        <Link
-          to="/agents"
-          className="text-sm text-primary hover:underline"
-        >
+        <p className="text-sm text-muted-foreground">The requested agent does not exist.</p>
+        <Link to="/agents" className="text-sm text-primary hover:underline">
           Back to Agents
         </Link>
       </div>
@@ -156,12 +140,8 @@ export default function AgentWorkspacePage() {
           </div>
 
           <div className="min-w-0">
-            <h2 className="text-2xl font-bold tracking-tight">
-              {agent.name}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {agent.id} · Agent Workspace
-            </p>
+            <h2 className="text-2xl font-bold tracking-tight">{agent.name}</h2>
+            <p className="text-sm text-muted-foreground">{agent.id} · Agent Workspace</p>
           </div>
         </div>
 
@@ -172,9 +152,7 @@ export default function AgentWorkspacePage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">
-              Current Incident
-            </CardTitle>
+            <CardTitle className="text-sm">Current Incident</CardTitle>
           </CardHeader>
           <CardContent>
             {incident ? (
@@ -195,27 +173,19 @@ export default function AgentWorkspacePage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">
-              Tasks Completed
-            </CardTitle>
+            <CardTitle className="text-sm">Tasks Completed</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">
-              {agent.tasksCompleted}
-            </p>
+            <p className="text-2xl font-bold">{agent.tasksCompleted}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">
-              Last Active
-            </CardTitle>
+            <CardTitle className="text-sm">Last Active</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm font-semibold">
-              {new Date(agent.lastActive).toLocaleString()}
-            </p>
+            <p className="text-sm font-semibold">{new Date(agent.lastActive).toLocaleString()}</p>
           </CardContent>
         </Card>
       </div>
@@ -223,45 +193,28 @@ export default function AgentWorkspacePage() {
       {/* Assigned Tasks */}
       <Card>
         <CardHeader>
-          <CardTitle>
-            Assigned Tasks ({agentTasks.length})
-          </CardTitle>
+          <CardTitle>Assigned Tasks ({agentTasks.length})</CardTitle>
         </CardHeader>
 
         <CardContent className="space-y-4">
           {agentTasks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No tasks assigned to this agent.
-            </p>
+            <p className="text-sm text-muted-foreground">No tasks assigned to this agent.</p>
           ) : (
             agentTasks.map((task) => (
-              <div
-                key={task.id}
-                className="space-y-3 rounded-lg border p-4"
-              >
+              <div key={task.id} className="space-y-3 rounded-lg border p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="font-semibold">
-                      {task.title}
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      {task.id}
-                    </p>
+                    <h3 className="font-semibold">{task.title}</h3>
+                    <p className="text-xs text-muted-foreground">{task.id}</p>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">
-                      {task.priority}
-                    </Badge>
-                    <Badge variant="outline">
-                      {task.status}
-                    </Badge>
+                    <Badge variant="outline">{task.priority}</Badge>
+                    <Badge variant="outline">{task.status}</Badge>
                   </div>
                 </div>
 
-                <p className="text-sm text-muted-foreground">
-                  {task.instructions}
-                </p>
+                <p className="text-sm text-muted-foreground">{task.instructions}</p>
 
                 {task.incidentId && (
                   <Link
@@ -273,17 +226,11 @@ export default function AgentWorkspacePage() {
                 )}
 
                 <p className="text-xs text-muted-foreground">
-                  Created:{' '}
-                  {new Date(task.createdAt).toLocaleString()}
+                  Created: {new Date(task.createdAt).toLocaleString()}
                 </p>
 
                 {task.status === 'Queued' && (
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      updateTaskStatus(task.id, 'Running')
-                    }
-                  >
+                  <Button size="sm" onClick={() => updateTaskStatus(task.id, 'Running')}>
                     Start Task
                   </Button>
                 )}
@@ -292,12 +239,7 @@ export default function AgentWorkspacePage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() =>
-                      updateTaskStatus(
-                        task.id,
-                        'Awaiting Approval'
-                      )
-                    }
+                    onClick={() => updateTaskStatus(task.id, 'Awaiting Approval')}
                   >
                     Mark Awaiting Approval
                   </Button>
@@ -305,12 +247,7 @@ export default function AgentWorkspacePage() {
 
                 {task.status === 'Awaiting Approval' && (
                   <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        updateTaskStatus(task.id, 'Completed')
-                      }
-                    >
+                    <Button size="sm" onClick={() => updateTaskStatus(task.id, 'Completed')}>
                       <CheckCircle2 className="mr-2 size-4" />
                       Approve
                     </Button>
@@ -318,9 +255,7 @@ export default function AgentWorkspacePage() {
                     <Button
                       size="sm"
                       variant="destructive"
-                      onClick={() =>
-                        updateTaskStatus(task.id, 'Failed')
-                      }
+                      onClick={() => updateTaskStatus(task.id, 'Failed')}
                     >
                       <XCircle className="mr-2 size-4" />
                       Reject
@@ -350,10 +285,7 @@ export default function AgentWorkspacePage() {
               {incident ? (
                 <div className="space-y-5">
                   {executionSteps.map((step, index) => (
-                    <div
-                      key={step.title}
-                      className="flex gap-3"
-                    >
+                    <div key={step.title} className="flex gap-3">
                       <div className="flex flex-col items-center">
                         {step.status === 'completed' ? (
                           <CheckCircle2 className="size-5 text-green-600" />
@@ -371,12 +303,8 @@ export default function AgentWorkspacePage() {
                       </div>
 
                       <div className="min-w-0 flex-1 pb-5">
-                        <p className="text-sm font-semibold">
-                          {step.title}
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {step.description}
-                        </p>
+                        <p className="text-sm font-semibold">{step.title}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
                       </div>
                     </div>
                   ))}
@@ -395,23 +323,13 @@ export default function AgentWorkspacePage() {
                 {tabs.map((tab) => (
                   <Button
                     key={tab.id}
-                    variant={
-                      activeTab === tab.id
-                        ? 'default'
-                        : 'outline'
-                    }
+                    variant={activeTab === tab.id ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => setActiveTab(tab.id)}
                   >
-                    {tab.id === 'changes' && (
-                      <GitCompare className="mr-2 size-4" />
-                    )}
-                    {tab.id === 'logs' && (
-                      <Terminal className="mr-2 size-4" />
-                    )}
-                    {tab.id === 'tests' && (
-                      <TestTube2 className="mr-2 size-4" />
-                    )}
+                    {tab.id === 'changes' && <GitCompare className="mr-2 size-4" />}
+                    {tab.id === 'logs' && <Terminal className="mr-2 size-4" />}
+                    {tab.id === 'tests' && <TestTube2 className="mr-2 size-4" />}
                     {tab.label}
                   </Button>
                 ))}
@@ -438,18 +356,14 @@ export default function AgentWorkspacePage() {
                           className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2 text-xs"
                         >
                           <FileCode2 className="size-4 shrink-0" />
-                          <span className="break-all font-mono">
-                            {file}
-                          </span>
+                          <span className="break-all font-mono">{file}</span>
                         </div>
                       ))}
                     </div>
                   </div>
 
                   <div>
-                    <p className="mb-2 text-sm font-semibold">
-                      Proposed Diff
-                    </p>
+                    <p className="mb-2 text-sm font-semibold">Proposed Diff</p>
 
                     <div className="overflow-x-auto rounded-lg border bg-slate-950 p-4 font-mono text-xs leading-7">
                       {mockDiff.map((line, index) => (
@@ -482,9 +396,7 @@ export default function AgentWorkspacePage() {
                       key={test.name}
                       className="flex items-center justify-between gap-3 rounded-lg border p-3"
                     >
-                      <span className="text-sm">
-                        {test.name}
-                      </span>
+                      <span className="text-sm">{test.name}</span>
 
                       {test.passed ? (
                         <Badge
@@ -495,10 +407,7 @@ export default function AgentWorkspacePage() {
                           Passed
                         </Badge>
                       ) : (
-                        <Badge
-                          variant="outline"
-                          className="border-red-200 bg-red-100 text-red-700"
-                        >
+                        <Badge variant="outline" className="border-red-200 bg-red-100 text-red-700">
                           <XCircle className="mr-1 size-3" />
                           Failed
                         </Badge>
@@ -525,61 +434,39 @@ export default function AgentWorkspacePage() {
               ) : (
                 <>
                   <p className="text-sm text-muted-foreground">
-                    Review the proposed code changes and test results
-                    before making a decision.
+                    Review the proposed code changes and test results before making a decision.
                   </p>
 
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">
-                      Review Status
-                    </span>
-                    <Badge variant="outline">
-                      {reviewStatus}
-                    </Badge>
+                    <span className="text-sm font-medium">Review Status</span>
+                    <Badge variant="outline">{reviewStatus}</Badge>
                   </div>
 
                   <div className="rounded-lg border p-3 text-sm">
-                    <p className="font-medium">
-                      Validation summary
-                    </p>
-                    <p className="mt-1 text-muted-foreground">
-                      3 tests passed, 1 test failed.
-                    </p>
+                    <p className="font-medium">Validation summary</p>
+                    <p className="mt-1 text-muted-foreground">3 tests passed, 1 test failed.</p>
                   </div>
 
                   {reviewStatus === 'Pending' ? (
                     <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        onClick={() =>
-                          updateReview('Approved')
-                        }
-                      >
+                      <Button onClick={() => updateReview('Approved')}>
                         <CheckCircle2 className="mr-2 size-4" />
                         Approve
                       </Button>
 
-                      <Button
-                        variant="destructive"
-                        onClick={() =>
-                          updateReview('Rejected')
-                        }
-                      >
+                      <Button variant="destructive" onClick={() => updateReview('Rejected')}>
                         <XCircle className="mr-2 size-4" />
                         Reject
                       </Button>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <p className="text-sm font-medium">
-                        Decision: {reviewStatus}
-                      </p>
+                      <p className="text-sm font-medium">Decision: {reviewStatus}</p>
 
                       <Button
                         variant="outline"
                         className="w-full"
-                        onClick={() =>
-                          updateReview('Pending')
-                        }
+                        onClick={() => updateReview('Pending')}
                       >
                         Reset Demo Review
                       </Button>
@@ -587,8 +474,8 @@ export default function AgentWorkspacePage() {
                   )}
 
                   <p className="text-xs text-muted-foreground">
-                    Demo only. Review decisions are stored in local
-                    React state and do not change source code.
+                    Demo only. Review decisions are stored in local React state and do not change
+                    source code.
                   </p>
                 </>
               )}
@@ -599,4 +486,3 @@ export default function AgentWorkspacePage() {
     </div>
   );
 }
-

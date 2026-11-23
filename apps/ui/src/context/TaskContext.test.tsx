@@ -67,9 +67,7 @@ describe('TaskContext', () => {
       result.current.updateTaskStatus(taskId, 'Running');
     });
 
-    const updatedTask = result.current.tasks.find(
-      (task) => task.id === taskId
-    );
+    const updatedTask = result.current.tasks.find((task) => task.id === taskId);
 
     expect(updatedTask?.status).toBe('Running');
     expect(updatedTask?.startedAt).not.toBeNull();
@@ -93,8 +91,6 @@ describe('TaskContext', () => {
     const agentTasks = result.current.getAgentTasks('AG-003');
 
     expect(agentTasks.length).toBeGreaterThan(0);
-    expect(
-      agentTasks.every((task) => task.agentId === 'AG-003')
-    ).toBe(true);
+    expect(agentTasks.every((task) => task.agentId === 'AG-003')).toBe(true);
   });
 });

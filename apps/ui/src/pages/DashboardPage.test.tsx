@@ -16,7 +16,7 @@ function renderDashboard() {
       <TaskProvider>
         <DashboardPage />
       </TaskProvider>
-    </MemoryRouter>
+    </MemoryRouter>,
   );
 }
 
@@ -34,39 +34,33 @@ describe('DashboardPage', () => {
     renderDashboard();
 
     expect(screen.getByText('Recent Incidents')).toBeTruthy();
-    expect(
-      screen.getByText('Database connection timeout')
-    ).toBeTruthy();
-    expect(
-      screen.getByText('API response latency')
-    ).toBeTruthy();
+    expect(screen.getByText('Database connection timeout')).toBeTruthy();
+    expect(screen.getByText('API response latency')).toBeTruthy();
   });
 
-  
-it('displays incident severity and status', () => {
-  renderDashboard();
+  it('displays incident severity and status', () => {
+    renderDashboard();
 
-  expect(screen.getAllByText('Critical').length).toBeGreaterThan(0);
-  expect(screen.getAllByText('Medium').length).toBeGreaterThan(0);
-  expect(screen.getAllByText('Investigating').length).toBeGreaterThan(0);
-  expect(screen.getAllByText('Open').length).toBeGreaterThan(0);
-});
-
-it('applies severity colors correctly', () => {
-  renderDashboard();
-
-  const criticalBadges = screen.getAllByText('Critical');
-  const mediumBadges = screen.getAllByText('Medium');
-
-  criticalBadges.forEach((badge) => {
-    expect(badge.className).toContain('bg-red-100');
+    expect(screen.getAllByText('Critical').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Medium').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Investigating').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Open').length).toBeGreaterThan(0);
   });
 
-  mediumBadges.forEach((badge) => {
-    expect(badge.className).toContain('bg-yellow-100');
-  });
-});
+  it('applies severity colors correctly', () => {
+    renderDashboard();
 
+    const criticalBadges = screen.getAllByText('Critical');
+    const mediumBadges = screen.getAllByText('Medium');
+
+    criticalBadges.forEach((badge) => {
+      expect(badge.className).toContain('bg-red-100');
+    });
+
+    mediumBadges.forEach((badge) => {
+      expect(badge.className).toContain('bg-yellow-100');
+    });
+  });
 
   it('renders the AgentOverview component', () => {
     renderDashboard();
@@ -75,4 +69,3 @@ it('applies severity colors correctly', () => {
     expect(screen.getByText('Diagnostic Agent')).toBeTruthy();
   });
 });
-

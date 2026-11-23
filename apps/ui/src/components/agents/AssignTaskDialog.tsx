@@ -12,10 +12,7 @@ interface AssignTaskDialogProps {
   onClose: () => void;
 }
 
-export default function AssignTaskDialog({
-  open,
-  onClose,
-}: AssignTaskDialogProps) {
+export default function AssignTaskDialog({ open, onClose }: AssignTaskDialogProps) {
   const { createTask } = useTasks();
 
   const [title, setTitle] = useState('');
@@ -64,11 +61,7 @@ export default function AssignTaskDialog({
           <h2 id="assign-task-title" className="text-xl font-semibold">
             Assign New Task
           </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close dialog"
-          >
+          <button type="button" onClick={onClose} aria-label="Close dialog">
             <X className="size-5" />
           </button>
         </div>
@@ -147,9 +140,7 @@ export default function AssignTaskDialog({
             <select
               id="task-priority"
               value={priority}
-              onChange={(event) =>
-                setPriority(event.target.value as TaskPriority)
-              }
+              onChange={(event) => setPriority(event.target.value as TaskPriority)}
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
             >
               <option value="Low">Low</option>

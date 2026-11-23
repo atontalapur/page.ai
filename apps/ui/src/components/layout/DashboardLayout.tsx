@@ -1,14 +1,7 @@
-
 import { type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 
-import {
-  LayoutDashboard,
-  AlertTriangle,
-  Bot,
-  Bell,
-  Sparkles,
-} from 'lucide-react';
+import { LayoutDashboard, AlertTriangle, Bot, Bell, Sparkles } from 'lucide-react';
 
 import {
   SidebarProvider,
@@ -27,10 +20,7 @@ import {
 } from '@page/design-system/components/ui/sidebar';
 
 import { Button } from '@page/design-system/components/ui/button';
-import {
-  Avatar,
-  AvatarFallback,
-} from '@page/design-system/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@page/design-system/components/ui/avatar';
 import { Separator } from '@page/design-system/components/ui/separator';
 
 interface DashboardLayoutProps {
@@ -43,18 +33,13 @@ const navigation = [
   { title: 'Agents', icon: Bot, path: '/agents' },
 ] as const;
 
-export default function DashboardLayout({
-  children,
-}: DashboardLayoutProps) {
+export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { pathname } = useLocation();
 
   const isActivePath = (path: string) =>
-    pathname === path ||
-    (path !== '/' && pathname.startsWith(`${path}/`));
+    pathname === path || (path !== '/' && pathname.startsWith(`${path}/`));
 
-  const activePage =
-    navigation.find((item) => isActivePath(item.path))?.title ??
-    'Dashboard';
+  const activePage = navigation.find((item) => isActivePath(item.path))?.title ?? 'Dashboard';
 
   return (
     <SidebarProvider>
@@ -91,15 +76,10 @@ export default function DashboardLayout({
                         isActive={isActive}
                         className="h-10 w-full rounded-lg"
                       >
-                        <NavLink
-                          to={item.path}
-                          className="flex w-full items-center gap-3 px-3"
-                        >
+                        <NavLink to={item.path} className="flex w-full items-center gap-3 px-3">
                           <item.icon className="size-4 shrink-0" />
 
-                          <span className="truncate text-sm font-medium">
-                            {item.title}
-                          </span>
+                          <span className="truncate text-sm font-medium">{item.title}</span>
                         </NavLink>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -118,13 +98,9 @@ export default function DashboardLayout({
             </Avatar>
 
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <p className="truncate text-sm font-medium">
-                Demo User
-              </p>
+              <p className="truncate text-sm font-medium">Demo User</p>
 
-              <p className="text-xs text-muted-foreground">
-                Workspace
-              </p>
+              <p className="text-xs text-muted-foreground">Workspace</p>
             </div>
           </div>
         </SidebarFooter>
@@ -136,23 +112,13 @@ export default function DashboardLayout({
           <div className="flex items-center gap-3">
             <SidebarTrigger />
 
-            <Separator
-              orientation="vertical"
-              className="h-5"
-            />
+            <Separator orientation="vertical" className="h-5" />
 
-            <h1 className="text-lg font-semibold">
-              {activePage}
-            </h1>
+            <h1 className="text-lg font-semibold">{activePage}</h1>
           </div>
 
           <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Notifications"
-              disabled
-            >
+            <Button variant="ghost" size="icon" aria-label="Notifications" disabled>
               <Bell className="size-5" />
             </Button>
 
@@ -163,13 +129,9 @@ export default function DashboardLayout({
         </header>
 
         <div className="flex-1 bg-muted/20 p-4 md:p-6">
-          <div className="mx-auto w-full max-w-7xl">
-            {children}
-          </div>
+          <div className="mx-auto w-full max-w-7xl">{children}</div>
         </div>
       </SidebarInset>
     </SidebarProvider>
   );
 }
-
-

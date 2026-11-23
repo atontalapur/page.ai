@@ -1,11 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  cleanup,
-  render,
-  screen,
-  within,
-} from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 import IncidentDetailsPage from './IncidentDetailsPage';
@@ -19,12 +14,9 @@ function renderIncidentDetails(id: string) {
   return render(
     <MemoryRouter initialEntries={[`/incidents/${id}`]}>
       <Routes>
-        <Route
-          path="/incidents/:id"
-          element={<IncidentDetailsPage />}
-        />
+        <Route path="/incidents/:id" element={<IncidentDetailsPage />} />
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter>,
   );
 }
 
@@ -48,13 +40,9 @@ describe('IncidentDetailsPage', () => {
 
     renderIncidentDetails(incident.id);
 
-    expect(
-      screen.getByRole('heading', { name: incident.title })
-    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: incident.title })).toBeTruthy();
 
-    expect(
-      screen.getByText(incident.description)
-    ).toBeTruthy();
+    expect(screen.getByText(incident.description)).toBeTruthy();
   });
 
   it('displays the incident ID', () => {
@@ -70,23 +58,13 @@ describe('IncidentDetailsPage', () => {
 
     renderIncidentDetails(incident.id);
 
-    const badges = document.querySelectorAll(
-      '[data-slot="badge"]'
-    );
+    const badges = document.querySelectorAll('[data-slot="badge"]');
 
     expect(badges).toHaveLength(2);
 
-    expect(
-      Array.from(badges).some(
-        (badge) => badge.textContent === incident.severity
-      )
-    ).toBe(true);
+    expect(Array.from(badges).some((badge) => badge.textContent === incident.severity)).toBe(true);
 
-    expect(
-      Array.from(badges).some(
-        (badge) => badge.textContent === incident.status
-      )
-    ).toBe(true);
+    expect(Array.from(badges).some((badge) => badge.textContent === incident.status)).toBe(true);
   });
 
   it('displays the correct occurrence count', () => {
@@ -94,11 +72,7 @@ describe('IncidentDetailsPage', () => {
 
     renderIncidentDetails(incident.id);
 
-    expect(
-      getMetricCard('Occurrences').getByText(
-        String(incident.occurrences)
-      )
-    ).toBeTruthy();
+    expect(getMetricCard('Occurrences').getByText(String(incident.occurrences))).toBeTruthy();
   });
 
   it('displays the incident source', () => {
@@ -106,9 +80,7 @@ describe('IncidentDetailsPage', () => {
 
     renderIncidentDetails(incident.id);
 
-    expect(
-      getMetricCard('Source').getByText(incident.source)
-    ).toBeTruthy();
+    expect(getMetricCard('Source').getByText(incident.source)).toBeTruthy();
   });
 
   it('displays the last updated timestamp', () => {
@@ -117,9 +89,7 @@ describe('IncidentDetailsPage', () => {
     renderIncidentDetails(incident.id);
 
     expect(
-      getMetricCard('Last Updated').getByText(
-        new Date(incident.updatedAt).toLocaleString()
-      )
+      getMetricCard('Last Updated').getByText(new Date(incident.updatedAt).toLocaleString()),
     ).toBeTruthy();
   });
 
@@ -141,37 +111,23 @@ describe('IncidentDetailsPage', () => {
 
     renderIncidentDetails(incident.id);
 
-    expect(
-      screen.getByText('Investigation Timeline')
-    ).toBeTruthy();
+    expect(screen.getByText('Investigation Timeline')).toBeTruthy();
 
-    expect(
-      screen.getByText('Incident detected')
-    ).toBeTruthy();
+    expect(screen.getByText('Incident detected')).toBeTruthy();
 
-    expect(
-      screen.getByText('Current status')
-    ).toBeTruthy();
+    expect(screen.getByText('Current status')).toBeTruthy();
 
-    expect(
-      screen.getByText(`Error detected through ${incident.source}`)
-    ).toBeTruthy();
+    expect(screen.getByText(`Error detected through ${incident.source}`)).toBeTruthy();
   });
 
   it('shows the assigned agent and workspace link', () => {
-    const incident = mockIncidents.find(
-      (item) => item.assignedAgent !== null
-    );
+    const incident = mockIncidents.find((item) => item.assignedAgent !== null);
 
     expect(incident).toBeDefined();
 
     renderIncidentDetails(incident!.id);
 
-    expect(
-      getMetricCard('Assigned Agent').getByText(
-        incident!.assignedAgent!
-      )
-    ).toBeTruthy();
+    expect(getMetricCard('Assigned Agent').getByText(incident!.assignedAgent!)).toBeTruthy();
 
     expect(screen.getByText('Agent assigned')).toBeTruthy();
 
@@ -179,34 +135,24 @@ describe('IncidentDetailsPage', () => {
       name: 'View Agent Workspace',
     });
 
-    expect(workspaceLink.getAttribute('href')).toBe(
-      `/agents/${incident!.assignedAgent}`
-    );
+    expect(workspaceLink.getAttribute('href')).toBe(`/agents/${incident!.assignedAgent}`);
   });
 
   it('shows an unassigned message when no agent is assigned', () => {
-    const incident = mockIncidents.find(
-      (item) => !item.assignedAgent
-    );
+    const incident = mockIncidents.find((item) => !item.assignedAgent);
 
     expect(incident).toBeDefined();
 
     renderIncidentDetails(incident!.id);
 
-    expect(
-      getMetricCard('Assigned Agent').getByText('None')
-    ).toBeTruthy();
+    expect(getMetricCard('Assigned Agent').getByText('None')).toBeTruthy();
 
-    expect(
-      screen.getByText(
-        'No agent has been assigned to this incident.'
-      )
-    ).toBeTruthy();
+    expect(screen.getByText('No agent has been assigned to this incident.')).toBeTruthy();
 
     expect(
       screen.queryByRole('link', {
         name: 'View Agent Workspace',
-      })
+      }),
     ).toBeNull();
   });
 
@@ -228,14 +174,10 @@ describe('IncidentDetailsPage', () => {
     expect(
       screen.getByRole('heading', {
         name: 'Incident not found',
-      })
+      }),
     ).toBeTruthy();
 
-    expect(
-      screen.getByText(
-        'The requested incident does not exist.'
-      )
-    ).toBeTruthy();
+    expect(screen.getByText('The requested incident does not exist.')).toBeTruthy();
 
     const backLink = screen.getByRole('link', {
       name: 'Back to Incidents',
