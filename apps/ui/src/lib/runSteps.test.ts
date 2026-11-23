@@ -85,6 +85,15 @@ describe('outputNotes', () => {
     expect(outputNotes(refused)).toEqual([
       { text: 'Policy: unquoted glob characters are not allowed', tone: 'refused' },
     ]);
+    const rejected = step('{"tool":"ops.restart"}', {
+      kind: 'host_tool',
+      allowed: false,
+      exitCode: null,
+      outputTrimmed: 'refused: ops.restart was not approved: Arjun rejected it',
+    });
+    expect(outputNotes(rejected)).toEqual([
+      { text: 'ops.restart was not approved: Arjun rejected it', tone: 'refused' },
+    ]);
   });
 
   it('falls back to the first line a failing command printed', () => {

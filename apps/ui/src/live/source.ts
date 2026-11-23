@@ -1,5 +1,7 @@
 import {
   serverToUiEvents,
+  type Approval,
+  type DecidedApproval,
   type Issue,
   type IssueEvent,
   type IssueEventRecord,
@@ -33,6 +35,8 @@ export interface IssueFeed {
   reset(issues: Issue[]): void;
   /** One issue opened or changed. */
   update(issue: Issue): void;
+  /** A Tier 3 run's request to change the live app, or its decision. */
+  approval(approval: Approval): void;
   status(status: FeedStatus): void;
   /**
    * The socket connected, the first time or again. A run loaded before may have missed
@@ -46,6 +50,8 @@ export interface IssueFeed {
   /** One daemon connected, left, took a run or let one go. */
   node(node: NodeSummary): void;
 }
+
+export type ApprovalDecision = DecidedApproval['decision'];
 
 export interface IssueSource {
   /** Starts feeding, and returns the function that stops it. */
@@ -63,6 +69,29 @@ export interface IssueSource {
    * with a message to show when the server refuses it.
    */
   applyEvent(id: string, event: IssueEvent): Promise<Issue>;
+  /** An issue's Tier 3 approvals, oldest first, or undefined when they can't be loaded. */
+  fetchApprovals(id: string): Promise<Approval[] | undefined>;
+  /**
+   * Sends a person's decision on a Tier 3 request. The server records it under the name the
+   * source connected with, and every tab hears it back through `approval`.
+   */
+  decideApproval(approvalId: string, decision: ApprovalDecision): void;
+  /** Connects again under `name`, the one the server records decisions with. */
+  setApproverName?(name: string): void;
+}
+
+/**
+ * The approval in an `approval.requested` or `approval.updated` payload, or undefined when
+ * the payload breaks the contract.
+ */
+export function parseApproval(
+  event: 'approval.requested' | 'approval.updated',
+  payload: unknown,
+): Approval | undefined {
+  const parsed = serverToUiEvents[event].safeParse(payload);
+  if (parsed.success) return parsed.data.approval;
+  console.warn(`dropped an ${event} that breaks the contract`, parsed.error.issues);
+  return undefined;
 }
 
 /**

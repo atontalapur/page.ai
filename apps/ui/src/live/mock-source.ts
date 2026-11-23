@@ -210,6 +210,9 @@ export function mockSource({
     fetchRuns: (id) => Promise.resolve(daemons.runsOf(id)),
     fetchEvents: () => Promise.resolve([]),
     fetchNodeRuns: (name) => Promise.resolve(daemons.runsBy(name)),
+    // The mock's runs never reach Tier 3's ops tools, so it has no requests to approve.
+    fetchApprovals: () => Promise.resolve([]),
+    decideApproval: () => undefined,
     // Starting a fix works, so the agents page's button does something without a server.
     // Reviews need the orchestrator.
     applyEvent(id, event) {

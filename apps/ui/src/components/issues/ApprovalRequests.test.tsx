@@ -1,0 +1,208 @@
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import type { Approval, DecidedApproval, PendingApproval } from '@page/contracts';
+
+import { issue, renderWithIssues, testSource, type TestSource } from '../../test-utils';
+import ApprovalRequests from './ApprovalRequests';
+
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+const fixing = issue(1, { status: 'fixing', currentTier: 3 });
+const other = issue(2, { status: 'fixing', currentTier: 3 });
+const inMinutes = (m: number) => new Date(Date.now() + m * 60_000).toISOString();
+
+let n = 0;
+function pending(fields: Partial<PendingApproval> = {}): PendingApproval {
+  n += 1;
+  return {
+    id: `0000000${n}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
+    runId: '30000000-2222-4222-8222-222222222222',
+    issueId: fixing.id,
+    action: 'ops.rollback',
+    args: {
+      tool: 'ops.rollback',
+      to: 'dep-good',
+      from: 'dep-live',
+      live: { id: 'dep-live', status: 'SUCCESS', commit: 'b1c2d3e', createdAt: inMinutes(-60) },
+      rollBackTo: {
+        id: 'dep-good',
+        status: 'REMOVED',
+        commit: 'a9b8c7d',
+        createdAt: inMinutes(-600),
+      },
+    },
+    requestedAt: new Date().toISOString(),
+    expiresAt: inMinutes(3),
+    decision: 'pending',
+    decidedBy: null,
+    decidedAt: null,
+    ...fields,
+  };
+}
+
+function decided(approval: Approval, fields: Partial<DecidedApproval> = {}): DecidedApproval {
+  return {
+    ...approval,
+    decision: 'approved',
+    decidedBy: 'ui:Arjun',
+    decidedAt: new Date().toISOString(),
+    ...fields,
+  };
+}
+
+function renderFor(source: TestSource, which = fixing) {
+  return renderWithIssues(<ApprovalRequests issue={which} />, source);
+}
+
+const named = (name = 'Arjun') => localStorage.setItem('page-ai-approver-name', name);
+const section = () =>
+  screen.findByRole('region', { name: 'Live app actions waiting for approval' });
+
+describe('ApprovalRequests', () => {
+  it('shows a pending request with its tool, its arguments in plain words, and its deadline', async () => {
+    named();
+    const source = testSource([fixing]);
+    source.approvals.set(fixing.id, [pending()]);
+    renderFor(source);
+
+    const bar = await section();
+    expect(within(bar).getByText('Roll back the live app')).toBeTruthy();
+    expect(
+      within(bar).getByText(
+        /^Replace the live deployment dep-live \(commit b1c2d3e, .+\) with the earlier deployment dep-good \(commit a9b8c7d, .+\)\.$/,
+      ),
+    ).toBeTruthy();
+    expect(within(bar).getByText('ops.rollback')).toBeTruthy();
+    expect(within(bar).getByText(/^Expires in 2m 5\ds$|^Expires in 3m 00s$/)).toBeTruthy();
+    expect(within(bar).getByText(/separate from reviewing a finished fix/)).toBeTruthy();
+  });
+
+  it('shows nothing without a pending request', () => {
+    const source = testSource([fixing]);
+    source.approvals.set(fixing.id, [decided(pending())]);
+    const { container } = renderFor(source);
+    expect(container.textContent).toBe('');
+  });
+
+  it('shows a request that arrives live, only on its own issue, and counts it down', async () => {
+    named();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const source = testSource([fixing, other]);
+    renderFor(source);
+
+    source.sendApproval('approval.requested', {
+      v: 1,
+      approval: pending({
+        issueId: other.id,
+        action: 'ops.restart',
+        args: { tool: 'ops.restart' },
+      }),
+    });
+    expect(screen.queryByText('Restart the live app')).toBeNull();
+    source.sendApproval('approval.requested', {
+      v: 1,
+      approval: pending({
+        action: 'ops.restart',
+        args: { tool: 'ops.restart' },
+        expiresAt: inMinutes(0.05),
+      }),
+    });
+    expect(await screen.findByText('Restart the live app')).toBeTruthy();
+    expect(screen.getByText(/^Expires in \ds$/)).toBeTruthy();
+    await act(() => vi.advanceTimersByTimeAsync(4_000));
+    expect(screen.getByText('Expiring')).toBeTruthy();
+  });
+
+  it('sends the decision, and leaves every tab once it is decided', async () => {
+    named();
+    const ask = pending({
+      action: 'ops.setConfig',
+      args: { key: 'SHIPPING_FLAT_CENTS', value: '500' },
+    });
+    const first = testSource([fixing]);
+    const second = testSource([fixing]);
+    for (const source of [first, second]) source.approvals.set(fixing.id, [ask]);
+    renderFor(first);
+    renderFor(second);
+    await waitFor(() =>
+      expect(screen.getAllByText('Change a setting on the live app')).toHaveLength(2),
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Approve' })[0]!);
+    expect(first.decisions).toEqual([{ approvalId: ask.id, decision: 'approved' }]);
+    expect(screen.getByRole('button', { name: 'Approving...' })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Reject' })[1]!);
+    expect(second.decisions).toEqual([{ approvalId: ask.id, decision: 'rejected' }]);
+    expect(screen.getByRole('button', { name: 'Rejecting...' })).toBeTruthy();
+
+    for (const source of [first, second]) {
+      source.sendApproval('approval.updated', { v: 1, approval: decided(ask) });
+    }
+    expect(screen.queryByText('Change a setting on the live app')).toBeNull();
+  });
+
+  it('keeps a decision over a pending copy loaded after it', async () => {
+    named();
+    const ask = pending();
+    const source = testSource([fixing]);
+    let release: (list: Approval[]) => void = () => undefined;
+    source.fetchApprovals = () => new Promise((resolve) => (release = resolve));
+    renderFor(source);
+    source.sendApproval('approval.updated', { v: 1, approval: decided(ask) });
+    // The load resolves after the decision arrived, as a slow GET would.
+    await act(() => {
+      release([ask]);
+      return Promise.resolve();
+    });
+    expect(screen.queryByText('Roll back the live app')).toBeNull();
+  });
+
+  it('asks for a name before anyone can decide, and connects again under it', async () => {
+    const source = testSource([fixing]);
+    source.approvals.set(fixing.id, [pending()]);
+    renderFor(source);
+    await section();
+
+    expect(screen.getByRole('button', { name: 'Approve' })).toHaveProperty('disabled', true);
+    const input = screen.getByLabelText('Your name');
+    const save = screen.getByRole('button', { name: 'Save name' });
+    fireEvent.change(input, { target: { value: 'system:me' } });
+    expect(save).toHaveProperty('disabled', true);
+    fireEvent.submit(input.closest('form')!);
+    expect(source.names).toEqual([]);
+
+    fireEvent.change(input, { target: { value: '  Arjun ' } });
+    fireEvent.click(save);
+    expect(source.names).toEqual(['Arjun']);
+    expect(localStorage.getItem('page-ai-approver-name')).toBe('Arjun');
+    expect(screen.getByText('Arjun')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Approve' })).toHaveProperty('disabled', false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change' }));
+    expect(screen.getByLabelText('Your name')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Approve' })).toHaveProperty('disabled', true);
+  });
+
+  it('keeps the buttons off while the socket is down, and loads again once it is back', async () => {
+    named();
+    const source = testSource([fixing]);
+    source.approvals.set(fixing.id, [pending()]);
+    const fetch = vi.spyOn(source, 'fetchApprovals');
+    renderFor(source);
+    await section();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    source.setStatus('reconnecting');
+    expect(screen.getByRole('status').textContent).toMatch(/Not connected to the orchestrator/);
+    expect(screen.getByRole('button', { name: 'Approve' })).toHaveProperty('disabled', true);
+    source.setStatus('live');
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('button', { name: 'Approve' })).toHaveProperty('disabled', false);
+  });
+});

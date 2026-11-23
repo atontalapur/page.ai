@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
+  decidedApprovalFixture,
   issueFixture,
   nodeRunFixture,
   nodeSummaryFixture,
+  pendingApprovalFixture,
   runFixture,
   serverToUiEventFixtures,
   stepFixture,
 } from '@page/contracts/fixtures';
-import type { Issue, NodeSummary } from '@page/contracts';
+import type { Approval, Issue, NodeSummary } from '@page/contracts';
 
 import { RUN_EVENTS, type FeedStatus, type IssueFeed, type RunEvent } from './source';
 
@@ -17,7 +19,10 @@ type Handler = (arg?: unknown) => void;
 class FakeSocket {
   handlers = new Map<string, Handler>();
   connects = 0;
+  disconnects = 0;
   closed = false;
+  auth: unknown;
+  emitted: [string, unknown][] = [];
   on(event: string, handler: Handler) {
     this.handlers.set(event, handler);
     return this;
@@ -25,8 +30,17 @@ class FakeSocket {
   fire(event: string, arg?: unknown) {
     this.handlers.get(event)?.(arg);
   }
+  emit(event: string, payload: unknown) {
+    this.emitted.push([event, payload]);
+    return this;
+  }
   connect() {
     this.connects += 1;
+    return this;
+  }
+  disconnect() {
+    this.disconnects += 1;
+    return this;
   }
   close() {
     this.closed = true;
@@ -78,6 +92,7 @@ function recorder() {
   // Every feed call in order, for the ones whose order matters.
   const calls: string[] = [];
   let syncs = 0;
+  const approvals: Approval[] = [];
   const feed: IssueFeed = {
     status: (status) => statuses.push(status),
     reset: (issues) => lists.push(issues),
@@ -94,8 +109,20 @@ function recorder() {
       calls.push(`node ${node.name}`);
       nodes.push(node);
     },
+    approval: (approval) => approvals.push(approval),
   };
-  return { feed, statuses, lists, updates, runs, nodeLists, nodes, calls, syncs: () => syncs };
+  return {
+    feed,
+    statuses,
+    lists,
+    updates,
+    runs,
+    nodeLists,
+    nodes,
+    calls,
+    syncs: () => syncs,
+    approvals,
+  };
 }
 
 describe('serverSource', () => {
@@ -346,6 +373,71 @@ describe('serverSource', () => {
     await expect(
       source.applyEvent(issueFixture.id, { type: 'reject', reason: 'no' }),
     ).rejects.toThrow('The orchestrator refused the token.');
+  });
+});
+
+describe('serverSource approvals', () => {
+  it('sends the name in the handshake, and passes on approvals that meet the contract', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { feed, approvals } = recorder();
+    serverSource('s3cret', 'Arjun').start(feed);
+    expect(io).toHaveBeenCalledWith('/ui', { auth: { token: 's3cret', name: 'Arjun' } });
+    const socket = sockets[0]!;
+
+    socket.fire('approval.requested', { v: 1, approval: pendingApprovalFixture });
+    socket.fire('approval.updated', { v: 1, approval: decidedApprovalFixture });
+    socket.fire('approval.updated', { v: 1, approval: pendingApprovalFixture });
+    socket.fire('approval.requested', { v: 2, approval: pendingApprovalFixture });
+
+    expect(approvals).toEqual([pendingApprovalFixture, decidedApprovalFixture]);
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends a decision on the socket, and none while it is stopped', () => {
+    const source = serverSource('s3cret', 'Arjun');
+    source.decideApproval(pendingApprovalFixture.id, 'approved');
+    const stop = source.start(recorder().feed);
+    source.decideApproval(pendingApprovalFixture.id, 'rejected');
+    stop();
+    source.decideApproval(pendingApprovalFixture.id, 'approved');
+
+    expect(sockets[0]!.emitted).toEqual([
+      ['approval.decide', { v: 1, approvalId: pendingApprovalFixture.id, decision: 'rejected' }],
+    ]);
+  });
+
+  it('connects again under a new name, since the name goes in the handshake', () => {
+    const later = serverSource('s3cret');
+    later.setApproverName?.('Nidheesh');
+    later.start(recorder().feed);
+    expect(io).toHaveBeenLastCalledWith('/ui', { auth: { token: 's3cret', name: 'Nidheesh' } });
+
+    const source = serverSource('s3cret');
+    source.start(recorder().feed);
+    const socket = sockets[1]!;
+    source.setApproverName?.('Daniyal');
+    expect(socket.auth).toEqual({ token: 's3cret', name: 'Daniyal' });
+    expect([socket.disconnects, socket.connects]).toEqual([1, 1]);
+  });
+
+  it("fetches an issue's approvals, and finds nothing for a 404, a bad body or a network error", async () => {
+    const source = serverSource('s3cret');
+
+    fetchMock.mockResolvedValueOnce(json([pendingApprovalFixture, decidedApprovalFixture]));
+    expect(await source.fetchApprovals(issueFixture.id)).toEqual([
+      pendingApprovalFixture,
+      decidedApprovalFixture,
+    ]);
+    expect(fetchMock).toHaveBeenLastCalledWith(`/approvals?issueId=${issueFixture.id}`, {
+      headers: { authorization: 'Bearer s3cret', accept: 'application/json' },
+    });
+
+    fetchMock.mockResolvedValueOnce(json({ statusCode: 404 }, 404));
+    expect(await source.fetchApprovals(issueFixture.id)).toBeUndefined();
+    fetchMock.mockResolvedValueOnce(json([{ id: 'nope' }]));
+    expect(await source.fetchApprovals(issueFixture.id)).toBeUndefined();
+    fetchMock.mockRejectedValueOnce(new TypeError('network'));
+    expect(await source.fetchApprovals(issueFixture.id)).toBeUndefined();
   });
 });
 
