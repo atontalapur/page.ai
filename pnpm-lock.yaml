@@ -603,6 +603,9 @@ importers:
 
   packages/agent:
     dependencies:
+      '@page/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@page/model-client':
         specifier: workspace:*
         version: link:../model-client
