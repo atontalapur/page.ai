@@ -67,7 +67,9 @@ demo app --errors--> PostHog --webhook--> orchestrator --call + SMS--> on-call (
    checks it against the tier's rules and writes a `steps` row before it runs. A command whose
    step can't be written doesn't run. A Tier 3 call that changes the live app (a config
    change, a restart or a rollback) also waits for a person to approve it on the incident
-   page, for at most 3 minutes; no answer counts as a rejection.
+   page, for at most 3 minutes; no answer counts as a rejection. The request shows the
+   agent's reason for the call in its own words, and the agent's prompt says which calls
+   wait and what to do after a no.
 
 | Tier | What the agent can do                                                                                                         |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------- |

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { SYSTEM_DECIDERS, type DecidedApproval } from '@page/contracts';
+import { approvalReason, SYSTEM_DECIDERS, type NodeDecision } from '@page/contracts';
 import {
   autoApprove,
   hostToolArgs,
@@ -28,6 +28,11 @@ export const APPROVAL_GRACE_MS = 10_000;
 /** How a run asks a person to approve a gated host tool call (APPROVAL_TOOLS). */
 export interface Approvals {
   /**
+   * Whether a person answers, so a gated call waits for them. False when every call is
+   * approved at once; the agent's prompt then says nothing about approvals.
+   */
+  readonly asksPerson: boolean;
+  /**
    * An Approve for one run. Its waits end when `signal` fires. `args` is what the person
    * sees for a call: its tool and arguments, and for a rollback, what it replaces.
    */
@@ -43,7 +48,7 @@ export interface Approvals {
  * fake adapters, an ops app on this machine (AUTO_APPROVE_OPS), and the eval.
  */
 export function autoApprovals(by: string): Approvals {
-  return { forRun: () => autoApprove(by) };
+  return { asksPerson: false, forRun: () => autoApprove(by) };
 }
 
 export interface LinkApprovalsOptions {
@@ -66,7 +71,8 @@ interface Waiting {
 /**
  * Asks a person through the orchestrator: sends `node.approval.request` and waits for the
  * `approval.decided` that answers it. One per daemon: it listens on the link once and hands
- * each answer to the run waiting on it.
+ * each answer to the run waiting on it. The request carries the model's thought for the call
+ * as its `reason` (approvalReason), so the person sees why the agent asks.
  *
  * A wait ends as a rejection when no one decides by the deadline, when the run is killed or
  * its job expires, and when the server says the run is no longer in progress. The server
@@ -75,6 +81,7 @@ interface Waiting {
  * that stays down can't hold a run: the wait still ends at its deadline.
  */
 export class LinkApprovals implements Approvals {
+  readonly asksPerson = true;
   private readonly link: OrchestratorLink;
   private readonly logger: Logger;
   private readonly timeoutMs: number;
@@ -95,7 +102,8 @@ export class LinkApprovals implements Approvals {
   }
 
   forRun({ runId, signal, args }: Parameters<Approvals['forRun']>[0]): Approve {
-    return (call, { timeoutMs }) => this.ask(runId, signal, call, args(call), timeoutMs);
+    return (call, { timeoutMs, thought }) =>
+      this.ask(runId, signal, call, args(call), approvalReason(thought), timeoutMs);
   }
 
   private async ask(
@@ -103,6 +111,7 @@ export class LinkApprovals implements Approvals {
     signal: AbortSignal,
     call: HostToolCall,
     args: Record<string, unknown>,
+    reason: string | null,
     timeoutMs: number,
   ): Promise<ApprovalVerdict> {
     if (signal.aborted) return STOPPED;
@@ -115,6 +124,7 @@ export class LinkApprovals implements Approvals {
       action: call.tool,
       args,
       expiresAt: new Date(this.now() + waitMs).toISOString(),
+      reason,
     };
     const log = this.logger.child({ runId, approvalId: request.approvalId, tool: call.tool });
     // Sent first: a request the contract refuses throws here, before anything waits on it.
@@ -140,7 +150,7 @@ export class LinkApprovals implements Approvals {
     });
   }
 
-  private decided(approval: DecidedApproval): void {
+  private decided(approval: NodeDecision): void {
     const waiting = this.waiting.get(approval.id);
     if (waiting === undefined || waiting.request.runId !== approval.runId) {
       this.logger.info(
@@ -172,7 +182,7 @@ const minutes = (ms: number) => {
 };
 
 /** The answer in words the agent reads after "was not approved:". */
-function verdictOf({ decision, decidedBy }: DecidedApproval): ApprovalVerdict {
+function verdictOf({ decision, decidedBy }: NodeDecision): ApprovalVerdict {
   if (decision === 'approved') return { approved: true, by: decidedBy };
   if (decidedBy === SYSTEM_DECIDERS.timedOut) {
     return { approved: false, reason: 'no one decided in time' };

@@ -10,11 +10,12 @@ import type {
   Step,
 } from '../db.ts';
 import type { EscalationNote } from '../escalation.ts';
-import type {
-  NodeToServerEvents,
-  ServerToNodeEvents,
-  ServerToUiEvents,
-  UiToServerEvents,
+import {
+  nodeDecision,
+  type NodeToServerEvents,
+  type ServerToNodeEvents,
+  type ServerToUiEvents,
+  type UiToServerEvents,
 } from '../events.ts';
 import type { JobPayload, QueueName } from '../jobs.ts';
 import type { NodeRun, NodeSummary } from '../nodes.ts';
@@ -103,6 +104,7 @@ export const pendingApprovalFixture: PendingApproval = {
   decidedBy: null,
   requestedAt: at,
   expiresAt: '2026-10-30T12:03:00.000Z',
+  reason: 'The live flat shipping fee is 2500000000 cents. Setting it back to 500 fixes the 500s.',
   decidedAt: null,
 };
 
@@ -204,13 +206,14 @@ export const nodeToServerEventFixtures: Payloads<NodeToServerEvents> = {
     action: pendingApprovalFixture.action,
     args: pendingApprovalFixture.args,
     expiresAt: pendingApprovalFixture.expiresAt,
+    reason: pendingApprovalFixture.reason,
   },
 };
 
 export const serverToNodeEventFixtures: Payloads<ServerToNodeEvents> = {
   'run.kill': uiToServerEventFixtures['run.kill'],
   'run.chat': uiToServerEventFixtures['run.chat'],
-  'approval.decided': { v: 1, approval: decidedApprovalFixture },
+  'approval.decided': { v: 1, approval: nodeDecision(decidedApprovalFixture) },
 };
 
 export const posthogWebhookFixture: PosthogWebhook = {

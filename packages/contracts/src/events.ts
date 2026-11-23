@@ -5,6 +5,7 @@ import {
   approvalSchema,
   confidenceSchema,
   decidedApprovalSchema,
+  type DecidedApproval,
   ESCALATION_REASONS,
   issueSchema,
   pendingApprovalSchema,
@@ -131,7 +132,8 @@ export const nodeToServerEvents = {
   // A Tier 3 agent asks to run a gated host tool such as `ops.restart`. The node picks the
   // approval id so it can match the `approval.decided` that answers it, and sends the same
   // request again after a reconnect. `expiresAt` is when it stops waiting; the server holds
-  // the request open no longer than MAX_APPROVAL_WAIT_MS.
+  // the request open no longer than MAX_APPROVAL_WAIT_MS. `reason` is the agent's own words
+  // for why (approvalReason); a daemon from before it was kept sends none.
   'node.approval.request': z.strictObject({
     v,
     approvalId: idSchema,
@@ -139,14 +141,31 @@ export const nodeToServerEvents = {
     action: pendingApprovalSchema.shape.action,
     args: pendingApprovalSchema.shape.args,
     expiresAt: pendingApprovalSchema.shape.expiresAt,
+    reason: pendingApprovalSchema.shape.reason.optional(),
   }),
 };
+
+/**
+ * A decision as a daemon gets it: the approval without its reason, which the daemon sent and
+ * has no use for. This keeps `approval.decided` in the shape daemons from before the reason
+ * read, so an orchestrator with it still answers them.
+ */
+export const nodeDecisionSchema = decidedApprovalSchema.omit({ reason: true });
+
+export type NodeDecision = z.infer<typeof nodeDecisionSchema>;
+
+/** `approval` as `approval.decided` carries it to a daemon. */
+export function nodeDecision(approval: DecidedApproval): NodeDecision {
+  const decision: NodeDecision & Partial<Pick<DecidedApproval, 'reason'>> = { ...approval };
+  delete decision.reason;
+  return decision;
+}
 
 /** UI requests the server relays to the node running the run (#9), and approval outcomes. */
 export const serverToNodeEvents = {
   'run.kill': runKill,
   'run.chat': runChat,
-  'approval.decided': z.strictObject({ v, approval: decidedApprovalSchema }),
+  'approval.decided': z.strictObject({ v, approval: nodeDecisionSchema }),
 };
 
 type Handlers<T extends Record<string, z.ZodType>> = {

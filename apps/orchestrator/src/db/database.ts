@@ -103,6 +103,8 @@ export interface ApprovalsTable {
   decided_at: Date | null;
   requested_at: Generated<Date>;
   expires_at: Date;
+  // The agent's reason for the call (011_approval_reason.sql). Optional on insert.
+  reason: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
 export interface SchemaMigrationsTable {

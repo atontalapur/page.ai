@@ -34,15 +34,16 @@ export function autoApprove(by: string): Approve {
 export type Gate = { refusal: string } | { timeoutMs: number };
 
 /**
- * Holds a gated host tool call until a person approves it. The wait counts against the
- * call's time limit, so the tool gets what is left, and against the run's wall clock. A
- * rejection, no answer in time, a stopped run or a broken approver is a refusal: the call
- * doesn't run. Undefined for a call that needs no approval, and for one the host tools would
- * refuse anyway, which then refuses itself without anyone being asked.
+ * Holds a gated host tool call until a person approves it, and shows them the model's thought
+ * for it. The wait counts against the call's time limit, so the tool gets what is left, and
+ * against the run's wall clock. A rejection, no answer in time, a stopped run or a broken
+ * approver is a refusal: the call doesn't run. Undefined for a call that needs no approval, and
+ * for one the host tools would refuse anyway, which then refuses itself without anyone being
+ * asked.
  */
 export async function approvalGate(
   call: HostToolCall,
-  ctx: Pick<ExecContext, 'approve' | 'hostTools'>,
+  ctx: Pick<ExecContext, 'approve' | 'hostTools' | 'thought'>,
   timeoutMs: number,
   log: Logger,
   now: () => number = Date.now,
@@ -53,7 +54,11 @@ export async function approvalGate(
   const started = now();
   let verdict: ApprovalVerdict;
   try {
-    verdict = await approve(call, { timeoutMs });
+    // The person sees why the agent asks, next to what it asks for.
+    verdict = await approve(call, {
+      timeoutMs,
+      ...(ctx.thought === undefined ? {} : { thought: ctx.thought }),
+    });
   } catch (error) {
     log.error({ err: error, tool: call.tool }, 'asking for approval failed');
     return { refusal: `${call.tool} was not approved: asking for approval failed` };

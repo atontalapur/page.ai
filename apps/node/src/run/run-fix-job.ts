@@ -11,6 +11,7 @@ import {
 import { MAX_RUN_DIFF_CHARS, type Confidence, type Tier } from '@page/contracts';
 import type { ModelClient } from '@page/model-client';
 import {
+  APPROVAL_TOOLS,
   DEFAULT_TIMEOUT_MS,
   execute,
   GitHubHostTools,
@@ -222,6 +223,11 @@ export async function runFixJob(
     const hostTools = hostToolsFor(tier, { github: githubTools, ops: opsTools });
     // The prompt offers the rollback blocks only to a run that has the tool.
     const rollback = hostTools?.handles?.('ops.rollback') === true;
+    // And says a person approves the run's changes to the live app only when one does: not
+    // with AUTO_APPROVE_OPS, and not for a run with no gated tool to ask about.
+    const personApproves =
+      deps.approvals?.asksPerson === true &&
+      [...APPROVAL_TOOLS].some((tool) => hostTools?.handles?.(tool) === true);
     // A kill or expiry ends a wait for approval as a refusal.
     const approve = deps.approvals?.forRun({
       runId,
@@ -253,7 +259,7 @@ export async function runFixJob(
     let end: RunEnd;
     try {
       const agentRun = await runAgent(
-        { task: job.report, tier, rollback },
+        { task: job.report, tier, rollback, personApproves },
         { model: deps.model, execute: run, now, signal: stopped },
         config,
       );

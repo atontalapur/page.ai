@@ -217,6 +217,7 @@ describe('orchestrator tables on real Postgres', () => {
         action: 'ops.restart',
         args: JSON.stringify({ dryRun: false }),
         expires_at: inAMinute(),
+        reason: 'The app needs a restart to load the fix.',
       })
       .returning('id')
       .executeTakeFirstOrThrow();
@@ -238,10 +239,15 @@ describe('orchestrator tables on real Postgres', () => {
         decidedAt: iso(row.decided_at),
         requestedAt: iso(row.requested_at),
         expiresAt: iso(row.expires_at),
+        reason: row.reason,
       });
     };
 
-    expect(await read()).toMatchObject({ decision: 'pending', args: { dryRun: false } });
+    expect(await read()).toMatchObject({
+      decision: 'pending',
+      args: { dryRun: false },
+      reason: 'The app needs a restart to load the fix.',
+    });
     await db
       .updateTable('approvals')
       .set({ decision: 'approved', decided_by: 'reviewer', decided_at: new Date() })

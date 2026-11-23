@@ -69,6 +69,20 @@ describe('approvalGate', () => {
     expect(gate).toEqual({ timeoutMs: 6_000 });
   });
 
+  it("shows the person the model's thought for the call, and nothing when it had none", async () => {
+    const asked: { timeoutMs: number; thought?: string }[] = [];
+    const approve: Approve = (_call, options) => {
+      asked.push(options);
+      return Promise.resolve({ approved: true, by: 'ui:arjun' });
+    };
+    await approvalGate(restart, { approve, thought: 'The override is wrong.' }, 1_000, log);
+    await approvalGate(restart, { approve }, 1_000, log);
+    expect(asked).toEqual([
+      { timeoutMs: 1_000, thought: 'The override is wrong.' },
+      { timeoutMs: 1_000 },
+    ]);
+  });
+
   it('leaves the call at least 1 ms when the approval took all of it', async () => {
     const gate = await approvalGate(
       restart,

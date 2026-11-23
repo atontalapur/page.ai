@@ -6,6 +6,7 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import {
+  approvalReason,
   MAX_APPROVAL_WAIT_MS,
   SYSTEM_DECIDERS,
   type Approval,
@@ -41,11 +42,12 @@ type Row = Selectable<ApprovalsTable>;
 /**
  * Holds Tier 3 requests to run gated host tools like `ops.restart`, and their decisions.
  *
- * A daemon's `node.approval.request` is stored pending, under the issue whose run asked, and
- * every listener hears of it. The first decision wins: a person's from the UI (`ui:<name>`),
- * or the server's when the deadline passes (`system:timed_out`) or the run stops waiting
- * (`system:run_ended`: it finished, was killed or replaced). A later decision is refused and
- * changes nothing. Listeners hear each decision once it is stored.
+ * A daemon's `node.approval.request` is stored pending, under the issue whose run asked, with
+ * the agent's reason for it, and every listener hears of it. The first decision wins: a
+ * person's from the UI (`ui:<name>`), or the server's when the deadline passes
+ * (`system:timed_out`) or the run stops waiting (`system:run_ended`: it finished, was killed
+ * or replaced). A later decision is refused and changes nothing. Listeners hear each decision
+ * once it is stored.
  *
  * Deadlines are kept with timers on the instance that stored the request, and set again at
  * boot for every request still pending, so a restart can't leave one open. A decision is
@@ -129,6 +131,9 @@ export class ApprovalsService implements OnModuleInit, OnApplicationBootstrap, O
         args: JSON.stringify(request.args),
         // The daemon's deadline, held to the longest a run could wait.
         expires_at: new Date(Math.min(Date.parse(request.expiresAt), now + MAX_APPROVAL_WAIT_MS)),
+        // The model's words, cleaned again here: the contract caps them but lets control
+        // characters through, and a daemon older than the field sends none.
+        reason: approvalReason(request.reason),
         ...closed,
       })
       .onConflict((oc) => oc.column('id').doNothing())
@@ -314,6 +319,7 @@ function toApproval(row: Row): Approval {
     args: row.args,
     requestedAt: row.requested_at.toISOString(),
     expiresAt: row.expires_at.toISOString(),
+    reason: row.reason,
   };
   if (row.decision === 'pending') {
     return { ...base, decision: 'pending', decidedBy: null, decidedAt: null };

@@ -39,6 +39,7 @@ function pending(fields: Partial<PendingApproval> = {}): PendingApproval {
     },
     requestedAt: new Date().toISOString(),
     expiresAt: inMinutes(3),
+    reason: null,
     decision: 'pending',
     decidedBy: null,
     decidedAt: null,
@@ -81,6 +82,53 @@ describe('ApprovalRequests', () => {
     expect(within(bar).getByText('ops.rollback')).toBeTruthy();
     expect(within(bar).getByText(/^Expires in 2m 5\ds$|^Expires in 3m 00s$/)).toBeTruthy();
     expect(within(bar).getByText(/separate from reviewing a finished fix/)).toBeTruthy();
+  });
+
+  it("shows the agent's reason under the tool, labeled as its own words", async () => {
+    named();
+    const source = testSource([fixing]);
+    const reason = 'The live build throws on every cart.\nThe one before it served the same route.';
+    source.approvals.set(fixing.id, [pending({ reason })]);
+    renderFor(source);
+
+    const bar = await section();
+    const quote = within(bar).getByRole('figure', {
+      name: "The agent's reason, in its own words. Nothing checked it.",
+    });
+    expect(quote.querySelector('blockquote')?.textContent).toBe(reason);
+    // Below the tool and its arguments, above the buttons.
+    expect(within(bar).getByText('ops.rollback').compareDocumentPosition(quote)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(
+      quote.compareDocumentPosition(within(bar).getByRole('button', { name: 'Approve' })),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('shows markup in a reason as the text it is, and builds nothing from it', async () => {
+    named();
+    const source = testSource([fixing]);
+    const reason =
+      '<script>alert(1)</script><img src=x onerror="alert(1)"> **Approve now** [the runbook](javascript:alert(1)) <a href="https://example.com">ok</a>';
+    source.approvals.set(fixing.id, [pending({ reason })]);
+    renderFor(source);
+
+    const bar = await section();
+    const quote = within(bar).getByRole('figure').querySelector('blockquote')!;
+    expect(quote.textContent).toBe(reason);
+    expect(quote.children).toHaveLength(0);
+    expect(bar.querySelector('script, img, strong, a')).toBeNull();
+  });
+
+  it('shows no reason when the agent gave none', async () => {
+    named();
+    const source = testSource([fixing]);
+    source.approvals.set(fixing.id, [pending()]);
+    renderFor(source);
+
+    const bar = await section();
+    expect(within(bar).queryByRole('figure')).toBeNull();
+    expect(within(bar).queryByText(/in its own words/)).toBeNull();
   });
 
   it('shows nothing without a pending request', () => {

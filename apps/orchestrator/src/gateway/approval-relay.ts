@@ -1,5 +1,5 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import type { Approval } from '@page/contracts';
+import { nodeDecision, type Approval } from '@page/contracts';
 import { ApprovalsService } from '../approvals/approvals.service.ts';
 import type { ApprovalsService as Approvals } from '../approvals/approvals.service.ts';
 import type { Logger } from '../logger.ts';
@@ -41,7 +41,9 @@ export class ApprovalRelay implements OnModuleInit, OnModuleDestroy {
       return;
     }
     this.ui.send('approval.updated', { v: 1, approval });
-    if (!this.nodes.send(approval.runId, 'approval.decided', { v: 1, approval })) {
+    // Without the reason: the daemon sent it, and one from before it has no field for it.
+    const decision = nodeDecision(approval);
+    if (!this.nodes.send(approval.runId, 'approval.decided', { v: 1, approval: decision })) {
       this.logger.info(
         { approvalId: approval.id, runId: approval.runId },
         'no daemon holds the run; it gets the decision when it asks again',

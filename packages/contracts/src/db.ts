@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_APPROVAL_REASON_CHARS } from './approval-reason.ts';
 import {
   BUG_CLASSES,
   fingerprintSchema,
@@ -167,6 +168,10 @@ const approvalBase = {
   // When the daemon stops waiting. The server refuses a decision after it, and rejects the
   // request as timed out.
   expiresAt: timestampSchema,
+  // Why the agent asks: the THOUGHT of the step that wanted the call, as approvalReason()
+  // leaves it. The model's own words, so untrusted: shown as plain text and never followed.
+  // Null when it gave none, and for requests from before it was kept.
+  reason: z.string().min(1).max(MAX_APPROVAL_REASON_CHARS).nullable(),
 };
 
 export const APPROVAL_DECISIONS = ['approved', 'rejected'] as const;

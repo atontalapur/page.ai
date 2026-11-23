@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
   confidenceFixture,
+  decidedApprovalFixture,
   escalationNoteFixture,
   nodeToServerEventFixtures,
   pendingApprovalFixture,
@@ -10,11 +11,13 @@ import {
   uiToServerEventFixtures,
 } from './__fixtures__/index.ts';
 import {
+  nodeDecision,
   nodeToServerEvents,
   serverToNodeEvents,
   serverToUiEvents,
   uiToServerEvents,
 } from './events.ts';
+import { MAX_APPROVAL_REASON_CHARS } from './approval-reason.ts';
 import { roundTrip } from './test-utils.ts';
 
 const directions: [string, Record<string, z.ZodType>, Record<string, unknown>][] = [
@@ -67,6 +70,44 @@ it('rejects a pending approval sent as a decision to the node or the UI', () => 
   const pending = { v: 1, approval: pendingApprovalFixture };
   expect(() => serverToNodeEvents['approval.decided'].parse(pending)).toThrow();
   expect(() => serverToUiEvents['approval.updated'].parse(pending)).toThrow();
+});
+
+describe('node.approval.request', () => {
+  const schema = nodeToServerEvents['node.approval.request'];
+  const request = nodeToServerEventFixtures['node.approval.request'];
+
+  it("carries the agent's reason, or null when it gave none", () => {
+    expect(schema.parse(request).reason).toBe(pendingApprovalFixture.reason);
+    expect(schema.parse({ ...request, reason: null }).reason).toBeNull();
+  });
+
+  it('takes a request with no reason, from a daemon older than it', () => {
+    const older: Partial<typeof request> = { ...request };
+    delete older.reason;
+    expect(schema.parse(older)).not.toHaveProperty('reason');
+  });
+
+  it('rejects a reason over the cap', () => {
+    const long = 'x'.repeat(MAX_APPROVAL_REASON_CHARS + 1);
+    expect(schema.safeParse({ ...request, reason: long }).success).toBe(false);
+  });
+});
+
+describe('approval.decided', () => {
+  const schema = serverToNodeEvents['approval.decided'];
+
+  it('carries no reason, so a daemon from before it still reads the decision', () => {
+    expect(schema.safeParse({ v: 1, approval: decidedApprovalFixture }).success).toBe(false);
+    const decision = nodeDecision(decidedApprovalFixture);
+    expect(schema.parse({ v: 1, approval: decision }).approval).toEqual(decision);
+  });
+
+  it('keeps everything else about the decision, and leaves the approval it came from alone', () => {
+    const decision = nodeDecision(decidedApprovalFixture);
+    expect(decision).not.toHaveProperty('reason');
+    expect({ ...decision, reason: decidedApprovalFixture.reason }).toEqual(decidedApprovalFixture);
+    expect(decidedApprovalFixture.reason).not.toBeNull();
+  });
 });
 
 describe('node.run.finished', () => {

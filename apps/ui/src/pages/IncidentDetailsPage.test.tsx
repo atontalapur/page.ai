@@ -392,6 +392,7 @@ describe('IncidentDetailsPage', () => {
         args: { tool: 'ops.restart' },
         requestedAt: '2026-11-22T09:00:00.000Z',
         expiresAt: new Date(Date.now() + 120_000).toISOString(),
+        reason: 'A restart loads the corrected setting.',
         decision: 'pending',
         decidedBy: null,
         decidedAt: null,
@@ -403,6 +404,7 @@ describe('IncidentDetailsPage', () => {
       name: 'Live app actions waiting for approval',
     });
     expect(within(bar).getByText('Restart the live app')).toBeTruthy();
+    expect(within(bar).getByText('A restart loads the corrected setting.')).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Review' })).toBeNull();
   });
 

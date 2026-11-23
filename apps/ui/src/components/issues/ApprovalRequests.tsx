@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent } from 'react';
 import { ClockCircleIcon, ShieldWarningIcon } from '@solar-icons/react/linear';
 import { approverNameSchema, type Approval, type Issue } from '@page/contracts';
 import { Button } from '@page/design-system/components/ui/button';
@@ -53,6 +53,27 @@ function NameForm({ onSave }: { onSave: (name: string) => void }) {
   );
 }
 
+/**
+ * Why the agent asks, as the model wrote it. The model read an error report anyone could have
+ * shaped, so this is plain text: React escapes it, and no markdown or link in it is rendered.
+ */
+function Reason({ text }: { text: string }) {
+  const id = useId();
+  return (
+    <figure aria-labelledby={id} className="space-y-1">
+      <figcaption id={id} className="text-xs text-muted-foreground">
+        The agent&apos;s reason, in its own words. Nothing checked it.
+      </figcaption>
+      <blockquote
+        tabIndex={0}
+        className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-md border-l-2 border-violet-a6 bg-muted/50 px-3 py-2 text-sm"
+      >
+        {text}
+      </blockquote>
+    </figure>
+  );
+}
+
 function Request({
   approval,
   canDecide,
@@ -82,6 +103,7 @@ function Request({
       </div>
       <p className="text-sm">{detail}</p>
       <p className="font-mono text-xs text-muted-foreground">{approval.action}</p>
+      {approval.reason !== null && <Reason text={approval.reason} />}
       <div className="flex flex-wrap gap-2">
         <Button disabled={!canDecide || sent !== undefined} onClick={() => decide('approved')}>
           {sent === 'approved' ? 'Approving...' : 'Approve'}
