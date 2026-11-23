@@ -46,3 +46,34 @@ The flags live in one place, `apps/node/src/sandbox/run-args.ts`.
 - If the team instead runs the agent loop inside the container, decision 2 is reversed.
   The container would then need network access to the model API and the keys inside it,
   and decision 1 would need an egress allowlist in place of `--network none`.
+
+## Amendment: hosts without Docker (2026-11-23)
+
+Railway, where staging runs, can't start containers from inside one, so a daemon there
+can't give each run its own. `SANDBOX_RUNTIME=local` runs the daemon and one sandbox in a
+single container (`apps/node/Dockerfile`); `docker`, the default, keeps everything above.
+
+What still holds under `local`:
+
+- Decision 2. The daemon runs as root and holds the keys; each command runs as the
+  unprivileged `sandbox` user through `su-exec` and `env -i`, so it starts with no
+  variables of the daemon's and can't read root's `/proc/<pid>/environ`.
+- The user can write only to `/workspace` and its own files in `/tmp`.
+- The 256-process limit, as `ulimit -u`, and each command's timeout and cleanup
+  (`WrappedExecRunner`).
+- One run at a time. Each start kills the user's processes and resets `/workspace` to its
+  baseline commit with `git reset --hard` and `git clean`.
+
+What doesn't:
+
+- **Decision 1.** Commands have the container's network. Blocking it needs privileges
+  Railway doesn't grant. The command policy still refuses `curl` and `wget`, but a
+  command such as `node -e "fetch(...)"` can reach the internet. The keys it would want
+  aren't in its reach.
+- **The CPU and memory limits** in decision 3 are the container's, shared with the
+  daemon, not 1 CPU and 1 GB per run. A command that exhausts memory can take the daemon
+  down with it; Railway then restarts the service and pg-boss retries the job.
+- **Decision 4's wall clock.** Nothing stops a run's processes if the daemon dies; the
+  next start, or the restart's reap, kills them.
+
+Use `docker` wherever the host allows it.

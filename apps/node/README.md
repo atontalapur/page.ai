@@ -34,6 +34,7 @@ pnpm --filter @page/node start
 | `ORCHESTRATOR_URL`            |                | The daemon connects out to `<url>/node` |
 | `NODE_SHARED_SECRET`          |                | Sent as `auth.token` in the handshake   |
 | `SANDBOX_IMAGE`               | `page-sandbox` | Built from `infra/sandbox/Dockerfile`   |
+| `SANDBOX_RUNTIME`             | `docker`       | `local` on hosts without Docker (below) |
 | `OPENROUTER_API_KEY`          |                | Required unless `USE_FAKE_ADAPTERS`     |
 | `OPENROUTER_MODEL`            |                | Required unless `USE_FAKE_ADAPTERS`     |
 | `GITHUB_TOKEN`, `GITHUB_REPO` |                | Required unless fakes; Tier 2 tools     |
@@ -56,6 +57,29 @@ Two things have to exist before a job will run:
 
 Fix jobs need a `report` (the triaged error report). A job without one fails at once with
 a note saying so, and no container starts.
+
+## On a host without Docker (Railway)
+
+`apps/node/Dockerfile` builds the daemon with its sandbox inside: `/workspace` holds
+page-demo at `PAGE_DEMO_REF` (default `main`) with its dependencies installed, and the
+image sets `SANDBOX_RUNTIME=local`. Each command runs as the unprivileged `sandbox` user,
+with none of the daemon's variables, one run at a time. Commands can reach the network, and
+CPU and memory are the container's rather than per run. ADR 0001's amendment lists what
+holds and what doesn't, so prefer `docker` where the host can run containers.
+
+```sh
+docker build -f apps/node/Dockerfile -t page-node .
+```
+
+The workspace must hold the tree the deployed demo app runs, or the agent's diff carries
+more than the fix. Railway's demo app builds page-demo `main`, so redeploy the node service
+after a `demo-sync.sh` PR merges there.
+
+On Railway the service builds that Dockerfile from the repo root
+(`RAILWAY_DOCKERFILE_PATH=apps/node/Dockerfile`) with no public domain, and takes the
+variables above: `DATABASE_URL` from the `db` service, `ORCHESTRATOR_URL` and
+`NODE_SHARED_SECRET` from the orchestrator, and `OPS_APP_URL` and `OPS_SECRET` for the demo
+app. It needs no port.
 
 ## Tier 2: pushing the fix and opening a PR
 
