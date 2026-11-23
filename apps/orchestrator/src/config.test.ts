@@ -30,7 +30,9 @@ describe('loadConfig', () => {
       debug: undefined,
       jevModel: 'typesafe/jev-1.14',
       embeddingModel: 'qwen/qwen3-embedding-8b',
+      answerModel: 'deepseek/deepseek-v4.1-flash',
       github: undefined,
+      secretsKey: undefined,
     });
   });
 

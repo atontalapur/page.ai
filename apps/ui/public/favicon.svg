@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+  <style>
+    .mark { stroke: #111113; } .page { fill: #111113; }
+    @media (prefers-color-scheme: dark) { .mark { stroke: #edeef0; } .page { fill: #edeef0; } }
+  </style>
+  <rect class="page" x="6.6" y="6.6" width="18.8" height="18.8" rx="3.2" opacity="0.42"/>
+  <g class="mark">
+    <path d="M2.8 12.4V9.2A6.4 6.4 0 0 1 9.2 2.8H12.4"/>
+    <path d="M19.6 2.8H22.8A6.4 6.4 0 0 1 29.2 9.2V12.4"/>
+    <path d="M29.2 19.6V22.8A6.4 6.4 0 0 1 22.8 29.2H19.6"/>
+    <path d="M12.4 29.2H9.2A6.4 6.4 0 0 1 2.8 22.8V19.6"/>
+  </g>
+</svg>

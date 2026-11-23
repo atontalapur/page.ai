@@ -35,8 +35,8 @@ import { authorizationHeader, bearerAuthorized } from '../auth/bearer.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/database.ts';
 import { RateLimitGuard } from '../rate-limit.guard.ts';
-import type { GitHubApi } from '../github/github-api.ts';
-import { CONFIG, DB, GITHUB } from '../tokens.ts';
+import { GitHubAppService } from '../github/github-app.service.ts';
+import { CONFIG, DB } from '../tokens.ts';
 import {
   KgConflictError,
   KgNotFoundError,
@@ -66,16 +66,17 @@ const searchBody = kgSearchSchema;
 export class KnowledgeController {
   constructor(
     private readonly knowledge: KnowledgeService,
-    @Inject(GITHUB) private readonly github: GitHubApi | null,
+    private readonly github: GitHubAppService,
   ) {}
 
   /** Reads the demo repo's main branch into the graph's main, stamped with its head commit. */
   @Post('seed')
   @HttpCode(200)
   @UseGuards(new RateLimitGuard(2, 60_000))
-  seed() {
-    if (!this.github) throw new NotFoundException('GitHub is not set up on this orchestrator');
-    return seedMain(this.github, this.knowledge, 'seed:main');
+  async seed() {
+    const api = await this.github.api();
+    if (!api) throw new NotFoundException('GitHub is not set up on this orchestrator');
+    return seedMain(api, this.knowledge, 'seed:main');
   }
 
   @Get('branches')

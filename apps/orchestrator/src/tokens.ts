@@ -9,3 +9,4 @@ export const CLASSIFIER = Symbol('TriageClassifier');
 export const DECIDER = Symbol('Decider');
 export const EMBEDDER = Symbol('Embedder');
 export const GITHUB = Symbol('GitHubApi');
+export const ANSWERER = Symbol('Answerer');

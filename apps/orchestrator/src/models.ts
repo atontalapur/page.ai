@@ -1,5 +1,8 @@
 import {
   HashEmbedder,
+  OpenRouterClient,
+  withRetries,
+  type ModelClient,
   OpenRouterDecider,
   OpenRouterEmbedder,
   type Decider,
@@ -23,4 +26,12 @@ export function buildEmbedder(config: Config): Embedder {
     apiKey: config.openRouterApiKey,
     model: config.embeddingModel,
   });
+}
+
+/** The model that answers reviewers on the bot's PRs, or null without a key. */
+export function buildAnswerer(config: Config): ModelClient | null {
+  if (config.useFakeAdapters || !config.openRouterApiKey) return null;
+  return withRetries(
+    new OpenRouterClient({ apiKey: config.openRouterApiKey, model: config.answerModel }),
+  );
 }

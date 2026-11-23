@@ -18,6 +18,7 @@ import pg from 'pg';
 import { PgBoss } from 'pg-boss';
 import type { Logger } from 'pino';
 import { nodeName } from './config.ts';
+import { gitHubToken } from './github-token.ts';
 import type { JobSource } from './jobs/job-source.ts';
 import { PgBossJobSource } from './jobs/pg-boss-source.ts';
 import { FakeLink } from './link/fake-link.ts';
@@ -202,7 +203,7 @@ export async function createAdapters(config: NodeConfig, logger: Logger): Promis
     link,
     results: new PgBossRunResults({ boss, logger }),
     model: fake ? new ScriptedModel() : withRetries(openRouter(config)),
-    github: fake ? new FakeGitHub() : gitHub(config),
+    github: fake ? new FakeGitHub() : gitHub(config, logger),
     ...withOps(
       opsFor(config, logger),
       opsLockFor(config, pool, logger),
@@ -338,11 +339,17 @@ function openRouter(config: NodeConfig): ModelClient {
   return new OpenRouterClient({ apiKey, model });
 }
 
-function gitHub(config: NodeConfig): GitHub {
-  const { GITHUB_TOKEN: token, GITHUB_REPO: repo } = config;
-  // The config schema requires both unless USE_FAKE_ADAPTERS is set.
-  if (token === undefined || repo === undefined) {
-    throw new Error('GITHUB_TOKEN and GITHUB_REPO are required');
-  }
-  return new RestGitHub({ token, repo });
+function gitHub(config: NodeConfig, logger: Logger): GitHub {
+  const { GITHUB_TOKEN: fallback, GITHUB_REPO: repo } = config;
+  // The config schema requires the repo unless USE_FAKE_ADAPTERS is set.
+  if (repo === undefined) throw new Error('GITHUB_REPO is required');
+  return new RestGitHub({
+    token: gitHubToken({
+      orchestratorUrl: config.ORCHESTRATOR_URL,
+      secret: config.NODE_SHARED_SECRET,
+      fallback,
+      logger,
+    }),
+    repo,
+  });
 }

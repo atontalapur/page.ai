@@ -47,6 +47,7 @@ describe('DashboardLayout', () => {
       ['Agents', '/agents'],
       ['Knowledge', '/knowledge'],
       ['Debugging', '/debug'],
+      ['Settings', '/settings'],
     ]) {
       const link = screen.getByRole('link', { name });
 

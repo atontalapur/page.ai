@@ -5,6 +5,8 @@ import { IssuesService } from '../issues/issues.service.ts';
 import { KnowledgeService, runBranch } from '../knowledge/knowledge.service.ts';
 import { HashEmbedder } from '@page/model-client';
 import type { GitHubApi } from './github-api.ts';
+import { GitHubAppService } from './github-app.service.ts';
+import { PrAnswersService } from './pr-answers.service.ts';
 import { GitHubReviewService, type PullRequestPayload } from './github-review.service.ts';
 import { signedByGitHub } from './github-webhook.controller.ts';
 
@@ -37,7 +39,33 @@ class FakeGitHubApi implements GitHubApi {
   text() {
     return Promise.resolve('');
   }
+  headRef = () => Promise.resolve(this.ref);
+  ref = '';
+  posted: { pr: number; body: string; thread?: number }[] = [];
+  comment(pr: number, body: string) {
+    this.posted.push({ pr, body });
+    return Promise.resolve();
+  }
+  replyToReviewComment(pr: number, thread: number, body: string) {
+    this.posted.push({ pr, body, thread });
+    return Promise.resolve();
+  }
 }
+
+/** A review service with no model to answer questions, which tests about decisions want. */
+const reviewService = (github: GitHubAppService) =>
+  new GitHubReviewService(
+    deps.db,
+    github,
+    deps.logger,
+    issues,
+    knowledge,
+    new PrAnswersService(deps.db, null, null, deps.logger, github, knowledge),
+  );
+
+/** GitHub as the review service reaches it, with `github` standing in for the repo. */
+const access = (github: GitHubApi | null) =>
+  new GitHubAppService(deps.db, deps.config, deps.logger, github);
 
 let n = 0;
 /** An issue whose Tier 1 fix is waiting on review. Returns its run id. */
@@ -75,7 +103,7 @@ const payload = (runId: string, extra: Partial<PullRequestPayload> = {}): PullRe
 describe('GitHubReviewService', () => {
   it('approves the fix when its PR is merged, and copies its knowledge to main', async () => {
     const github = new FakeGitHubApi();
-    const reviews = new GitHubReviewService(deps.db, github, deps.logger, issues, knowledge);
+    const reviews = reviewService(access(github));
     const { issueId, runId } = await awaitingReview();
     await knowledge.writeNode(
       runBranch(runId),
@@ -96,7 +124,7 @@ describe('GitHubReviewService', () => {
 
   it('rejects on changes requested, hands the review to the next tier, and closes the PR', async () => {
     const github = new FakeGitHubApi();
-    const reviews = new GitHubReviewService(deps.db, github, deps.logger, issues, knowledge);
+    const reviews = reviewService(access(github));
     const { issueId, runId } = await awaitingReview();
 
     const outcome = await reviews.handle(
@@ -132,7 +160,7 @@ describe('GitHubReviewService', () => {
 
   it('rejects a PR closed without merging, and leaves it closed', async () => {
     const github = new FakeGitHubApi();
-    const reviews = new GitHubReviewService(deps.db, github, deps.logger, issues, knowledge);
+    const reviews = reviewService(access(github));
     const { issueId, runId } = await awaitingReview();
     const closed = payload(runId);
     closed.pull_request.merged = false;
@@ -142,8 +170,74 @@ describe('GitHubReviewService', () => {
     expect(github.closed).toEqual([]);
   });
 
+  it('approves on an approving review', async () => {
+    const reviews = reviewService(access(new FakeGitHubApi()));
+    const { issueId, runId } = await awaitingReview();
+    const approving = payload(runId, {
+      action: 'submitted',
+      review: { id: 4, state: 'approved', body: 'LGTM', user: { login: 'ana' } },
+    });
+    expect(await reviews.handle('pull_request_review', approving)).toEqual({
+      kind: 'approved',
+      issueId,
+    });
+    expect((await issues.get(issueId)).status).toBe('resolved');
+  });
+
+  it('takes /reject in a Comment review, for a PR its reviewer opened', async () => {
+    const github = new FakeGitHubApi();
+    const reviews = reviewService(access(github));
+    const { issueId, runId } = await awaitingReview();
+    const commented = payload(runId, {
+      action: 'submitted',
+      review: {
+        id: 5,
+        state: 'commented',
+        body: '/reject\nThe cap is off by one.',
+        user: { login: 'ana' },
+      },
+    });
+    expect(await reviews.handle('pull_request_review', commented)).toEqual({
+      kind: 'rejected',
+      issueId,
+    });
+    const [job] = (
+      await deps.boss.findJobs<{
+        issueId: string;
+        tier: number;
+        escalationNote?: { blocker: string };
+      }>('fix', { data: { issueId } })
+    ).filter((j) => j.state !== 'cancelled' && j.data.tier === 2);
+    expect(job?.data.escalationNote?.blocker).toContain('The cap is off by one.');
+    expect(job?.data.escalationNote?.blocker).not.toContain('/reject');
+  });
+
+  it('takes a Comment review with no command as a possible question, not a decision', async () => {
+    const reviews = reviewService(access(new FakeGitHubApi()));
+    const { issueId, runId } = await awaitingReview();
+    const commented = payload(runId, {
+      action: 'submitted',
+      review: { id: 6, state: 'commented', body: 'Looking at this now.', user: { login: 'ana' } },
+    });
+    expect((await reviews.handle('pull_request_review', commented)).kind).toBe('asked');
+    expect((await issues.get(issueId)).status).toBe('awaiting_approval');
+  });
+
+  it('takes /approve in a PR conversation comment, finding the run from the PR', async () => {
+    const github = new FakeGitHubApi();
+    const reviews = reviewService(access(github));
+    const { issueId, runId } = await awaitingReview();
+    github.ref = `pageagents/${runId}`;
+    const outcome = await reviews.handleComment({
+      action: 'created',
+      issue: { number: 7, html_url: 'https://github.com/o/r/pull/7', pull_request: {} },
+      comment: { body: '/approve', user: { login: 'ana' } },
+    });
+    expect(outcome).toEqual({ kind: 'approved', issueId });
+  });
+
   it('ignores a PR that is not an agent branch, or whose run is not current', async () => {
-    const reviews = new GitHubReviewService(deps.db, null, deps.logger, issues, knowledge);
+    const reviews = reviewService(access(null));
     const other = payload(randomUUID());
     expect((await reviews.handle('pull_request', other)).kind).toBe('ignored');
     const human = payload(randomUUID());

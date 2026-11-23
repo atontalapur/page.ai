@@ -231,7 +231,9 @@ export const nodeConfigSchema = envSchema(
       OPENROUTER_API_KEY: secret.optional(),
       // An OpenRouter model id, e.g. `openai/gpt-5-mini`.
       OPENROUTER_MODEL: z.string().min(1).optional(),
-      // The fine-grained token and demo repo agents push to (#10).
+      // The demo repo agents push to (#10), and a fine-grained token for it. The token is
+      // only the fallback: with a GitHub App installed, the orchestrator hands out its
+      // installation tokens instead.
       GITHUB_TOKEN: secret.optional(),
       GITHUB_REPO: z
         .string()
@@ -257,14 +259,7 @@ export const nodeConfigSchema = envSchema(
       // approves them itself, which only fakes or an ops app on this machine may do.
       AUTO_APPROVE_OPS: z.stringbool().default(false),
     })
-    .superRefine(
-      ...requireUnlessFake([
-        'OPENROUTER_API_KEY',
-        'OPENROUTER_MODEL',
-        'GITHUB_TOKEN',
-        'GITHUB_REPO',
-      ]),
-    )
+    .superRefine(...requireUnlessFake(['OPENROUTER_API_KEY', 'OPENROUTER_MODEL', 'GITHUB_REPO']))
     .superRefine(...opsSecretForApp())
     .superRefine(...railwayForApp())
     .superRefine(...autoApproveOnlyHere()),

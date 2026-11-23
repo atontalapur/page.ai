@@ -76,5 +76,6 @@ describe('007_escalation_low_confidence', () => {
     } finally {
       await db.destroy();
     }
-  });
+    // Applies every migration twice over, which takes seconds once tests run in parallel.
+  }, 30_000);
 });

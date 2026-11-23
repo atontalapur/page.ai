@@ -184,6 +184,21 @@ export interface DecisionsTable {
   created_at: Generated<Date>;
 }
 
+export interface GitHubAppTable {
+  id: Generated<number>;
+  // bigint: node-postgres returns it as a string, PGlite as a number.
+  app_id: ColumnType<string | number, number, number>;
+  slug: string;
+  html_url: string;
+  owner: string;
+  private_key_enc: string;
+  webhook_secret_enc: string;
+  installation_id: ColumnType<string | number | null, number | null | undefined, number | null>;
+  repo: string | null;
+  created_at: Generated<Date>;
+  installed_at: Date | null;
+}
+
 export interface Database {
   issues: IssuesTable;
   issue_events: IssueEventsTable;
@@ -197,6 +212,7 @@ export interface Database {
   kg_edges: KgEdgesTable;
   kg_versions: KgVersionsTable;
   decisions: DecisionsTable;
+  github_app: GitHubAppTable;
   schema_migrations: SchemaMigrationsTable;
 }
 

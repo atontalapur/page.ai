@@ -3,7 +3,6 @@ import {
   Controller,
   Headers,
   HttpCode,
-  Inject,
   NotFoundException,
   Post,
   Req,
@@ -12,9 +11,12 @@ import {
 import type { RawBodyRequest } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { SkipApiToken } from '../auth/api-token.guard.ts';
-import type { Config } from '../config.ts';
-import { CONFIG } from '../tokens.ts';
-import { GitHubReviewService, type PullRequestPayload } from './github-review.service.ts';
+import { GitHubAppService } from './github-app.service.ts';
+import {
+  GitHubReviewService,
+  type IssueCommentPayload,
+  type PullRequestPayload,
+} from './github-review.service.ts';
 
 /** Whether `signature` (X-Hub-Signature-256) is GitHub's HMAC of `body` under `secret`. */
 export function signedByGitHub(
@@ -29,14 +31,15 @@ export function signedByGitHub(
 }
 
 /**
- * The demo repo's webhook. It checks GitHub's signature over the raw body with
- * GITHUB_WEBHOOK_SECRET, not the API token, and answers 404 while GitHub isn't set up.
+ * The demo repo's webhook. It checks GitHub's signature over the raw body with the GitHub
+ * App's webhook secret, or GITHUB_WEBHOOK_SECRET, not the API token, and answers 404 while
+ * neither is set up.
  */
 @Controller('ingest')
 @SkipApiToken()
 export class GitHubWebhookController {
   constructor(
-    @Inject(CONFIG) private readonly config: Config,
+    private readonly app: GitHubAppService,
     private readonly reviews: GitHubReviewService,
   ) {}
 
@@ -47,12 +50,18 @@ export class GitHubWebhookController {
     @Headers('x-github-event') event: string | undefined,
     @Headers('x-hub-signature-256') signature: string | undefined,
   ) {
-    const github = this.config.github;
-    if (!github) throw new NotFoundException('GitHub is not set up on this orchestrator');
-    if (!request.rawBody || !signedByGitHub(request.rawBody, signature, github.webhookSecret)) {
+    const secrets = await this.app.webhookSecrets();
+    if (secrets.length === 0) {
+      throw new NotFoundException('GitHub is not set up on this orchestrator');
+    }
+    const body = request.rawBody;
+    if (!body || !secrets.some((secret) => signedByGitHub(body, signature, secret))) {
       throw new UnauthorizedException();
     }
     if (event === 'ping') return { kind: 'ignored', why: 'ping' };
+    if (event === 'issue_comment') {
+      return this.reviews.handleComment(request.body as IssueCommentPayload);
+    }
     const payload = request.body as Partial<PullRequestPayload> | undefined;
     if (!event || !payload?.pull_request?.head?.ref) {
       return { kind: 'ignored', why: 'not a pull request event' };

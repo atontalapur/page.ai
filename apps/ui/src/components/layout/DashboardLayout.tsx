@@ -6,6 +6,7 @@ import {
   BotIcon,
   BugIcon,
   DangerTriangleIcon,
+  SettingsIcon,
   StructureIcon,
   WidgetIcon,
 } from '@solar-icons/react/bold-duotone';
@@ -43,6 +44,7 @@ const navigation = [
   { title: 'Agents', icon: BotIcon, path: '/agents' },
   { title: 'Knowledge', icon: StructureIcon, path: '/knowledge' },
   { title: 'Debugging', icon: BugIcon, path: '/debug' },
+  { title: 'Settings', icon: SettingsIcon, path: '/settings' },
 ] as const;
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
