@@ -4,8 +4,8 @@ import { runAgent } from './agent.ts';
 import type { AgentTask } from './prompts.ts';
 import { fakeExecute, ScriptedModel, submit } from './test-utils.ts';
 
-// The recorded eval results, and the calibration eval running against them, used these prompts.
-// An eval run approves every gated ops call at once (evalApprove in eval/src/approve.ts), and so
+// The recorded eval results, and the calibration runs on the dev set, used these prompts. An
+// eval run approves every gated ops call at once (evalApprove in eval/src/approve.ts), and so
 // does a daemon with AUTO_APPROVE_OPS, so neither may see a word about a person approving.
 //
 // If one of these fails, a change reached the prompt an auto-approved run sees, and the eval
