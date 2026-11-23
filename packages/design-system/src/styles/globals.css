@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-@import '@fontsource-variable/inter';
+@import 'allo-font';
 
 /* Scan this package's components wherever the stylesheet is imported from. */
 @source "../**/*.{ts,tsx}";
@@ -60,7 +60,7 @@
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Inter Variable', sans-serif;
+  --font-sans: 'Allo', ui-sans-serif, system-ui, sans-serif;
 
   /* Radix's step-9 contrast color for indigo and red, and the base of black-a/white-a. */
   --color-white: #fff;
