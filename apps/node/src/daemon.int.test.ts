@@ -67,7 +67,13 @@ describe('the daemon on real Postgres, with fake Docker, model and socket', () =
         [job.runId],
       );
       expect(rows).toEqual([
-        { seq: 0, kind: 'exec', input: 'git status', exit_code: 0, allowed: true },
+        {
+          seq: 0,
+          kind: 'exec',
+          input: 'pnpm --filter @page/demo-app test',
+          exit_code: 0,
+          allowed: true,
+        },
       ]);
       const [result] = await boss.fetch(RUN_FINISHED_QUEUE);
       expect(result?.data).toMatchObject({

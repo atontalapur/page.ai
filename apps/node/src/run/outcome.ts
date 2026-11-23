@@ -1,5 +1,5 @@
-import type { AgentRun } from '@page/agent';
-import { clip, type EscalationNote, type Tier } from '@page/contracts';
+import { CONFIDENCE_THRESHOLD, isLowConfidence, type AgentRun } from '@page/agent';
+import { clip, type Confidence, type EscalationNote, type Tier } from '@page/contracts';
 import type { NodePayload } from '../link/link.ts';
 
 export type RunFinished = NodePayload<'node.run.finished'>;
@@ -13,35 +13,53 @@ export type RunEnd =
   | { kind: 'expired' }
   | { kind: 'killed' };
 
+/** What the daemon found out about a run besides how it ended. */
+export interface RunFacts {
+  /** The PR the run opened, if it got that far. */
+  prUrl?: string | null;
+  /**
+   * A submitted Tier 3 run fixed the live app through the ops API and left no code change.
+   * Dropped for any other end.
+   */
+  opsOnly?: boolean;
+  /** A submitted run's score (scoreRun). Null when it wasn't scored; dropped for any other end. */
+  confidence?: Confidence | null;
+}
+
 // The note keeps the last few commands, in the order they ran, each clipped.
 const TRIED_LIMIT = 20;
 const TRIED_CHARS = 200;
 const SUMMARY_CHARS = 500;
 
+/** Whether the agent ended the run itself, by submitting a fix. */
+export const submitted = (end: RunEnd): boolean =>
+  end.kind === 'agent' && end.run.exitStatus === 'submitted';
+
 /**
- * The `node.run.finished` event for a run. `tried` is what the agent ran, in order, and
- * `prUrl` the PR it opened, if it got that far. `opsOnly` says a submitted Tier 3 run fixed
- * the live app through the ops API and left no code change; it is dropped for any other end.
+ * The `node.run.finished` event for a run. `tried` is what the agent ran, in order.
  *
- * A submitted run is a success with no confidence: nothing scores runs yet. A run that ran
- * out of budget escalates a tier (Tier 3 has nowhere to go, so it fails). A killed run is
- * `killed`, with what it had tried so far. Everything else
- * is a failure: retrying a broken model, audit log or sandbox at a higher tier won't help.
+ * A submitted run is a success that carries its score, unless the score is under its tier's
+ * confidence threshold (threshold.ts in @page/agent). Then it escalates a tier as
+ * `low_confidence`, the way a run out of budget escalates as `budget_exhausted`; Tier 3 has
+ * nowhere to go, so either one fails there. A run with no score never escalates for want of
+ * one. A killed run is `killed`, with what it had tried so far. Everything else is a failure:
+ * retrying a broken model, audit log or sandbox at a higher tier won't help.
  */
 export function finishedEvent(
   runId: string,
   tier: Tier,
   end: RunEnd,
   tried: readonly string[],
-  prUrl: string | null = null,
-  opsOnly = false,
+  { prUrl = null, opsOnly = false, confidence = null }: RunFacts = {},
 ): RunFinished {
-  const base = { v: 1 as const, runId, prUrl, confidence: null };
-  if (end.kind === 'agent' && end.run.exitStatus === 'submitted') {
+  const scored = submitted(end) ? confidence : null;
+  const base = { v: 1 as const, runId, prUrl, confidence: scored };
+  const lowScore = scored !== null && isLowConfidence(scored, tier);
+  if (submitted(end) && !lowScore) {
     return { ...base, status: 'succeeded', note: null, opsOnly };
   }
 
-  const { summary, blocker } = describe(end);
+  const { summary, blocker } = lowScore ? describeLowScore(end, tier, scored) : describe(end);
   const note: EscalationNote = {
     summary: clip(summary, SUMMARY_CHARS),
     tried: tried
@@ -51,9 +69,10 @@ export function finishedEvent(
     blocker,
   };
   if (end.kind === 'killed') return { ...base, status: 'killed', note };
-  if (end.kind === 'agent' && isBudget(end.run) && tier < 3) {
+  if (end.kind === 'agent' && (isBudget(end.run) || lowScore) && tier < 3) {
     const toTier = (tier + 1) as Tier;
-    return { ...base, status: 'escalated', reason: 'budget_exhausted', toTier, note };
+    const reason = lowScore ? 'low_confidence' : 'budget_exhausted';
+    return { ...base, status: 'escalated', reason, toTier, note };
   }
   return { ...base, status: 'failed', note };
 }
@@ -87,8 +106,40 @@ function describe(end: RunEnd): { summary: string; blocker: string } {
   }
 }
 
+const spentBy = (run: AgentRun) => `${run.modelCalls} model calls, $${run.costUsd.toFixed(2)}`;
+
+/** Why a submitted fix scored too low, from the parts of its score. */
+function describeLowScore(
+  end: RunEnd,
+  tier: Tier,
+  confidence: Confidence,
+): { summary: string; blocker: string } {
+  const spent = end.kind === 'agent' ? ` (${spentBy(end.run)})` : '';
+  const summary =
+    `The agent submitted a fix that scored ${confidence.score.toFixed(2)} for confidence, ` +
+    `under Tier ${tier}'s threshold of ${CONFIDENCE_THRESHOLD[tier]}${spent}.`;
+  if (confidence.liveAfterChange === false) {
+    return {
+      summary,
+      blocker:
+        'No healthy restart or live rollback came after its last change to the live app, so ' +
+        'the app may not serve the fix.',
+    };
+  }
+  if (confidence.changesCode === false) {
+    return { summary, blocker: 'Its change touches no code: nothing changed, or only tests.' };
+  }
+  const missing = [
+    ...(confidence.testsPass ? [] : ['no test run passed after its last edit']),
+    ...(confidence.checksPass ? [] : ['no typecheck or lint passed after its last edit']),
+    ...(confidence.reproduced ? [] : ['no test showed the bug failing before the fix']),
+  ].join('; ');
+  // A full score is 1 and no threshold is above it, so at least one part is missing here.
+  return { summary, blocker: `${missing.charAt(0).toUpperCase()}${missing.slice(1)}.` };
+}
+
 function describeAgent(run: AgentRun): { summary: string; blocker: string } {
-  const spent = `${run.modelCalls} model calls, $${run.costUsd.toFixed(2)}`;
+  const spent = spentBy(run);
   switch (run.exitStatus) {
     case 'step_limit':
       return { summary: `The agent hit its step limit (${spent}).`, blocker: 'Out of steps.' };

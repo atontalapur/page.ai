@@ -23,10 +23,10 @@ import {
 } from './daemon.ts';
 import { FakeJobSource } from './jobs/fake-job-source.ts';
 import { FakeLink } from './link/fake-link.ts';
-import { bashReply, ScriptedModel, submitReply } from './model/scripted-model.ts';
+import { ScriptedModel, submitReply } from './model/scripted-model.ts';
 import { FakeRunResults } from './run/results.ts';
 import { DockerSandboxes } from './sandbox/docker-sandboxes.ts';
-import { FakeSandboxes } from './sandbox/fake-sandboxes.ts';
+import { FakeSandboxes, fakeWorkspace } from './sandbox/fake-sandboxes.ts';
 import { LocalSandboxes } from './sandbox/local-sandboxes.ts';
 import type { Sandboxes } from './sandbox/sandbox.ts';
 
@@ -34,11 +34,12 @@ function adapters() {
   const close = vi.fn(() => Promise.resolve());
   const a = {
     jobs: new FakeJobSource(),
-    sandboxes: new FakeSandboxes(),
+    // The fake adapters' workspace and model: a run that tests a one-file fix and submits.
+    sandboxes: new FakeSandboxes(fakeWorkspace),
     sink: new InMemoryAuditSink(),
     link: new FakeLink(),
     results: new FakeRunResults(),
-    model: new ScriptedModel([bashReply('git status'), submitReply()]),
+    model: new ScriptedModel(),
     github: new FakeGitHub(),
     close,
   } satisfies Adapters;
@@ -52,7 +53,9 @@ describe('createDaemon', () => {
     await daemon.start();
     await a.jobs.deliver(jobFixtures.fix);
 
-    expect(a.sink.steps).toMatchObject([{ runId: jobFixtures.fix.runId, input: 'git status' }]);
+    expect(a.sink.steps).toMatchObject([
+      { runId: jobFixtures.fix.runId, input: 'pnpm --filter @page/demo-app test' },
+    ]);
     expect(a.link.sent.map((s) => s.event)).toEqual([
       'node.step',
       'node.diff',
@@ -141,10 +144,10 @@ describe('createDaemon', () => {
     const gates = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
     let commands = 0;
     // Attempt one's first command and attempt two's diff wait until they are let go.
-    const sandboxes = new FakeSandboxes(async () => {
+    const sandboxes = new FakeSandboxes(async (request) => {
       const gate = gates[commands++];
       if (gate !== undefined) await gate.promise;
-      return FakeRunner.exited(0);
+      return fakeWorkspace(request);
     });
     const daemon = createDaemon({ ...a, sandboxes }, pino({ enabled: false }));
     await daemon.start();

@@ -1,5 +1,14 @@
-import { budgetFor, runAgent, type AgentConfig, type ExecuteFn } from '@page/agent';
-import { MAX_RUN_DIFF_CHARS, type Tier } from '@page/contracts';
+import {
+  budgetFor,
+  CONFIDENCE_THRESHOLD,
+  runAgent,
+  scoreRun,
+  type AgentConfig,
+  type ExecuteFn,
+  type ScoredStep,
+  type SubmittedRun,
+} from '@page/agent';
+import { MAX_RUN_DIFF_CHARS, type Confidence, type Tier } from '@page/contracts';
 import type { ModelClient } from '@page/model-client';
 import {
   DEFAULT_TIMEOUT_MS,
@@ -7,6 +16,7 @@ import {
   GitHubHostTools,
   hostToolsFor,
   OpsHostTools,
+  parseStatus,
   SAFE_GIT,
   StepLog,
   type AuditSink,
@@ -19,7 +29,13 @@ import type { ClaimedJob } from '../jobs/job-source.ts';
 import type { OrchestratorLink } from '../link/link.ts';
 import type { Sandbox, Sandboxes } from '../sandbox/sandbox.ts';
 import type { OpsLock, ReleaseOps } from './ops-lock.ts';
-import { finishedEvent, type RunEnd, type RunFinished } from './outcome.ts';
+import {
+  finishedEvent,
+  submitted,
+  type RunEnd,
+  type RunFacts,
+  type RunFinished,
+} from './outcome.ts';
 import type { RunResults } from './results.ts';
 import { StreamingAuditSink } from './streaming-sink.ts';
 
@@ -54,6 +70,11 @@ export interface RunDeps {
    * and its prompt offers them. Without it, they are refused as not set up on this node.
    */
   deployer?: Deployer;
+  /**
+   * Scores a submitted run; scoreRun from @page/agent unless a test swaps it. A score that
+   * throws leaves the run unscored, and an unscored run never escalates on confidence.
+   */
+  score?: (run: SubmittedRun) => Confidence;
   logger: Logger;
   agentConfig?: Partial<AgentConfig>;
   /** Milliseconds; injectable so tests control the wall clock. */
@@ -89,11 +110,15 @@ export async function runFixJob(
   let githubTools: GitHubHostTools | undefined;
   let opsTools: OpsHostTools | undefined;
   let releaseOps: ReleaseOps | undefined;
+  // Every step as it was recorded, for the score.
+  const taken: ScoredStep[] = [];
   let diff: string | null = null;
   let opsOnly = false;
+  let confidence: Confidence | null = null;
+  const facts = (): RunFacts => ({ prUrl: githubTools?.prUrl ?? null, opsOnly, confidence });
 
   const finish = async (end: RunEnd): Promise<RunFinished> => {
-    const event = finishedEvent(runId, tier, end, tried, githubTools?.prUrl ?? null, opsOnly);
+    const event = finishedEvent(runId, tier, end, tried, facts());
     deps.link.send('node.run.finished', event);
     await deps.results.send({
       v: 1,
@@ -101,11 +126,12 @@ export async function runFixJob(
       tier,
       startedAt: claimedAt,
       finishedAt: new Date(now()).toISOString(),
-      // Only a submitted run's diff is the patch; a later kill or expiry voids it.
-      diff: event.status === 'succeeded' ? diff : null,
+      // Only a submitted run's diff is the patch, kept when its score sends it on too; a later
+      // kill or expiry voids it.
+      diff: submitted(end) ? diff : null,
       result: event,
     });
-    logger.info({ status: event.status }, 'run finished');
+    logger.info({ status: event.status, confidence: event.confidence?.score }, 'run finished');
     return event;
   };
 
@@ -156,6 +182,7 @@ export async function runFixJob(
         logger,
         onStep: (step) => {
           tried.push(step.input);
+          taken.push(step);
           deps.link.send('node.step', { v: 1, step });
         },
       }),
@@ -223,17 +250,27 @@ export async function runFixJob(
       end = stoppedEnd() ?? { kind: 'crashed', message: String(error) };
     }
 
-    if (end.kind === 'agent' && end.run.exitStatus === 'submitted') {
+    if (submitted(end)) {
       diff = await sendDiff(sandbox, runId, deps.link, logger);
-      opsOnly = await isOpsOnly(sandbox, opsTools, githubTools?.prUrl ?? null, diff, logger);
+      const changedFiles = await workspaceChanges(sandbox, logger);
+      opsOnly = isOpsOnly(opsTools, githubTools?.prUrl ?? null, diff, changedFiles);
+      confidence = scoreOrNull(
+        deps.score ?? scoreRun,
+        { steps: taken, changedFiles, opsOnly },
+        logger,
+      );
     }
     // A kill or expiry that lands after the agent returned (say during sendDiff) still
     // ends the run, and removing the sandbox may have cost it the diff.
     const final = stoppedEnd() ?? end;
+    // A submitted run whose score sends it on didn't succeed either.
+    const outcome = finishedEvent(runId, tier, final, [], facts());
     if (githubTools !== undefined) {
-      await closeUnfinishedPr(githubTools, final, runId, tier, logger);
+      await closeUnfinishedPr(githubTools, outcome, runId, tier, logger);
     }
-    if (opsTools !== undefined) await undoUnfinishedOps(opsTools, final, logger);
+    if (opsTools !== undefined && outcome.status !== 'succeeded') {
+      await undoUnfinishedOps(opsTools, logger);
+    }
     // Awaited here, so the result is queued before the sandbox goes in `finally`.
     return await finish(final);
   } finally {
@@ -251,22 +288,28 @@ export async function runFixJob(
 
 /**
  * A run that opened a PR and then didn't succeed closes it, so the tier above doesn't open
- * a second one next to it. Best effort: a PR that won't close is logged, and still reported.
+ * a second one next to it. That includes a run that submitted a fix with too low a score.
+ * Best effort: a PR that won't close is logged, and still reported.
  */
 async function closeUnfinishedPr(
   hostTools: GitHubHostTools,
-  end: RunEnd,
+  { status, confidence }: RunFinished,
   runId: string,
   tier: Tier,
   logger: Logger,
 ): Promise<void> {
-  if (end.kind === 'agent' && end.run.exitStatus === 'submitted') return;
+  if (status === 'succeeded') return;
   const pr = hostTools.pr;
   if (pr === null) return;
-  const { status } = finishedEvent(runId, tier, end, []);
+  // Only a submitted run carries a score, so one here scored under the threshold.
+  const why =
+    confidence === null
+      ? 'before the fix was done'
+      : `with a fix that scored ${confidence.score.toFixed(2)} for confidence, under Tier ` +
+        `${tier}'s threshold of ${CONFIDENCE_THRESHOLD[tier]}`;
   const comment =
-    `PageAgents closed this PR: run \`${runId}\` ended as ${status} before the fix was ` +
-    'done, so this branch is not the fix. A later run opens its own PR.';
+    `PageAgents closed this PR: run \`${runId}\` ended as ${status} ${why}, so this branch ` +
+    'is not the fix. A later run opens its own PR.';
   try {
     await hostTools.closePr(comment);
     logger.info({ pr: pr.url }, 'closed the PR of a run that did not succeed');
@@ -299,12 +342,12 @@ async function claimOps(
 
 /**
  * A Tier 3 run that didn't succeed puts back the overrides it changed, so the tier above
- * starts from the app this run found. Best effort, like closeUnfinishedPr: a change that
- * won't go back is logged, and the run still reported. A rollback stays live and is logged,
- * since rolling forward would redeploy the build the run judged bad (see OpsHostTools.undo).
+ * starts from the app this run found. A run that submitted with too low a score didn't
+ * succeed either. Best effort, like closeUnfinishedPr: a change that won't go back is logged,
+ * and the run still reported. A rollback stays live and is logged, since rolling forward
+ * would redeploy the build the run judged bad (see OpsHostTools.undo).
  */
-async function undoUnfinishedOps(tools: OpsHostTools, end: RunEnd, logger: Logger): Promise<void> {
-  if (end.kind === 'agent' && end.run.exitStatus === 'submitted') return;
+async function undoUnfinishedOps(tools: OpsHostTools, logger: Logger): Promise<void> {
   try {
     const { restored, unknown, restarted, failed, rollback } = await tools.undo();
     if (failed.length > 0) {
@@ -339,31 +382,58 @@ async function undoUnfinishedOps(tools: OpsHostTools, end: RunEnd, logger: Logge
 }
 
 /**
- * Whether a submitted run's fix is its ops changes alone: it changed the live app (Tier 3),
- * opened no PR, and left the workspace as it found it, new files included. A null diff
- * can't say so, since a diff that couldn't be read or is over the cap is null too, and
- * `git diff` leaves out new files, so this asks `git status`. Anything it can't confirm
- * counts as a code change, which goes to review.
+ * The paths `git status` shows changed in the workspace, new files included, or null when it
+ * can't say. `git diff` leaves out new files, and its result is null for a diff over the cap
+ * too, so the score and the ops-only check both ask `git status`.
  */
-async function isOpsOnly(
-  sandbox: Sandbox,
-  opsTools: OpsHostTools | undefined,
-  prUrl: string | null,
-  diff: string | null,
-  logger: Logger,
-): Promise<boolean> {
-  if (opsTools?.changedApp !== true || prUrl !== null || (diff ?? '') !== '') return false;
+async function workspaceChanges(sandbox: Sandbox, logger: Logger): Promise<string[] | null> {
   try {
     const result = await sandbox.runner.run({
       command: `${SAFE_GIT} status --porcelain=v1 -z --untracked-files=all`,
       timeoutMs: DIFF_TIMEOUT_MS,
     });
-    if (result.status === 'exited' && result.exitCode === 0) return result.stdout === '';
-    logger.warn({ result: result.status }, 'git status failed; sending the ops fix to review');
+    if (result.status === 'exited' && result.exitCode === 0) {
+      return parseStatus(result.stdout).map((change) => change.path);
+    }
+    logger.warn({ result: result.status }, 'git status failed; the changed files are unknown');
   } catch (error) {
-    logger.warn({ err: error }, 'git status failed; sending the ops fix to review');
+    logger.warn({ err: error }, 'git status failed; the changed files are unknown');
   }
-  return false;
+  return null;
+}
+
+/**
+ * Whether a submitted run's fix is its ops changes alone: it changed the live app (Tier 3),
+ * opened no PR, and left the workspace as it found it, new files included. Anything it can't
+ * confirm, such as a workspace git couldn't read, counts as a code change, which goes to
+ * review.
+ */
+function isOpsOnly(
+  opsTools: OpsHostTools | undefined,
+  prUrl: string | null,
+  diff: string | null,
+  changedFiles: readonly string[] | null,
+): boolean {
+  return (
+    opsTools?.changedApp === true &&
+    prUrl === null &&
+    (diff ?? '') === '' &&
+    changedFiles?.length === 0
+  );
+}
+
+/** The run's score, or null when scoring threw: the run then goes on unscored. */
+function scoreOrNull(
+  score: (run: SubmittedRun) => Confidence,
+  run: SubmittedRun,
+  logger: Logger,
+): Confidence | null {
+  try {
+    return score(run);
+  } catch (error) {
+    logger.warn({ err: error }, 'could not score the run; it goes on unscored');
+    return null;
+  }
 }
 
 /**

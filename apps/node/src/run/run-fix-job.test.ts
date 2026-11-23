@@ -1,5 +1,6 @@
-import { MAX_RUN_DIFF_CHARS } from '@page/contracts';
-import { jobFixtures } from '@page/contracts/fixtures';
+import { scoreRun } from '@page/agent';
+import { MAX_RUN_DIFF_CHARS, type Confidence } from '@page/contracts';
+import { confidenceFixture, jobFixtures } from '@page/contracts/fixtures';
 import type {
   ChatMessage,
   CompleteOptions,
@@ -26,7 +27,17 @@ import { runFixJob, type RunDeps } from './run-fix-job.ts';
 
 const job = jobFixtures.fix;
 const DIFF = `${SAFE_GIT} diff --no-ext-diff --no-textconv`;
+const STATUS = `${SAFE_GIT} status --porcelain=v1 -z --untracked-files=all`;
 const container = `pageagents-${job.runId}`;
+// A code fix submitted with nothing run after its last edit.
+const untested: Confidence = {
+  score: 0,
+  changesCode: true,
+  reproduced: false,
+  testsPass: false,
+  checksPass: false,
+  liveAfterChange: null,
+};
 
 function setup(
   replies: string[],
@@ -46,6 +57,9 @@ function setup(
     results,
     model: new ScriptedModel(replies),
     logger: pino({ enabled: false }),
+    // A confident score, so tests about something else see a submitted run succeed. Tests of
+    // the score itself pass scoreRun or a low one.
+    score: () => confidenceFixture,
     ...extra,
   };
   return { deps, sandboxes, sink, link, results };
@@ -64,7 +78,11 @@ describe('runFixJob', () => {
     expect(sandboxes.started).toEqual([container]);
     expect(sandboxes.running).toEqual([]);
     // The commands went into the run's container, and the refused one never did.
-    expect(sandboxes.runners.get(container)?.requests.map((r) => r.command)).toEqual(['ls', DIFF]);
+    expect(sandboxes.runners.get(container)?.requests.map((r) => r.command)).toEqual([
+      'ls',
+      DIFF,
+      STATUS,
+    ]);
     expect(sink.steps).toMatchObject([
       { runId: job.runId, seq: 0, input: 'ls', allowed: true, exitCode: 0, outputTrimmed: 'out' },
       { runId: job.runId, seq: 1, input: 'curl example.com', allowed: false },
@@ -77,7 +95,7 @@ describe('runFixJob', () => {
     ]);
     expect(link.payloads('node.step').map((p) => p.step.seq)).toEqual([0, 1]);
     expect(link.payloads('node.diff')[0]?.diff).toBe('diff --git a b\n');
-    expect(finished).toMatchObject({ status: 'succeeded', confidence: null });
+    expect(finished).toMatchObject({ status: 'succeeded', confidence: confidenceFixture });
   });
 
   it('queues the result for the orchestrator with the run times and the diff', async () => {
@@ -114,6 +132,93 @@ describe('runFixJob', () => {
     await runFixJob(claim(), big.deps);
     expect(big.results.sent).toMatchObject([{ diff: null, result: { status: 'succeeded' } }]);
     expect(big.link.payloads('node.diff')[0]?.diff).toBe(huge);
+  });
+
+  describe('confidence', () => {
+    const TEST = 'pnpm --filter @page/demo-app test';
+    const PATCH =
+      'diff --git a/apps/demo-app/src/shop/money.ts b/apps/demo-app/src/shop/money.ts\n';
+    // The workspace after a one-file fix; every other command exits 0 with no output.
+    const fixed = ({ command }: RunRequest) => {
+      if (command === STATUS) return FakeRunner.exited(0, ' M apps/demo-app/src/shop/money.ts\0');
+      return FakeRunner.exited(0, command === DIFF ? PATCH : '');
+    };
+
+    it('scores a submitted run from its steps and the files it changed', async () => {
+      const { deps, results } = setup([bashReply(TEST), submitReply()], fixed, {
+        score: scoreRun,
+      });
+      const finished = await runFixJob(claim(), deps);
+      expect(finished).toMatchObject({
+        status: 'succeeded',
+        confidence: { score: 0.5, changesCode: true, testsPass: true, checksPass: false },
+      });
+      expect(results.sent).toMatchObject([{ diff: PATCH, result: finished }]);
+    });
+
+    it('escalates a run that submitted without testing its fix, and keeps the patch', async () => {
+      const { deps, results } = setup([bashReply('ls'), submitReply()], fixed, {
+        score: scoreRun,
+      });
+      const finished = await runFixJob(claim(), deps);
+      expect(finished).toMatchObject({
+        status: 'escalated',
+        reason: 'low_confidence',
+        toTier: 2,
+        confidence: { score: 0, testsPass: false },
+        note: { tried: ['ls'], blocker: /^No test run passed after its last edit/ },
+      });
+      // The patch it submitted stays on the run's record for whoever looks next.
+      expect(results.sent).toMatchObject([{ diff: PATCH, result: finished }]);
+    });
+
+    it('escalates a run that submitted with nothing changed', async () => {
+      const { deps } = setup([bashReply(TEST), submitReply()], undefined, { score: scoreRun });
+      expect(await runFixJob(claim(), deps)).toMatchObject({
+        status: 'escalated',
+        reason: 'low_confidence',
+        confidence: { score: 0, changesCode: false, testsPass: true },
+      });
+    });
+
+    it('lets a run it could not score succeed unscored', async () => {
+      const lines: string[] = [];
+      const { deps } = setup([submitReply()], fixed, {
+        score: () => {
+          throw new Error('bad step');
+        },
+        logger: pino({}, { write: (l: string) => lines.push(l) }),
+      });
+      expect(await runFixJob(claim(), deps)).toMatchObject({
+        status: 'succeeded',
+        confidence: null,
+      });
+      expect(lines.join('')).toContain('could not score the run');
+    });
+
+    it('scores a run whose workspace git cannot read on its steps alone', async () => {
+      const { deps } = setup(
+        [bashReply(TEST), submitReply()],
+        ({ command }) => FakeRunner.exited(command === STATUS ? 128 : 0, ''),
+        { score: scoreRun },
+      );
+      expect(await runFixJob(claim(), deps)).toMatchObject({
+        status: 'succeeded',
+        confidence: { score: 0.5, changesCode: null },
+      });
+    });
+
+    it('drops the score of a run killed after it submitted', async () => {
+      const kill = new AbortController();
+      const { deps } = setup([submitReply()], (request) => {
+        if (request.command === STATUS) kill.abort();
+        return fixed(request);
+      });
+      expect(await runFixJob(claim(), deps, kill.signal)).toMatchObject({
+        status: 'killed',
+        confidence: null,
+      });
+    });
   });
 
   it('rejects when the result cannot be queued, after removing the sandbox', async () => {
@@ -426,6 +531,26 @@ describe('runFixJob', () => {
       );
     });
 
+    it('closes the PR of a run whose fix scored under the threshold', async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      const { deps } = setup([pushReply, prReply, submitReply()], workspace, {
+        github,
+        score: () => untested,
+      });
+      const finished = await runFixJob(tier2(), deps);
+
+      expect(finished).toMatchObject({
+        status: 'escalated',
+        reason: 'low_confidence',
+        toTier: 3,
+        prUrl: null,
+      });
+      expect(github.pullRequests[0]).toMatchObject({ state: 'closed' });
+      expect(github.pullRequests[0]!.comments[0]).toMatch(
+        new RegExp(`run \`${job.runId}\` ended as escalated with a fix that scored 0.00`),
+      );
+    });
+
     it('still reports the PR when it cannot be closed', async () => {
       const github = new FakeGitHub({ [path]: "'USDD'\n" });
       github.failOn.add('closePullRequest');
@@ -561,7 +686,6 @@ describe('runFixJob', () => {
     });
 
     describe('opsOnly', () => {
-      const STATUS = `${SAFE_GIT} status --porcelain=v1 -z --untracked-files=all`;
       const broken = () => new FakeOps({ SHIPPING_FLAT_CENTS: '2500000000' });
       // The sandbox's answers to the diff and to `git status`; everything else exits 0.
       const workspace =
@@ -631,8 +755,8 @@ describe('runFixJob', () => {
           prUrl: 'https://github.com/page-demo/shop/pull/1',
           opsOnly: false,
         });
-        // The push read the workspace; the PR alone settles it after that.
-        expect(statuses).toBe(1);
+        // The push read the workspace, and the score read it again after the submit.
+        expect(statuses).toBe(2);
       });
 
       it('is false for a run that left the live app as it found it', async () => {
@@ -640,7 +764,10 @@ describe('runFixJob', () => {
           ops: broken(),
         });
         expect(await runFixJob(atTier(3), deps)).toMatchObject({ opsOnly: false });
-        expect(sandboxes.runners.get(container)?.requests.map((r) => r.command)).toEqual([DIFF]);
+        expect(sandboxes.runners.get(container)?.requests.map((r) => r.command)).toEqual([
+          DIFF,
+          STATUS,
+        ]);
       });
 
       it.each([1, 2] as const)('is false at Tier %i, which has no ops tools', async (tier) => {
@@ -666,6 +793,39 @@ describe('runFixJob', () => {
         'restart',
       ]);
       expect(ops.served).toEqual({ SHIPPING_FLAT_CENTS: '2500000000' });
+    });
+
+    it('scores an ops-only fix on the live app, and keeps one a restart made live', async () => {
+      const ops = new FakeOps({ SHIPPING_FLAT_CENTS: '2500000000' });
+      const { deps } = setup([unsetReply, restartReply, submitReply()], undefined, {
+        ops,
+        score: scoreRun,
+      });
+      expect(await runFixJob(atTier(3), deps)).toMatchObject({
+        status: 'succeeded',
+        opsOnly: true,
+        confidence: { score: 1, liveAfterChange: true },
+      });
+      expect(ops.served).toEqual({});
+    });
+
+    it('fails an ops-only fix the app does not serve yet, and puts it back', async () => {
+      const ops = new FakeOps({ SHIPPING_FLAT_CENTS: '2500000000' });
+      // The override is dropped, but the app never restarts to load that.
+      const { deps } = setup([unsetReply, submitReply()], undefined, { ops, score: scoreRun });
+      const finished = await runFixJob(atTier(3), deps);
+
+      expect(finished).toMatchObject({
+        status: 'failed',
+        confidence: { score: 0, liveAfterChange: false },
+        note: { blocker: /No healthy restart or live rollback/ },
+      });
+      expect(finished).not.toHaveProperty('opsOnly');
+      expect(ops.calls).toEqual([
+        'deleteConfig SHIPPING_FLAT_CENTS',
+        'setConfig SHIPPING_FLAT_CENTS=2500000000',
+      ]);
+      expect(ops.overrides.get('SHIPPING_FLAT_CENTS')).toBe('2500000000');
     });
 
     it('puts back the ops changes of a killed run', async () => {
@@ -805,6 +965,7 @@ describe('runFixJob', () => {
           ops: new FakeOps(),
           deployer,
           model,
+          score: scoreRun,
         });
         const finished = await runFixJob(atTier(3), deps);
 
@@ -815,6 +976,8 @@ describe('runFixJob', () => {
           { input: '{"tool":"ops.rollback","to":"good"}', allowed: true, exitCode: 0 },
         ]);
         expect(finished).toMatchObject({ status: 'succeeded', prUrl: null, opsOnly: true });
+        // Its deployment went live with no restart, which scores as the fix being live.
+        expect(finished.confidence).toMatchObject({ score: 1, liveAfterChange: true });
         expect(results.sent).toMatchObject([{ diff: '', result: { opsOnly: true } }]);
       });
 
