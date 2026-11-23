@@ -6,7 +6,7 @@ import {
   BotIcon,
   HistoryIcon,
   PulseIcon,
-} from '@solar-icons/react/line-duotone';
+} from '@solar-icons/react/bold-duotone';
 import type { NodeRun, NodeSummary } from '@page/contracts';
 
 import { Button } from '@page/design-system/components/ui/button';

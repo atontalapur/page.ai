@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { DangerTriangleIcon, MagnifierIcon } from '@solar-icons/react/line-duotone';
+import { DangerTriangleIcon, MagnifierIcon } from '@solar-icons/react/bold-duotone';
 import { ISSUE_STATUSES, SEVERITIES } from '@page/contracts';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';

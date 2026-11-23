@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
-import { ClockCircleIcon, ShieldWarningIcon } from '@solar-icons/react/line-duotone';
+import { ClockCircleIcon, ShieldWarningIcon } from '@solar-icons/react/bold-duotone';
 import { approverNameSchema, type Approval, type Issue } from '@page/contracts';
 import { Button } from '@page/design-system/components/ui/button';
 import { Input } from '@page/design-system/components/ui/input';

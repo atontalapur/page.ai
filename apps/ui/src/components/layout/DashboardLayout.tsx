@@ -1,8 +1,8 @@
 import { type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 
-// Duotone only: bold duotone in the nav, read by shape; line duotone everywhere else.
-import { BotIcon, DangerTriangleIcon, WidgetIcon } from '@solar-icons/react/bold-duotone';
+// Solid (bold) duotone icons everywhere.
+import { BotIcon, BugIcon, DangerTriangleIcon, WidgetIcon } from '@solar-icons/react/bold-duotone';
 
 import {
   SidebarProvider,
@@ -35,6 +35,7 @@ const navigation = [
   { title: 'Dashboard', icon: WidgetIcon, path: '/' },
   { title: 'Incidents', icon: DangerTriangleIcon, path: '/incidents' },
   { title: 'Agents', icon: BotIcon, path: '/agents' },
+  { title: 'Debugging', icon: BugIcon, path: '/debug' },
 ] as const;
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
