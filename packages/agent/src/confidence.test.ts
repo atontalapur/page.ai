@@ -39,27 +39,40 @@ const code = (steps: ScoredStep[], changedFiles: string[] | null = [APP]) =>
   scoreRun({ steps, changedFiles, opsOnly: false });
 
 describe('scoreRun on a code fix', () => {
-  it('scores the recorded 001 run: tests and checks after the edit, no reproduction', () => {
+  it('scores the recorded 001 run: a failing test first, then the edit, tests and checks', () => {
     // A dev bug's recorded run (001 is in the dev set), its execute turns as steps rows.
     const file = join(import.meta.dirname, '__fixtures__/transcripts/001-bad-currency-code.json');
     const transcript = JSON.parse(readFileSync(file, 'utf8')) as Transcript;
     const steps = transcript.turns.flatMap((turn): ScoredStep[] => {
       if (turn.type !== 'execute') return [];
-      // Every step in this run ran and exited 0.
-      if (!turn.result.ok) throw new Error('the fixture has a failed step');
-      const { kind, input, output } = turn.result.value;
-      return [{ kind, input, outputTrimmed: output, exitCode: 0, allowed: true }];
+      const { result } = turn;
+      if (result.ok) {
+        const { kind, input, output } = result.value;
+        return [{ kind, input, outputTrimmed: output, exitCode: 0, allowed: true }];
+      }
+      // Only a command that ran and failed is in this run: the test that shows the bug.
+      if (result.error.type !== 'failed')
+        throw new Error('the fixture has a step that did not run');
+      const { kind, input, output, exitCode } = result.error;
+      return [{ kind, input, outputTrimmed: output, exitCode, allowed: true }];
     });
-    expect(steps.map((s) => s.kind)).toEqual(['exec', 'edit', 'exec', 'exec']);
+    expect(steps.map((s) => [s.kind, s.exitCode])).toEqual([
+      ['exec', 0],
+      ['exec', 0],
+      ['exec', 1],
+      ['edit', 0],
+      ['exec', 0],
+      ['exec', 0],
+    ]);
     const confidence = code(steps);
-    expect(confidence).toEqual({
-      score: 0.8,
+    expect(confidence).toMatchObject({
       changesCode: true,
-      reproduced: false,
+      reproduced: true,
       testsPass: true,
       checksPass: true,
       liveAfterChange: null,
     });
+    expect(confidence.score).toBe(1);
     expect(confidenceSchema.parse(confidence)).toEqual(confidence);
   });
 
