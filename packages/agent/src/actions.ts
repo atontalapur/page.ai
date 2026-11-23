@@ -94,6 +94,9 @@ const EDIT_SHAPE =
 
 // The prompt asks for a THOUGHT section before the action; its label adds nothing on screen.
 const THOUGHT_LABEL = /^\s*(?:#+\s*)?\**THOUGHT\**:?\**\s*/i;
+// The format-error prompt shows its example inside these tags, and a model sometimes copies
+// them into its next reply. They are never part of what it thought.
+const EXAMPLE_TAGS = /<\/?response_example>/gi;
 
 /**
  * What the model said around its action: the reply with its action blocks taken out, or
@@ -110,6 +113,7 @@ export function thoughtOf(reply: string, reasoning?: string): string | undefined
   const prose = lines
     .filter((_, i) => !inBlock.has(i))
     .join('\n')
+    .replace(EXAMPLE_TAGS, '')
     .replace(THOUGHT_LABEL, '')
     .trim();
   if (prose !== '') return prose;

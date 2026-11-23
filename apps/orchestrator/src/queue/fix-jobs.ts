@@ -37,6 +37,8 @@ export interface FixJobInput {
   tier: Tier;
   report: string;
   escalationNote?: EscalationNote;
+  /** The branch of the issue's PR, for the run to push to and reuse. */
+  prBranch?: string;
   /** The agent that should take the run. Without one, the job goes to any agent. */
   node?: string;
 }

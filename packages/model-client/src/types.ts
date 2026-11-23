@@ -38,6 +38,11 @@ export interface CompleteOptions {
   timeoutMs?: number;
   /** Cancels the call, such as when a run is killed. It then fails as `aborted`. */
   signal?: AbortSignal;
+  /**
+   * Asks for the reply as it is written: called with each piece of its text, or of the
+   * model's own reasoning. The result is the same as without it.
+   */
+  onDelta?: (delta: { text: string; kind: 'content' | 'reasoning' }) => void;
 }
 
 /** The one way the agent talks to a model. */

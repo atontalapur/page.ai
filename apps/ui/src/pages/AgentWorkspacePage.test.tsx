@@ -78,7 +78,7 @@ describe('AgentWorkspacePage', () => {
     const header = heading.closest('.justify-between') as HTMLElement;
     expect(within(header).getByText('Running', { selector: '[data-slot="badge"]' })).toBeTruthy();
     expect(screen.getByText(/^Connected since /)).toBeTruthy();
-    expect(await screen.findByText('$ ls -la')).toBeTruthy();
+    expect(await screen.findByText('ls -la')).toBeTruthy();
     const incident = screen.getAllByRole('link', { name: /price is undefined/ })[0]!;
     expect(incident.getAttribute('href')).toBe(`/incidents/${fixing.id}`);
 
@@ -94,12 +94,12 @@ describe('AgentWorkspacePage', () => {
 
   it('streams the current run as the daemon sends steps, without a reload', async () => {
     const source = renderAgent('busy-node', busySource());
-    expect(await screen.findByText('$ ls -la')).toBeTruthy();
+    expect(await screen.findByText('ls -la')).toBeTruthy();
     await waitFor(() => expect(recent().getAllByRole('row')).toHaveLength(3));
     const loads = { ...source.loads };
 
     source.sendRun('run.step', { v: 1, step: step(1, 'git diff') });
-    expect(await screen.findByText('$ git diff')).toBeTruthy();
+    expect(await screen.findByText('git diff')).toBeTruthy();
     // The history row counts it too.
     expect(within(recent().getAllByRole('row')[1]!).getByText('2')).toBeTruthy();
 
@@ -120,7 +120,7 @@ describe('AgentWorkspacePage', () => {
 
   it('loads its runs again when the daemon takes a new one, and after a reconnect', async () => {
     const source = renderAgent('busy-node', busySource());
-    expect(await screen.findByText('$ ls -la')).toBeTruthy();
+    expect(await screen.findByText('ls -la')).toBeTruthy();
     await waitFor(() => expect(source.loads.nodeRuns).toBe(1));
 
     source.sendNode({ v: 1, node: { ...busy, lastRunAt: '2026-11-22T10:00:00.000Z' } });
@@ -129,7 +129,7 @@ describe('AgentWorkspacePage', () => {
     // Steps sent while the tab was away reach it from the database.
     source.runs.set(fixing.id, [{ ...fullRun, steps: [step(0, 'ls -la'), step(1, 'pwd')] }]);
     source.reconnect();
-    expect(await screen.findByText('$ pwd')).toBeTruthy();
+    expect(await screen.findByText('pwd')).toBeTruthy();
     await waitFor(() => expect(source.loads.nodeRuns).toBe(3));
   });
 

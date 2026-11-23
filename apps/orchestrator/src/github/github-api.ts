@@ -20,6 +20,18 @@ export interface GitHubApi {
   comment(pr: number, body: string): Promise<void>;
   /** Replies in the thread of an inline review comment. */
   replyToReviewComment(pr: number, commentId: number, body: string): Promise<void>;
+  /**
+   * Opens a PR from a new branch off main that makes `edits`, each a list of exact text
+   * swaps in one file. Returns the PR's URL. Throws when a swap's text isn't in the file.
+   */
+  plantPr(change: PlantChange): Promise<string>;
+}
+
+export interface PlantChange {
+  branch: string;
+  title: string;
+  body: string;
+  edits: readonly { path: string; pairs: readonly (readonly [string, string])[] }[];
 }
 
 export interface ReviewComment {
@@ -84,6 +96,32 @@ export class RestGitHubApi implements GitHubApi {
       await this.request('GET', `/issues/${pr}/comments?per_page=100`),
     );
     return rows.map((c) => ({ author: c.user?.login ?? 'ghost', body: c.body ?? '' }));
+  }
+
+  async plantPr({ branch, title, body, edits }: PlantChange): Promise<string> {
+    const head = await this.head('main');
+    await this.request('POST', '/git/refs', { ref: `refs/heads/${branch}`, sha: head });
+    for (const { path, pairs } of edits) {
+      const file = z
+        .object({ sha: z.string(), content: z.string() })
+        .parse(await this.request('GET', `/contents/${path}?ref=${encodeURIComponent(branch)}`));
+      let text = Buffer.from(file.content, 'base64').toString('utf8');
+      for (const [from, to] of pairs) {
+        if (!text.includes(from))
+          throw new Error(`${path} no longer has the text the test bug changes`);
+        text = text.replace(from, to);
+      }
+      await this.request('PUT', `/contents/${path}`, {
+        message: `${title}: ${path.split('/').pop()}`,
+        content: Buffer.from(text).toString('base64'),
+        sha: file.sha,
+        branch,
+      });
+    }
+    const pr = z
+      .object({ html_url: z.string() })
+      .parse(await this.request('POST', '/pulls', { title, body, head: branch, base: 'main' }));
+    return pr.html_url;
   }
 
   async comment(pr: number, body: string): Promise<void> {

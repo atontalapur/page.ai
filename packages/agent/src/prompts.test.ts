@@ -273,3 +273,23 @@ describe('the knowledge graph in the prompts', () => {
     expect(instancePrompt({ task: 'x' })).not.toContain('knowledge graph');
   });
 });
+
+describe('the note from the run before', () => {
+  const note = {
+    summary: 'The agent hit its step limit.',
+    tried: ['cat -n src/shop/cart.ts', 'pnpm test'],
+    blocker: 'SHIPPING_FLAT_CENTS has no upper bound.',
+  };
+
+  it("puts the tier below's findings in the task, as data", () => {
+    const prompt = instancePrompt({ task: 'checkout 500', tier: 2, handedOn: note });
+    expect(prompt).toContain('## What the run before this one found');
+    expect(prompt).toContain('<handed_on>');
+    expect(prompt).toContain('- cat -n src/shop/cart.ts');
+    expect(prompt).toContain('SHIPPING_FLAT_CENTS has no upper bound.');
+  });
+
+  it('is left out of a first run', () => {
+    expect(instancePrompt({ task: 'checkout 500', tier: 2 })).not.toContain('handed_on');
+  });
+});

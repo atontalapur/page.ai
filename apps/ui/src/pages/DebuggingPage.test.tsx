@@ -16,6 +16,7 @@ const state: DebugState = {
   healthy: true,
   overrides: [{ key: 'SHIPPING_FLAT_CENTS', value: '2500000000' }],
   codeBugLive: false,
+  checkoutResetAt: null,
   canSendSynthetic: true,
 };
 
@@ -59,19 +60,36 @@ describe('DebuggingPage', () => {
 
     const button = (title: string) =>
       card(title).getByRole<HTMLButtonElement>('button', { name: 'Create error' });
-    expect(button('Break checkout').disabled).toBe(false);
     expect(button('Send a test exception').disabled).toBe(false);
-    expect(button('Hit the code bug').disabled).toBe(true);
-    expect(card('Hit the code bug').getByText(/No code bug is live/)).toBeTruthy();
+    expect(button('Trigger the search bug').disabled).toBe(true);
+    expect(card('Trigger the search bug').getByText(/Plant the search bug first/)).toBeTruthy();
+    // Breaking checkout waits for its box to be ticked.
+    expect(button('Break checkout').disabled).toBe(true);
+    fireEvent.click(card('Break checkout').getByRole('checkbox'));
+    expect(button('Break checkout').disabled).toBe(false);
+  });
+
+  it('plants the search bug and links to its PR', async () => {
+    const calls = orchestrator(undefined, {
+      ok: true,
+      status: null,
+      message: 'Opened a PR that plants the search bug.',
+      url: 'https://github.com/o/page-demo/pull/9',
+    });
+    renderWithIssues(<DebuggingPage />, testSource([]));
+    fireEvent.click(await screen.findByRole('button', { name: 'Plant the bug' }));
+    const link = await screen.findByRole('link', { name: 'Open the PR' });
+    expect(link.getAttribute('href')).toBe('https://github.com/o/page-demo/pull/9');
+    expect(calls).toContain('POST /debug/plant');
   });
 
   it('creates an error and links to Incidents', async () => {
     const calls = orchestrator();
     renderWithIssues(<DebuggingPage />, testSource([]));
 
-    fireEvent.click(
-      (await screen.findAllByRole('button', { name: 'Create error' }))[0] as HTMLElement,
-    );
+    await screen.findByText('https://demo.example.com');
+    fireEvent.click(card('Break checkout').getByRole('checkbox'));
+    fireEvent.click(card('Break checkout').getByRole('button', { name: 'Create error' }));
 
     const result = await card('Break checkout').findByRole('status');
     expect(result.textContent).toContain('The order failed with 500.');

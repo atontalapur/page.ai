@@ -191,6 +191,7 @@ export const nodeSummaryFixture: NodeSummary = {
 
 export const serverToUiEventFixtures: Payloads<ServerToUiEvents> = {
   'issue.updated': { v: 1, issue: issueFixture },
+  'run.live': { v: 1, runId: runFixture.id, seq: 0, kind: 'thinking', text: 'Reading the cart' },
   'run.started': { v: 1, run: runFixture },
   'run.step': { v: 1, step: stepFixture },
   'run.diff': { v: 1, runId, diff: '--- a/src/cart/total.ts\n+++ b/src/cart/total.ts\n' },
@@ -216,6 +217,7 @@ export const uiToServerEventFixtures: Payloads<UiToServerEvents> = {
 export const nodeToServerEventFixtures: Payloads<NodeToServerEvents> = {
   'node.step': { v: 1, step: stepFixture },
   'node.holding': { v: 1, runIds: [runId] },
+  'node.live': { v: 1, runId, seq: 0, kind: 'output', text: 'RUN  v5.1.0\n' },
   'node.diff': { v: 1, runId, diff: '--- a/src/cart/total.ts\n+++ b/src/cart/total.ts\n' },
   'node.run.finished': {
     v: 1,

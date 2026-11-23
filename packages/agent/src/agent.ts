@@ -41,6 +41,11 @@ export interface AgentDeps {
    * nothing, the loop sends exactly what it sent before there was one.
    */
   inbox?: Inbox;
+  /**
+   * Hears each model reply as it is written, for a live view. With it, the model is asked
+   * to stream; without it, the loop asks for whole replies as before.
+   */
+  onThinking?: (delta: { text: string; kind: 'content' | 'reasoning' }) => void;
 }
 
 export interface AgentConfig {
@@ -147,6 +152,7 @@ export async function runAgent(
     const reply = await deps.model.complete(messages, {
       ...withTimeout(timeLeft()),
       ...withSignal(deps.signal),
+      ...(deps.onThinking === undefined ? {} : { onDelta: deps.onThinking }),
     });
     // A call that came back is billed, even when the run was stopped while it was out.
     if (reply.ok) {

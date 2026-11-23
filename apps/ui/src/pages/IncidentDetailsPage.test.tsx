@@ -155,7 +155,7 @@ describe('IncidentDetailsPage', () => {
 
     const tier2 = await screen.findAllByRole('list', { name: 'Tier 2 steps' });
     const steps = within(tier2[0]!.closest('section')!.parentElement!);
-    expect(steps.getByText('Read')).toBeTruthy();
+    expect(steps.getByText(/^Read /)).toBeTruthy();
     expect(steps.getByText('Refused')).toBeTruthy();
     expect(steps.getByText('Policy: unquoted glob characters are not allowed')).toBeTruthy();
     expect(steps.getByText('Exit 1')).toBeTruthy();
@@ -237,11 +237,11 @@ describe('IncidentDetailsPage', () => {
     const source = testSource([fixing, fresh]);
     source.runs.set(fixing.id, [run(1, 'running', { steps: [step(0, 'ls -la')] })]);
     renderDetails(fixing.id, source);
-    expect(await screen.findByText('$ ls -la')).toBeTruthy();
+    expect(await screen.findByText('ls -la')).toBeTruthy();
     const loads = source.loads.runs;
 
     source.sendRun('run.step', { v: 1, step: step(1, 'git diff') });
-    expect(await screen.findByText('$ git diff')).toBeTruthy();
+    expect(await screen.findByText('git diff')).toBeTruthy();
     // A step of another issue's run, and one that breaks the contract, change nothing.
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     source.sendRun('run.step', {
@@ -249,8 +249,8 @@ describe('IncidentDetailsPage', () => {
       step: { ...step(0, 'rm -rf /'), runId: '90000000-2222-4222-8222-222222222222' },
     });
     source.sendRun('run.step', { v: 1, step: { ...step(2, 'pwd'), seq: -1 } });
-    expect(screen.queryByText('$ rm -rf /')).toBeNull();
-    expect(screen.queryByText('$ pwd')).toBeNull();
+    expect(screen.queryByText('rm -rf /')).toBeNull();
+    expect(screen.queryByText('pwd')).toBeNull();
     expect(source.loads.runs).toBe(loads);
   });
 
@@ -286,15 +286,15 @@ describe('IncidentDetailsPage', () => {
     const source = testSource([fixing, fresh]);
     source.runs.set(fixing.id, [run(1, 'running', { steps: [step(0, 'ls -la')] })]);
     renderDetails(fixing.id, source);
-    expect(await screen.findByText('$ ls -la')).toBeTruthy();
+    expect(await screen.findByText('ls -la')).toBeTruthy();
 
     // Sent while the tab was away, so only the database has them.
     source.runs.set(fixing.id, [
       run(1, 'running', { steps: [step(0, 'ls -la'), step(1, 'git diff'), step(2, 'pwd')] }),
     ]);
     source.reconnect();
-    expect(await screen.findByText('$ git diff')).toBeTruthy();
-    expect(screen.getByText('$ pwd')).toBeTruthy();
+    expect(await screen.findByText('git diff')).toBeTruthy();
+    expect(screen.getByText('pwd')).toBeTruthy();
   });
 
   it('lists what happened to the issue in the activity panel', async () => {

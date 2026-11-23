@@ -38,6 +38,7 @@ function withRunFields<R extends Run>(run: R, event: RunEvent): R {
     case 'run.diff':
     case 'run.chat.asked':
     case 'run.chat.reply':
+    case 'run.live':
       return run;
   }
 }

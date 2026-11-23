@@ -27,6 +27,12 @@ export const fixJobSchema = z.strictObject({
   report: z.string().trim().min(1).optional(),
   // What the tier below left when it escalated to this run. A Tier 2 PR body carries it.
   escalationNote: escalationNoteSchema.optional(),
+  // The branch the issue's PR is on, when an earlier run opened one. This run pushes there,
+  // so every tier and every review round updates the same PR.
+  prBranch: z
+    .string()
+    .regex(/^pageagents\/[0-9a-f-]{36}$/)
+    .optional(),
 });
 
 export const NOTIFY_CHANNELS = ['call', 'sms'] as const;

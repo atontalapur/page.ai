@@ -126,7 +126,21 @@ export const nodeRunFinishedSchema = z.discriminatedUnion('status', [
   }),
 ]);
 
+/**
+ * A piece of a run as it happens, for the live view: the model's reply or reasoning as it
+ * is written, or a command's output as it prints. `seq` is the step it leads up to; the
+ * finished step replaces it. Never stored.
+ */
+const runLiveSchema = z.strictObject({
+  v,
+  runId: idSchema,
+  seq: z.int().min(0),
+  kind: z.enum(['thinking', 'reasoning', 'output']),
+  text: z.string().max(20_000),
+});
+
 export const serverToUiEvents = {
+  'run.live': runLiveSchema,
   'issue.updated': z.strictObject({ v, issue: issueSchema }),
   'run.started': z.strictObject({ v, run: runSchema }),
   'run.step': z.strictObject({ v, step: stepSchema }),
@@ -172,6 +186,7 @@ export const nodeToServerEvents = {
   // A run no daemon has named for a while is one whose daemon died, and the orchestrator
   // retries it (OrphanSweeper).
   'node.holding': z.strictObject({ v, runIds: z.array(idSchema).max(16) }),
+  'node.live': runLiveSchema,
   'node.diff': runDiff,
   'node.run.finished': nodeRunFinishedSchema,
   // A Tier 3 agent asks to run a gated host tool such as `ops.restart`. The node picks the
