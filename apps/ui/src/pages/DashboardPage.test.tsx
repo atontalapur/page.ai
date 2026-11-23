@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
 import { screen, cleanup, within } from '@testing-library/react';
+import type { NodeSummary } from '@page/contracts';
 
 import DashboardPage from './DashboardPage';
-import { initialMockTasks } from '../data/mockTasks';
-import { issue, renderWithIssues, testSource } from '../test-utils';
+import { daemon, issue, nodeRun, renderWithIssues, testSource } from '../test-utils';
 
 afterEach(() => {
   cleanup();
@@ -13,11 +13,25 @@ afterEach(() => {
 const issues = [1, 2, 3, 4, 5, 6].map((n) =>
   issue(n, n === 1 ? { status: 'resolved' } : { severity: n % 2 ? 'critical' : 'medium' }),
 );
+const awaiting = issue(7, {
+  status: 'awaiting_approval',
+  updatedAt: '2026-11-22T08:00:00.000Z',
+});
 
-function renderDashboard(list = issues) {
-  const source = testSource(list);
+const nodes: NodeSummary[] = [
+  daemon('busy-node', { current: [nodeRun(1, issues[1]!)] }),
+  daemon('idle-node'),
+  daemon('gone-node', { connected: false }),
+];
+
+function renderDashboard(list = [...issues, awaiting], daemons = nodes) {
+  const source = testSource(list, 'live', daemons);
   renderWithIssues(<DashboardPage />, source);
   return source;
+}
+
+function metric(title: string) {
+  return within(screen.getByText(title).closest('[data-slot="card"]') as HTMLElement);
 }
 
 describe('DashboardPage', () => {
@@ -27,32 +41,37 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Total Incidents')).toBeTruthy();
     expect(screen.getByText('Active Incidents')).toBeTruthy();
     expect(screen.getByText('Running Agents')).toBeTruthy();
-    expect(screen.getByText('Queued Tasks')).toBeTruthy();
+    expect(screen.getByText('Fixes in Progress')).toBeTruthy();
   });
 
-  it('describes the Queued Tasks card with the task total', () => {
+  it('counts running agents from the live daemons', () => {
     renderDashboard();
 
-    const card = screen.getByText('Queued Tasks').closest('[data-slot="card"]') as HTMLElement;
-    const total = initialMockTasks.length;
-
-    expect(within(card).getByText(`${total} total ${total === 1 ? 'task' : 'tasks'}`)).toBeTruthy();
-    expect(within(card).queryByText(/resolved incidents/)).toBeNull();
+    expect(metric('Running Agents').getByText('1')).toBeTruthy();
+    expect(metric('Running Agents').getByText('2 of 3 connected')).toBeTruthy();
   });
 
-  it('describes the Running Agents card with a correctly pluralised task count', () => {
+  it('counts fixes in progress and those awaiting review', () => {
     renderDashboard();
 
-    const card = screen.getByText('Running Agents').closest('[data-slot="card"]') as HTMLElement;
-    const running = initialMockTasks.filter((task) => task.status === 'Running').length;
+    // Every issue but the resolved one and the one awaiting review is fixing by default.
+    expect(metric('Fixes in Progress').getByText('5')).toBeTruthy();
+    expect(metric('Fixes in Progress').getByText('1 awaiting review')).toBeTruthy();
+  });
 
-    expect(
-      within(card).getByText(`${running} ${running === 1 ? 'task' : 'tasks'} running`),
-    ).toBeTruthy();
+  it('updates the agent figures live as a daemon connects or takes a run', () => {
+    const source = renderDashboard();
+
+    source.sendNode({
+      v: 1,
+      node: daemon('idle-node', { current: [nodeRun(2, issues[2]!)] }),
+    });
+    expect(metric('Running Agents').getByText('2')).toBeTruthy();
+    expect(within(screen.getByTestId('running-count')).getByText('2')).toBeTruthy();
   });
 
   it('lists the five most recently updated incidents, newest first', () => {
-    renderDashboard();
+    renderDashboard(issues);
 
     const table = screen.getByText('Recent Incidents').closest('[data-slot="card"]') as HTMLElement;
     const rowIds = within(table)
@@ -67,14 +86,10 @@ describe('DashboardPage', () => {
   });
 
   it('counts total and active incidents from the live issues', () => {
-    renderDashboard();
+    renderDashboard(issues);
 
-    const total = screen.getByText('Total Incidents').closest('[data-slot="card"]') as HTMLElement;
-    const active = screen
-      .getByText('Active Incidents')
-      .closest('[data-slot="card"]') as HTMLElement;
-    expect(within(total).getByText('6')).toBeTruthy();
-    expect(within(active).getByText('5')).toBeTruthy();
+    expect(metric('Total Incidents').getByText('6')).toBeTruthy();
+    expect(metric('Active Incidents').getByText('5')).toBeTruthy();
   });
 
   it('displays incident severity and status with colors for both themes', () => {
@@ -103,15 +118,16 @@ describe('DashboardPage', () => {
   });
 
   it('says so when there are no incidents yet', () => {
-    renderDashboard([]);
+    renderDashboard([], []);
 
     expect(screen.getByText('No incidents yet.')).toBeTruthy();
+    expect(screen.getByText('No node daemon has connected yet.')).toBeTruthy();
   });
 
-  it('renders the AgentOverview component', () => {
+  it('shows the agents card with the live daemons', () => {
     renderDashboard();
 
-    expect(screen.getByText('AI Agents')).toBeTruthy();
-    expect(screen.getByText('Diagnostic Agent')).toBeTruthy();
+    expect(screen.getByText('3 node daemons')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'busy-node' })).toBeTruthy();
   });
 });

@@ -74,6 +74,13 @@ export interface StepsTable {
   created_at: Generated<Date>;
 }
 
+// The daemon that worked each run (008_run_nodes.sql). NodeRuns writes it from the gateway.
+export interface RunNodesTable {
+  run_id: string;
+  node_name: string;
+  created_at: Generated<Date>;
+}
+
 export interface EscalationsTable {
   id: Generated<string>;
   run_id: string;
@@ -105,6 +112,7 @@ export interface Database {
   issue_events: IssueEventsTable;
   runs: RunsTable;
   steps: StepsTable;
+  run_nodes: RunNodesTable;
   escalations: EscalationsTable;
   approvals: ApprovalsTable;
   schema_migrations: SchemaMigrationsTable;

@@ -17,6 +17,7 @@ import type {
   UiToServerEvents,
 } from '../events.ts';
 import type { JobPayload, QueueName } from '../jobs.ts';
+import type { NodeRun, NodeSummary } from '../nodes.ts';
 import type { PosthogWebhook } from '../webhook.ts';
 
 type Payloads<T extends Record<string, (payload: never) => void>> = {
@@ -146,6 +147,21 @@ export const jobFixtures: { [Q in QueueName]: JobPayload<Q> } = {
   },
 };
 
+export const nodeRunFixture: NodeRun = {
+  ...runFixture,
+  issueTitle: issueFixture.title,
+  stepCount: 1,
+  lastStep: stepFixture,
+};
+
+export const nodeSummaryFixture: NodeSummary = {
+  name: 'railway-node-1',
+  connected: true,
+  since: at,
+  current: [nodeRunFixture],
+  lastRunAt: at,
+};
+
 export const serverToUiEventFixtures: Payloads<ServerToUiEvents> = {
   'issue.updated': { v: 1, issue: issueFixture },
   'run.started': { v: 1, run: runFixture },
@@ -158,6 +174,7 @@ export const serverToUiEventFixtures: Payloads<ServerToUiEvents> = {
   },
   'approval.requested': { v: 1, approval: pendingApprovalFixture },
   'approval.updated': { v: 1, approval: decidedApprovalFixture },
+  'node.updated': { v: 1, node: nodeSummaryFixture },
 };
 
 export const uiToServerEventFixtures: Payloads<UiToServerEvents> = {

@@ -22,6 +22,8 @@ export interface SocketIoLinkOptions {
   url: string;
   /** NODE_SHARED_SECRET. Sent as `auth.token` in the handshake. */
   secret: string;
+  /** What the agents page calls this daemon (`nodeName`). Sent as `auth.name`. */
+  name: string;
   logger: Logger;
   /** Milliseconds before trying again after a refusal, and after the server closed the socket. */
   retry?: { refusedMs: number; closedMs: number };
@@ -41,14 +43,14 @@ export class SocketIoLink implements OrchestratorLink {
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
 
-  constructor({ url, secret, logger, retry }: SocketIoLinkOptions) {
+  constructor({ url, secret, name, logger, retry }: SocketIoLinkOptions) {
     this.logger = logger;
     this.retry = retry ?? { refusedMs: RETRY_REFUSED_MS, closedMs: RETRY_CLOSED_MS };
     this.socket = io(new URL(NODE_NAMESPACE, url).href, {
-      auth: { token: secret },
+      auth: { token: secret, name },
       transports: ['websocket'],
     });
-    this.socket.on('connect', () => logger.info({ url }, 'connected to the orchestrator'));
+    this.socket.on('connect', () => logger.info({ url, name }, 'connected to the orchestrator'));
     this.socket.on('disconnect', (reason) => {
       logger.warn({ url, reason }, 'disconnected from the orchestrator');
       // `io server disconnect`: the orchestrator closed it, say for too many messages.

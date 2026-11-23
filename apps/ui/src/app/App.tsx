@@ -7,7 +7,6 @@ import IncidentDetailsPage from '../pages/IncidentDetailsPage';
 import AgentsPage from '../pages/AgentsPage';
 import AgentWorkspacePage from '../pages/AgentWorkspacePage';
 import { IssuesProvider } from '../context/IssuesContext';
-import { TaskProvider } from '../context/TaskContext';
 
 function PlaceholderPage({ title }: { title: string }) {
   return (
@@ -21,25 +20,23 @@ function PlaceholderPage({ title }: { title: string }) {
 export default function App() {
   return (
     <IssuesProvider>
-      <TaskProvider>
-        <BrowserRouter>
-          <DashboardLayout>
-            <Routes>
-              <Route path="/" element={<DashboardPage />} />
+      <BrowserRouter>
+        <DashboardLayout>
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
 
-              <Route path="/incidents" element={<IncidentsPage />} />
+            <Route path="/incidents" element={<IncidentsPage />} />
 
-              <Route path="/incidents/:id" element={<IncidentDetailsPage />} />
+            <Route path="/incidents/:id" element={<IncidentDetailsPage />} />
 
-              <Route path="/agents" element={<AgentsPage />} />
+            <Route path="/agents" element={<AgentsPage />} />
 
-              <Route path="/agents/:id" element={<AgentWorkspacePage />} />
+            <Route path="/agents/:id" element={<AgentWorkspacePage />} />
 
-              <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />
-            </Routes>
-          </DashboardLayout>
-        </BrowserRouter>
-      </TaskProvider>
+            <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />
+          </Routes>
+        </DashboardLayout>
+      </BrowserRouter>
     </IssuesProvider>
   );
 }

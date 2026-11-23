@@ -7,7 +7,9 @@ import {
 } from '@nestjs/websockets';
 import {
   NODE_NAMESPACE,
+  nodeNameSchema,
   nodeToServerEvents,
+  toNodeName,
   type NodeToServerEvents,
   type ServerToNodeEvents,
   type Step,
@@ -16,8 +18,10 @@ import type { Namespace } from 'socket.io';
 import type { Config } from '../config.ts';
 import type { Logger } from '../logger.ts';
 import { RateLimiter } from '../rate-limit.ts';
+import { NodeRuns } from '../runs/node-runs.ts';
 import { RunsService, type RunOwner } from '../runs/runs.service.ts';
 import { CONFIG, LOGGER } from '../tokens.ts';
+import { NodeSummaries } from './node-summaries.ts';
 import { Nodes, type NodeSocket } from './nodes.ts';
 import { RunKills } from './run-kills.ts';
 import {
@@ -69,6 +73,10 @@ const runIdOf = (payload: NodePayload<NodeEvent>) =>
  * `run.diff` and `run.finished`, and a run's first step (seq 0) also sends `run.started`.
  * None of this is a record: the daemon writes each step to the `steps` table itself, and the
  * `run_finished` job is the run's record.
+ *
+ * A daemon sends its name as `auth.name`. The gateway records which daemon worked each run
+ * (NodeRuns) on the daemon's first event for it, and sends the tabs `node.updated` whenever a
+ * daemon connects, disconnects, takes a run or lets one go.
  */
 @WebSocketGateway({ namespace: NODE_NAMESPACE, serveClient: false })
 export class NodeGateway
@@ -76,6 +84,9 @@ export class NodeGateway
 {
   private readonly guard: SocketGuard;
   private readonly links = new Map<string, Link>();
+  // One `node.updated` at a time, each built when its turn comes, so the last one a tab gets
+  // for a daemon is its latest state.
+  private announcing: Promise<void> = Promise.resolve();
 
   /**
    * What each event does once it passes its contract. An event with no handler is logged and
@@ -94,6 +105,8 @@ export class NodeGateway
     private readonly runs: RunsService,
     private readonly kills: RunKills,
     private readonly ui: UiGateway,
+    private readonly nodeRuns: NodeRuns,
+    private readonly summaries: NodeSummaries,
   ) {
     this.guard = {
       name: 'node',
@@ -111,18 +124,37 @@ export class NodeGateway
   handleConnection(socket: NodeSocket): void {
     limitMessages(socket, this.guard);
     const address = socketAddress(socket);
-    this.nodes.add(socket, address);
+    const name = this.nameOf(socket, address);
+    this.nodes.add(socket, address, name);
     this.links.set(socket.id, { queue: Promise.resolve(), owners: new Map() });
     listen(socket, nodeToServerEvents, this.guard, (event, payload) =>
       this.receive(socket, event, payload),
     );
-    this.logger.info({ address }, 'node daemon connected');
+    this.logger.info({ address, name }, 'node daemon connected');
+    this.announce(name);
   }
 
   handleDisconnect(socket: NodeSocket): void {
-    const runIds = this.nodes.remove(socket);
+    const left = this.nodes.remove(socket);
     this.links.delete(socket.id);
-    this.logger.warn({ address: socketAddress(socket), runIds }, 'node daemon disconnected');
+    this.logger.warn(
+      { address: socketAddress(socket), name: left?.name, runIds: left?.runIds ?? [] },
+      'node daemon disconnected',
+    );
+    if (left) this.announce(left.name);
+  }
+
+  /**
+   * The name the daemon sent as `auth.name`. A daemon from before names, or one that sent a
+   * name a hostname can't hold, is listed under its address instead.
+   */
+  private nameOf(socket: NodeSocket, address: string): string {
+    const { name } = socket.handshake.auth as { name?: unknown };
+    const parsed = nodeNameSchema.safeParse(name);
+    if (parsed.success) return parsed.data;
+    const fallback = toNodeName(`unnamed-${address}`);
+    this.logger.warn({ address, fallback }, 'node daemon sent no valid name; set NODE_NAME on it');
+    return fallback;
   }
 
   private receive(socket: NodeSocket, event: NodeEvent, payload: NodePayload<NodeEvent>): void {
@@ -131,18 +163,45 @@ export class NodeGateway
     const runId = runIdOf(payload);
     // At once, not in the queue, so a kill that lands while earlier events wait finds it.
     const finished = event === 'node.run.finished';
-    if (finished) this.nodes.release(runId, socket);
-    else this.nodes.hold(runId, socket);
+    const changed = finished ? this.nodes.release(runId, socket) : this.nodes.hold(runId, socket);
+    // The daemon that just took the run, to record as the one working it.
+    const taker = !finished && changed.length > 0 ? this.nodes.nameOf(socket) : undefined;
 
     const handler = this.handlers[event] as Handler<NodeEvent> | undefined;
     if (!handler) this.logger.warn({ event, runId }, 'no handler for this node event yet; dropped');
     link.queue = link.queue
       .then(async () => {
         if (!finished) await this.check(socket, runId);
+        if (taker !== undefined) await this.attribute(runId, taker);
         await handler?.(socket, payload);
       })
       .catch((err: unknown) => {
         this.logger.error({ err, event, runId }, 'node event failed');
+      })
+      // After the run's own event, so a tab hears of the step or the result first.
+      .finally(() => {
+        for (const changedName of changed) this.announce(changedName);
+      });
+  }
+
+  /** Records that `name` works `runId`. A failure is logged and the event still relayed. */
+  private async attribute(runId: string, name: string): Promise<void> {
+    try {
+      await this.nodeRuns.record(runId, name);
+    } catch (err) {
+      this.logger.error({ err, runId, name }, 'could not record which daemon works the run');
+    }
+  }
+
+  /** Sends every tab the daemon called `name` as GET /nodes lists it, after any sent before. */
+  private announce(name: string): void {
+    this.announcing = this.announcing
+      .then(async () => {
+        const node = await this.summaries.one(name);
+        if (node) this.ui.send('node.updated', { v: 1, node });
+      })
+      .catch((err: unknown) => {
+        this.logger.error({ err, name }, 'could not send node.updated');
       });
   }
 

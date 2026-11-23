@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Issue, IssueRun, Step } from '@page/contracts';
 import { Badge } from '@page/design-system/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
 
-import { useIssues } from '../../context/IssuesContext';
+import { useIssueRuns } from '../../live/useLiveRuns';
 import { runStatusLabels, shortId } from '../../lib/issueLabels';
 import {
   PHASE_BLURBS,
@@ -20,10 +20,6 @@ import {
 import { runStatusStyles } from '../../lib/statusStyles';
 import AgentText from './AgentText';
 import { EditView, PatchView, type DiffStyle } from './CodeDiff';
-
-// Steps reach the database as the agent works but send no event, so a fixing issue's runs
-// are reloaded on this interval as well as on every issue change.
-export const RUNS_POLL_MS = 5_000;
 
 // Reasoning longer than this is cut to its opening lines until the reader asks for it.
 const LONG_THOUGHT_CHARS = 360;
@@ -180,7 +176,8 @@ function PatchCard({ diff }: { diff: string }) {
   );
 }
 
-function RunReview({ run }: { run: IssueRun }) {
+/** A run's figures, its PR and patch, and its steps grouped by phase. */
+export function RunReview({ run }: { run: IssueRun }) {
   const figures = runFigures(run);
   const running = run.status === 'running';
   const last = run.steps.at(-1);
@@ -257,7 +254,12 @@ function RunReview({ run }: { run: IssueRun }) {
   );
 }
 
-function RunHeading({ run }: { run: IssueRun }) {
+/** A run's tier, status, short id and start time, on one line. */
+export function RunHeading({
+  run,
+}: {
+  run: Pick<IssueRun, 'id' | 'tier' | 'status' | 'startedAt'>;
+}) {
   return (
     <span className="flex flex-wrap items-center gap-2 text-sm">
       <span className="font-semibold">Tier {run.tier}</span>
@@ -272,28 +274,12 @@ function RunHeading({ run }: { run: IssueRun }) {
   );
 }
 
-/** The agent's runs on `issue`, newest open, kept current while it is fixing. */
+/**
+ * The agent's runs on `issue`, newest open. Steps arrive as the daemon sends them, and the
+ * runs are loaded again whenever the issue changes and after a reconnect.
+ */
 export default function RunsPanel({ issue }: { issue: Issue }) {
-  const { fetchRuns } = useIssues();
-  const [runs, setRuns] = useState<IssueRun[] | undefined>();
-  const [failed, setFailed] = useState(false);
-  const fixing = issue.status === 'fixing';
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      void fetchRuns(issue.id).then((loaded) => {
-        if (cancelled) return;
-        if (loaded) setRuns(loaded);
-        setFailed(loaded === undefined);
-      });
-    load();
-    const timer = fixing ? setInterval(load, RUNS_POLL_MS) : undefined;
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [fetchRuns, issue.id, issue.updatedAt, fixing]);
+  const { runs, failed } = useIssueRuns(issue.id, issue.updatedAt);
 
   if (runs === undefined) {
     return (

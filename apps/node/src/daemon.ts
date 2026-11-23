@@ -16,6 +16,7 @@ import {
 import pg from 'pg';
 import { PgBoss } from 'pg-boss';
 import type { Logger } from 'pino';
+import { nodeName } from './config.ts';
 import type { JobSource } from './jobs/job-source.ts';
 import { PgBossJobSource } from './jobs/pg-boss-source.ts';
 import { FakeLink } from './link/fake-link.ts';
@@ -151,6 +152,7 @@ export async function createAdapters(config: NodeConfig, logger: Logger): Promis
     : new SocketIoLink({
         url: config.ORCHESTRATOR_URL,
         secret: config.NODE_SHARED_SECRET,
+        name: nodeName(config),
         logger,
       });
   return {

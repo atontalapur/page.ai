@@ -1,6 +1,6 @@
 import type { IssueStatus, Run, Severity } from '@page/contracts';
 
-import type { AgentStatus } from '../data/mockAgents';
+import type { AgentStatus } from './agents';
 
 // Radix tints only: an a3 fill with step-11 text reads clearly in both themes, and no
 // border keeps the pills soft.
@@ -41,8 +41,10 @@ export const runStatusStyles: Record<Run['status'], string> = {
   killed: slate,
 };
 
+// Running matches a running run's violet. Offline is amber: a daemon that can't take work is
+// worth a look, but it isn't a failure.
 export const agentStatusStyles: Record<AgentStatus, string> = {
-  Running: green,
-  Idle: slate,
-  Failed: red,
+  running: violet,
+  idle: slate,
+  offline: amber,
 };

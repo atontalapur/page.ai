@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
-import type { IssueRun, Step } from '@page/contracts';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
+import type { IssueRun, Run, Step } from '@page/contracts';
 
 import IncidentDetailsPage from './IncidentDetailsPage';
 
@@ -16,7 +16,6 @@ vi.mock('@pierre/diffs/react', () => ({
     newFile: { contents: string };
   }) => <pre data-testid="edit-diff">{`${oldFile.contents} -> ${newFile.contents}`}</pre>,
 }));
-import { RUNS_POLL_MS } from '../components/issues/RunsPanel';
 import { issue, renderWithIssues, testSource, type TestSource } from '../test-utils';
 
 afterEach(() => {
@@ -231,24 +230,68 @@ describe('IncidentDetailsPage', () => {
     expect(within(tier1).getByText('Timed out')).toBeTruthy();
   });
 
-  it('reloads the runs while the issue is fixing, for steps that send no event', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      const source = testSource([fixing, fresh]);
-      source.runs.set(fixing.id, [run(1, 'running', { steps: [step(0, 'ls -la')] })]);
-      renderDetails(fixing.id, source);
-      expect(await screen.findByText('$ ls -la')).toBeTruthy();
+  it('shows each step as the daemon sends it, without a reload', async () => {
+    const source = testSource([fixing, fresh]);
+    source.runs.set(fixing.id, [run(1, 'running', { steps: [step(0, 'ls -la')] })]);
+    renderDetails(fixing.id, source);
+    expect(await screen.findByText('$ ls -la')).toBeTruthy();
+    const loads = source.loads.runs;
 
-      source.runs.set(fixing.id, [
-        run(1, 'running', { steps: [step(0, 'ls -la'), step(1, 'git diff')] }),
-      ]);
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(RUNS_POLL_MS);
-      });
-      expect(screen.getByText('$ git diff')).toBeTruthy();
-    } finally {
-      vi.useRealTimers();
-    }
+    source.sendRun('run.step', { v: 1, step: step(1, 'git diff') });
+    expect(await screen.findByText('$ git diff')).toBeTruthy();
+    // A step of another issue's run, and one that breaks the contract, change nothing.
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    source.sendRun('run.step', {
+      v: 1,
+      step: { ...step(0, 'rm -rf /'), runId: '90000000-2222-4222-8222-222222222222' },
+    });
+    source.sendRun('run.step', { v: 1, step: { ...step(2, 'pwd'), seq: -1 } });
+    expect(screen.queryByText('$ rm -rf /')).toBeNull();
+    expect(screen.queryByText('$ pwd')).toBeNull();
+    expect(source.loads.runs).toBe(loads);
+  });
+
+  it('adds a run of this issue when it starts, and shows its result when it finishes', async () => {
+    const source = testSource([fixing, fresh]);
+    renderDetails(fixing.id, source);
+    expect(await screen.findByText('No agent has worked on this incident yet.')).toBeTruthy();
+
+    const started = run(2, 'running', {});
+    const row: Run = {
+      id: started.id,
+      issueId: started.issueId,
+      tier: started.tier,
+      status: started.status,
+      startedAt: started.startedAt,
+      finishedAt: null,
+      prUrl: null,
+      confidence: null,
+    };
+    source.sendRun('run.started', { v: 1, run: row });
+    source.sendRun('run.step', { v: 1, step: { ...step(0, 'cat -n x.ts'), runId: started.id } });
+    expect(await screen.findByRole('list', { name: 'Tier 2 steps' })).toBeTruthy();
+
+    source.sendRun('run.finished', {
+      v: 1,
+      run: { ...row, status: 'escalated', finishedAt: '2026-11-22T09:04:00.000Z' },
+      note: null,
+    });
+    expect(await screen.findByText('Escalated')).toBeTruthy();
+  });
+
+  it('loads the runs again after the socket reconnects, for the steps it missed', async () => {
+    const source = testSource([fixing, fresh]);
+    source.runs.set(fixing.id, [run(1, 'running', { steps: [step(0, 'ls -la')] })]);
+    renderDetails(fixing.id, source);
+    expect(await screen.findByText('$ ls -la')).toBeTruthy();
+
+    // Sent while the tab was away, so only the database has them.
+    source.runs.set(fixing.id, [
+      run(1, 'running', { steps: [step(0, 'ls -la'), step(1, 'git diff'), step(2, 'pwd')] }),
+    ]);
+    source.reconnect();
+    expect(await screen.findByText('$ git diff')).toBeTruthy();
+    expect(screen.getByText('$ pwd')).toBeTruthy();
   });
 
   it('lists what happened to the issue in the activity panel', async () => {

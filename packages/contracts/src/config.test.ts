@@ -91,6 +91,14 @@ describe('nodeConfigSchema', () => {
     });
   });
 
+  it('takes a NODE_NAME, unset by default, and refuses one a hostname cannot hold', () => {
+    expect(nodeConfigSchema.parse(nodeEnvFixture).NODE_NAME).toBeUndefined();
+    const named = nodeConfigSchema.parse({ ...nodeEnvFixture, NODE_NAME: 'railway-node' });
+    expect(named.NODE_NAME).toBe('railway-node');
+    const spaced = { ...nodeEnvFixture, NODE_NAME: 'my node' };
+    expect(() => nodeConfigSchema.parse(spaced)).toThrow(/NODE_NAME/);
+  });
+
   it('requires GitHub credentials when real adapters are on', () => {
     const env = { ...nodeEnvFixture, GITHUB_TOKEN: undefined };
     expect(() => nodeConfigSchema.parse(env)).toThrow(/GITHUB_TOKEN/);
