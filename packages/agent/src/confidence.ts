@@ -101,6 +101,9 @@ function editedPath(step: ScoredStep): string | undefined {
   return typeof path === 'string' ? path : '';
 }
 
+// The ops tools that change the live app.
+const CHANGES: ReadonlySet<string> = new Set(['ops.setConfig', 'ops.deleteConfig', 'ops.rollback']);
+
 /** The ops tool a host tool step called, or undefined for any other step. */
 function opsTool(step: ScoredStep): string | undefined {
   if (step.kind !== 'host_tool' || !step.allowed) return undefined;
@@ -124,7 +127,8 @@ const round = (score: number) => Math.round(score * 100) / 100;
  * edit, a typecheck or lint passed after it, and a test failed before the first edit to code
  * (the agent saw the bug). A change that touches no code (nothing, or tests only) scores 0,
  * since it can't change what the app runs. An ops-only fix changed no code, so it scores on
- * the live app instead: 1 when a restart after its last change came back healthy, else 0.
+ * the live app instead: 1 when, after its last change, a restart came back healthy or a
+ * rollback's deployment went live, else 0.
  */
 export function scoreRun({ steps, changedFiles, opsOnly }: SubmittedRun): Confidence {
   const edits = steps.map(editedPath);
@@ -152,12 +156,19 @@ export function scoreRun({ steps, changedFiles, opsOnly }: SubmittedRun): Confid
 
   if (opsOnly) {
     const tools = steps.map(opsTool);
+    // What puts the app's current state live: a restart, ok only once the app answers its
+    // health check again, or a rollback, ok only once its new deployment is live. A new
+    // deployment reads the settings at boot, as a restart does.
+    const live = (step: ScoredStep, i: number) =>
+      (tools[i] === 'ops.restart' || tools[i] === 'ops.rollback') && step.exitCode === 0;
     // Any change the run sent counts, since one that never answered may still have landed.
-    const lastChange = lastIndex(tools, (t) => t === 'ops.setConfig' || t === 'ops.deleteConfig');
-    // A restart is ok only once the app answers its health check again.
-    const lastRestart = lastIndex(steps, (s, i) => tools[i] === 'ops.restart' && s.exitCode === 0);
-    const restartedAfterChange = lastRestart > lastChange;
-    return { score: restartedAfterChange ? 1 : 0, ...parts, restartedAfterChange };
+    // A rollback that went live is its own change and its own going live.
+    const lastChange = lastIndex(
+      steps,
+      (step, i) => CHANGES.has(tools[i] ?? '') && !(tools[i] === 'ops.rollback' && live(step, i)),
+    );
+    const liveAfterChange = lastIndex(steps, live) > lastChange;
+    return { score: liveAfterChange ? 1 : 0, ...parts, liveAfterChange };
   }
 
   const score =
@@ -168,5 +179,5 @@ export function scoreRun({ steps, changedFiles, opsOnly }: SubmittedRun): Confid
             CONFIDENCE_WEIGHTS.checksPass * Number(parts.checksPass) +
             CONFIDENCE_WEIGHTS.reproduced * Number(parts.reproduced),
         );
-  return { score, ...parts, restartedAfterChange: null };
+  return { score, ...parts, liveAfterChange: null };
 }

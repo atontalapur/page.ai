@@ -69,9 +69,9 @@ export const confidenceSchema = z.strictObject({
   testsPass: z.boolean(),
   // After its last edit, a typecheck or lint run passed and none failed.
   checksPass: z.boolean(),
-  // For an ops-only fix: a restart after the last change to the live app came back healthy,
-  // so the app serves the change. Null for a code fix.
-  restartedAfterChange: z.boolean().nullable(),
+  // For an ops-only fix: after its last change to the live app, a restart came back healthy
+  // or a rollback's deployment went live, so the app serves the change. Null for a code fix.
+  liveAfterChange: z.boolean().nullable(),
 });
 
 export type Confidence = z.infer<typeof confidenceSchema>;

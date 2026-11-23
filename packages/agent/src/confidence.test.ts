@@ -58,7 +58,7 @@ describe('scoreRun on a code fix', () => {
       reproduced: false,
       testsPass: true,
       checksPass: true,
-      restartedAfterChange: null,
+      liveAfterChange: null,
     });
     expect(confidenceSchema.parse(confidence)).toEqual(confidence);
   });
@@ -210,7 +210,7 @@ describe('scoreRun on an ops-only fix', () => {
       reproduced: false,
       testsPass: false,
       checksPass: false,
-      restartedAfterChange: true,
+      liveAfterChange: true,
     });
     expect(confidenceSchema.parse(confidence)).toEqual(confidence);
   });
@@ -223,7 +223,7 @@ describe('scoreRun on an ops-only fix', () => {
   it('scores 0 when the restart did not come back healthy', () => {
     expect(opsOnly([drop, ops('ops.restart', 1)])).toMatchObject({
       score: 0,
-      restartedAfterChange: false,
+      liveAfterChange: false,
     });
   });
 
@@ -231,5 +231,27 @@ describe('scoreRun on an ops-only fix', () => {
     expect(
       opsOnly([ops('ops.restart'), ops('ops.setConfig', 1, { key: 'X', value: '1' })]).score,
     ).toBe(0);
+  });
+
+  describe('a rollback', () => {
+    const plan = ops('ops.planRollback');
+    // The tool is ok only once the rollback's new deployment is live.
+    const rolledBack = (exitCode = 0) => ops('ops.rollback', exitCode, { to: 'dep-earlier' });
+
+    it('scores 1 once its deployment went live, with no restart', () => {
+      expect(opsOnly([plan, rolledBack()])).toMatchObject({ score: 1, liveAfterChange: true });
+    });
+
+    it('scores 0 when its deployment failed or was not live in time', () => {
+      expect(opsOnly([plan, rolledBack(1)])).toMatchObject({ score: 0, liveAfterChange: false });
+      // A restart before the rollback doesn't make the later one live.
+      expect(opsOnly([ops('ops.restart'), plan, rolledBack(1)]).score).toBe(0);
+    });
+
+    it('puts settings changed before it live, but not ones changed after it', () => {
+      expect(opsOnly([drop, plan, rolledBack()]).score).toBe(1);
+      expect(opsOnly([plan, rolledBack(), drop]).score).toBe(0);
+      expect(opsOnly([plan, rolledBack(), drop, ops('ops.restart')]).score).toBe(1);
+    });
   });
 });

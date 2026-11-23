@@ -61,7 +61,7 @@ export const confidenceFixture: Confidence = {
   reproduced: false,
   testsPass: true,
   checksPass: true,
-  restartedAfterChange: null,
+  liveAfterChange: null,
 };
 
 export const stepFixture: Step = {
