@@ -3,6 +3,7 @@ import {
   type BugClass,
   type Issue,
   type IssueStatus,
+  type Run,
   type Severity,
 } from '@page/contracts';
 
@@ -13,6 +14,15 @@ export const statusLabels: Record<IssueStatus, string> = {
   pr_open: 'PR open',
   awaiting_approval: 'Awaiting approval',
   resolved: 'Resolved',
+  failed: 'Failed',
+  killed: 'Killed',
+};
+
+export const runStatusLabels: Record<Run['status'], string> = {
+  queued: 'Queued',
+  running: 'Running',
+  succeeded: 'Patch ready',
+  escalated: 'Escalated',
   failed: 'Failed',
   killed: 'Killed',
 };

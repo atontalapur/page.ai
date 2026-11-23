@@ -20,6 +20,7 @@ const routes = [
   { method: 'POST', url: '/issues', payload: { fingerprint: 'auth-1', title: 'Boom' } },
   { method: 'GET', url: `/issues/${id}` },
   { method: 'GET', url: `/issues/${id}/events` },
+  { method: 'GET', url: `/issues/${id}/runs` },
   { method: 'POST', url: `/issues/${id}/events`, payload: { type: 'kill' } },
 ] as const;
 

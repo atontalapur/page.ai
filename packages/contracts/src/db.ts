@@ -99,6 +99,18 @@ export const stepSchema = z.strictObject({
 
 export type Step = z.infer<typeof stepSchema>;
 
+/**
+ * One run as `GET /issues/:id/runs` serves it: its row, the agent's diff once it submitted,
+ * and every step so far. The run in progress has no row until it finishes, so it is
+ * `running` (`queued` before its first step) with times from its steps.
+ */
+export const issueRunSchema = runSchema.extend({
+  diff: z.string().nullable(),
+  steps: z.array(stepSchema),
+});
+
+export type IssueRun = z.infer<typeof issueRunSchema>;
+
 export const ESCALATION_REASONS = [
   // The fix needs a tool this tier does not allow.
   'needs_higher_tier',

@@ -1,8 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { clip, MAX_REASON_CHARS, type IssueEvent, type JobPayload } from '@page/contracts';
-import type { Insertable, Transaction } from 'kysely';
-import type { Database, Db, RunsTable } from '../db/database.ts';
-import { IssuesService, type Moved } from '../issues/issues.service.ts';
+import {
+  clip,
+  MAX_REASON_CHARS,
+  type IssueEvent,
+  type IssueRun,
+  type JobPayload,
+  type Step,
+} from '@page/contracts';
+import type { Insertable, Selectable, Transaction } from 'kysely';
+import type { Database, Db, RunsTable, StepsTable } from '../db/database.ts';
+import { IssueNotFoundError, IssuesService, type Moved } from '../issues/issues.service.ts';
 import { issueLogger, type Logger } from '../logger.ts';
 import type { FixJob } from '../queue/fix-jobs.ts';
 import type { JobQueues } from '../queue/queues.ts';
@@ -86,6 +93,74 @@ export class RunsService {
     @Inject(JOB_QUEUES) private readonly jobs: JobQueues,
     @Inject(LOGGER) private readonly logger: Logger,
   ) {}
+
+  /**
+   * Every run of an issue, oldest first, each with its steps: the finished ones from `runs`,
+   * and the one in progress, which has only its steps until the daemon reports it. Throws
+   * IssueNotFoundError for an unknown issue.
+   */
+  async forIssue(issueId: string): Promise<IssueRun[]> {
+    const issue = await this.db
+      .selectFrom('issues')
+      .select(['status', 'current_run_id', 'current_tier'])
+      .where('id', '=', issueId)
+      .executeTakeFirst();
+    if (!issue) throw new IssueNotFoundError(issueId);
+
+    const rows = await this.db
+      .selectFrom('runs')
+      .selectAll()
+      .where('issue_id', '=', issueId)
+      .orderBy('created_at')
+      .execute();
+    const current = issue.current_run_id;
+    // Only a fixing issue has a run in hand; past that, its current run has a row or never ran.
+    const inProgress =
+      issue.status === 'fixing' && current !== null && !rows.some((r) => r.id === current)
+        ? current
+        : undefined;
+    const ids = [...rows.map((r) => r.id), ...(inProgress ? [inProgress] : [])];
+    const steps =
+      ids.length === 0
+        ? []
+        : await this.db
+            .selectFrom('steps')
+            .selectAll()
+            .where('run_id', 'in', ids)
+            .orderBy('run_id')
+            .orderBy('seq')
+            .execute();
+    const stepsOf = (id: string) => steps.filter((step) => step.run_id === id).map(toStep);
+
+    const runs: IssueRun[] = rows.map((row) => ({
+      id: row.id,
+      issueId,
+      tier: row.tier,
+      status: row.status,
+      startedAt: row.started_at?.toISOString() ?? null,
+      finishedAt: row.finished_at?.toISOString() ?? null,
+      prUrl: row.pr_url,
+      confidence: row.confidence,
+      diff: row.diff,
+      steps: stepsOf(row.id),
+    }));
+    if (inProgress && issue.current_tier !== null) {
+      const own = stepsOf(inProgress);
+      runs.push({
+        id: inProgress,
+        issueId,
+        tier: issue.current_tier,
+        status: own.length > 0 ? 'running' : 'queued',
+        startedAt: own[0]?.createdAt ?? null,
+        finishedAt: null,
+        prUrl: null,
+        confidence: null,
+        diff: null,
+        steps: own,
+      });
+    }
+    return runs;
+  }
 
   /**
    * Writes the `runs` row, then applies the issue event and, for an escalation, writes the
@@ -271,4 +346,17 @@ function lockIssue(trx: Transaction<Database>, issueId: string) {
 /** Whether `runId` is the run the issue is waiting on. */
 function isCurrent(issue: { status: string; current_run_id: string | null }, runId: string) {
   return issue.status === 'fixing' && issue.current_run_id === runId;
+}
+
+function toStep(row: Selectable<StepsTable>): Step {
+  return {
+    runId: row.run_id,
+    seq: row.seq,
+    kind: row.kind,
+    input: row.input,
+    outputTrimmed: row.output_trimmed,
+    exitCode: row.exit_code,
+    allowed: row.allowed,
+    createdAt: row.created_at.toISOString(),
+  };
 }

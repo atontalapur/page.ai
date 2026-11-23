@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { act, render } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import type { Issue } from '@page/contracts';
+import type { Issue, IssueRun } from '@page/contracts';
 import { issueFixture } from '@page/contracts/fixtures';
 
 import { IssuesProvider } from './context/IssuesContext';
@@ -33,14 +33,18 @@ export interface TestSource extends IssueSource {
   setStatus(status: FeedStatus): void;
   /** What fetchIssue finds beyond the list. */
   extra: Map<string, Issue>;
+  /** What fetchRuns returns per issue; an issue missing here has no runs. */
+  runs: Map<string, IssueRun[]>;
 }
 
 /** A source that loads `issues` as its list and plays whatever a test sends. */
 export function testSource(issues: Issue[], status: FeedStatus = 'live'): TestSource {
   let feed: IssueFeed | undefined;
   const extra = new Map<string, Issue>();
+  const runs = new Map<string, IssueRun[]>();
   return {
     extra,
+    runs,
     start(next) {
       feed = next;
       feed.status(status);
@@ -51,6 +55,7 @@ export function testSource(issues: Issue[], status: FeedStatus = 'live'): TestSo
       };
     },
     fetchIssue: (id) => Promise.resolve(extra.get(id)),
+    fetchRuns: (id) => Promise.resolve(runs.get(id) ?? []),
     send(payload) {
       const parsed = parseIssueUpdated(payload);
       if (parsed) act(() => feed?.update(parsed));

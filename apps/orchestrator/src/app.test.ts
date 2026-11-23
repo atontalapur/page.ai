@@ -1,5 +1,5 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
-import type { Issue } from '@page/contracts';
+import { issueRunSchema, type Issue } from '@page/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
 import { createTestDeps, testConfig } from './db/test-utils.ts';
@@ -42,6 +42,12 @@ describe('orchestrator HTTP API', () => {
 
     expect((await http('GET', `/issues/${issue.id}`)).json<Issue>().currentTier).toBe(1);
     expect((await http('GET', `/issues/${issue.id}/events`)).json()).toHaveLength(2);
+    // The fix job is queued and no daemon has claimed it, so its run has no steps yet.
+    const runs = await http('GET', `/issues/${issue.id}/runs`);
+    expect(runs.statusCode).toBe(200);
+    expect(issueRunSchema.array().parse(runs.json())).toMatchObject([
+      { tier: 1, status: 'queued', steps: [] },
+    ]);
     const listed = await http('GET', '/issues?status=fixing');
     expect(listed.json<Issue[]>().map((i) => i.id)).toContain(issue.id);
   });
@@ -94,6 +100,7 @@ describe('orchestrator HTTP API', () => {
     const missing = '00000000-0000-4000-8000-000000000000';
     expect((await http('GET', `/issues/${missing}`)).statusCode).toBe(404);
     expect((await http('GET', `/issues/${missing}/events`)).statusCode).toBe(404);
+    expect((await http('GET', `/issues/${missing}/runs`)).statusCode).toBe(404);
 
     const { issue } = (await http('POST', '/issues', { fingerprint: 'http-3', title: 'x' })).json<{
       issue: Issue;
