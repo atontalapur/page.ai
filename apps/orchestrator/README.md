@@ -29,6 +29,7 @@ new ──────triage─▶ triaged ─start_fix─▶ fixing (tier 1)
                                   awaiting_approval ─approve─▶ resolved
 
 triage sends start_fix itself when AUTO_START_FIX is on, up to AUTO_START_FIX_MAX_PER_HOUR
+ops_fixed (tier 3: a fix made live through the ops API, no code change) ─▶ resolved
 pr_open takes approve and reject like awaiting_approval; nothing enters it yet
 escalate or reject at tier 3 ─▶ failed (a human takes over)
 fail (a run a higher tier can't fix) ─▶ failed
@@ -61,12 +62,17 @@ budget plus the sandbox start, the diff and closing a PR.
 When a run ends, the node daemon sends a `run_finished` job (`runFinishedJobSchema`) with the
 `node.run.finished` result, the run's times and the agent's diff. `RunsService` writes the
 `runs` row, then applies the issue event in the same transaction: `succeeded` is
-`patch_ready`, `escalated` is `escalate`, `failed` is `fail` and `killed` is `kill`. An
+`patch_ready`, `escalated` is `escalate`, `failed` is `fail` and `killed` is `kill`. A
+`succeeded` result with `opsOnly` is `ops_fixed` instead: the Tier 3 run changed the live app
+through the ops API and left no code change, so its fix is live already and there is no patch
+to approve. The daemon sets `opsOnly` itself, since a null diff also means one it couldn't
+read or one over the cap. A run with ops changes and a diff or a PR is `patch_ready`. An
 escalation the issue takes also writes its `escalations` row. Entering the next tier queues
 its fix job with the report and the run's escalation note; a rejected patch hands the
 reviewer's reason on the same way. A result for a run that is no longer current only updates
 its row, so a retried job is harmless. A succeeded run's PR link stays on its `runs` row and
-the issue goes to `awaiting_approval`; nothing enters `pr_open` yet.
+the issue goes to `awaiting_approval`, or to `resolved` for `ops_fixed`; nothing enters
+`pr_open` yet.
 
 A fix job can also end with no result: the daemon dies or hangs until the job expires, or it
 can't queue the result. pg-boss then fails the job and copies it to the `fix_failed` dead
@@ -81,11 +87,11 @@ whose worker calls `RunsService.recordFailedResult`. It writes the run's row wit
 and applies `fail`, unless the run is no longer current. The daemon sends each result with the
 run id as its pg-boss job id, so `recordLost` finds a queued result by id.
 
-The run outcome events (`patch_ready`, `escalate`, `fail`) carry the `runId` of the job they
-report on, and only `RunsService` applies them. An event for any run other than the current
-one is refused, so a retried `escalate` cannot skip a tier. A repeat report with the same
-`fingerprint` bumps `occurrences` on the open issue; after a terminal status it opens a new
-one.
+The run outcome events (`patch_ready`, `ops_fixed`, `escalate`, `fail`) carry the `runId` of
+the job they report on, and only `RunsService` applies them. An event for any run other than
+the current one is refused, so a retried `escalate` cannot skip a tier. A repeat report with
+the same `fingerprint` bumps `occurrences` on the open issue; after a terminal status it opens
+a new one.
 
 ## API
 
@@ -107,8 +113,8 @@ open for Railway's health check, and `/ingest/posthog` checks `POSTHOG_WEBHOOK_S
 fingerprint bumps `occurrences` instead of adding a row.
 
 Bodies are validated against the zod contracts (400). `POST /issues/:id/events` also returns
-400 for `patch_ready`, `escalate` and `fail`: run outcomes reach an issue only through the
-`run_finished` queue, which also writes the `runs` and `escalations` rows. Unknown ids return 404. Events the current status doesn't allow return 409. `GET /issues`
+400 for `patch_ready`, `ops_fixed`, `escalate` and `fail`: run outcomes reach an issue only
+through the `run_finished` queue, which also writes the `runs` and `escalations` rows. Unknown ids return 404. Events the current status doesn't allow return 409. `GET /issues`
 returns at most 200 issues, most recently updated first; a repeat report counts as an update.
 
 ## Run locally

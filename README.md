@@ -54,7 +54,9 @@ demo app --errors--> PostHog --webhook--> orchestrator --call + SMS--> on-call (
 4. Escalate. Each tier gets 40 model calls, $0.50 and 14 minutes
    ([`threshold.ts`](packages/agent/src/threshold.ts)). A run that hits a limit before it
    submits a patch moves the issue up a tier. Past Tier 3 the issue fails and stays with a
-   human. A submitted patch puts the issue in `awaiting_approval`.
+   human. A submitted patch puts the issue in `awaiting_approval`. A Tier 3 run that fixes
+   the live app through its ops API and changes no code resolves the issue, since the fix is
+   live already and there is no patch to approve.
 5. Audit. Every agent command goes through `execute()` in `@page/toolkit`, which parses it,
    checks it against the tier's rules and writes a `steps` row before it runs. A command whose
    step can't be written doesn't run.

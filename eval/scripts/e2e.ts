@@ -28,12 +28,14 @@ import { loadScenario, ScenarioError, type Scenario } from '../src/scenario.ts';
 import { loadSplit } from '../src/split.ts';
 import { localTarget, stagingTarget } from './e2e-targets.ts';
 
-const USAGE = `usage: pnpm e2e <scenario-id> [--target local|staging] [--expect pr|approval]
-  [--timeout <step>=<duration>]... [--budget <duration>] [--poll <duration>]
-  [--drain <duration>] [--runs <n>] [--keep] [--no-build] [--out <file.json>]
+const USAGE = `usage: pnpm e2e <scenario-id> [--target local|staging]
+  [--expect pr|approval|resolved] [--timeout <step>=<duration>]... [--budget <duration>]
+  [--poll <duration>] [--drain <duration>] [--runs <n>] [--keep] [--no-build]
+  [--out <file.json>]
 
   --target   local (default): a demo app on this machine, staging: the app at DEMO_APP_URL
-  --expect   what the run ends on (default: pr for a Tier 2 code scenario, else approval)
+  --expect   what the run ends on (default: pr for a Tier 2 code scenario, resolved for an
+             ops scenario, else approval)
   --timeout  a step's limit, e.g. --timeout fix=20m (steps: seed trigger issue triage
              claim fix outcome reset)
   --budget   most time from the trigger to the PR or approval request (default: the
@@ -93,8 +95,13 @@ if (extra.length > 0) fail(`one scenario at a time, not ${positionals.join(' ')}
 if (values.target !== 'local' && values.target !== 'staging') {
   fail(`--target must be local or staging, not ${values.target}`);
 }
-if (values.expect !== undefined && values.expect !== 'pr' && values.expect !== 'approval') {
-  fail(`--expect must be pr or approval, not ${values.expect}`);
+if (
+  values.expect !== undefined &&
+  values.expect !== 'pr' &&
+  values.expect !== 'approval' &&
+  values.expect !== 'resolved'
+) {
+  fail(`--expect must be pr, approval or resolved, not ${values.expect}`);
 }
 const runs = Number(values.runs);
 if (!Number.isInteger(runs) || runs < 1) fail('--runs must be a positive integer');

@@ -105,6 +105,24 @@ describe('node.run.finished', () => {
     expect(() => finished.parse({ ...succeeded, confidence })).toThrow();
   });
 
+  it('reads a success without opsOnly, from an older daemon, as not ops-only', () => {
+    const old = {
+      v: 1,
+      runId: escalated.runId,
+      status: 'succeeded',
+      prUrl: null,
+      confidence: null,
+      note: null,
+    };
+    expect(finished.parse(old)).toEqual({ ...old, opsOnly: false });
+  });
+
+  it('carries opsOnly on a success only', () => {
+    const success = { ...nodeToServerEventFixtures['node.run.finished'], prUrl: null };
+    expect(roundTrip(finished, { ...success, opsOnly: true })).toMatchObject({ opsOnly: true });
+    expect(() => finished.parse({ ...escalated, opsOnly: false })).toThrow();
+  });
+
   it('accepts a killed run with nothing to report', () => {
     const killed = {
       v: 1,

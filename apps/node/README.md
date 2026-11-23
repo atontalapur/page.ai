@@ -104,6 +104,14 @@ closing the PR of a run that didn't succeed: it tries every setting and the rest
 logs each one the app wouldn't take. A change whose request never answered, say because a
 kill cut it off, may have landed, and is logged by name and left as it is.
 
+A Tier 3 run that submits keeps its ops changes. If it changed the live app (an override it
+didn't set back, or a restart after a change), opened no PR, and `git status` shows the
+workspace as it started, new files included, its result says `opsOnly: true` and the
+orchestrator resolves the issue: the fix is live already and there is no patch to approve.
+The daemon asks `git status` because a null diff in the result also means one it couldn't
+read or one over the cap, and `git diff` leaves out new files. Anything it can't confirm,
+`git status` failing included, reports `opsOnly: false`, and the run goes to review.
+
 Without `OPS_APP_URL` the daemon logs once at startup that Tier 3 runs get no ops tools, and
 every ops call is refused as `not set up on this node`. The daemon never reads
 `DEMO_APP_URL`, which `.env` keeps for staging's app, so a local daemon changes staging only

@@ -70,7 +70,18 @@ export const runFinishedJobSchema = z
   .refine((job) => job.result.status !== 'escalated' || job.result.toTier > job.tier, {
     path: ['result', 'toTier'],
     message: 'must be above the run tier',
-  });
+  })
+  // Only Tier 3 has the ops tools, and a run with a PR or a diff has a change to review.
+  .refine(
+    ({ tier, diff, result }) =>
+      result.status !== 'succeeded' ||
+      !result.opsOnly ||
+      (tier === 3 && result.prUrl === null && (diff ?? '') === ''),
+    {
+      path: ['result', 'opsOnly'],
+      message: 'an ops-only run is a Tier 3 run with no PR and no diff',
+    },
+  );
 
 /** Queue name to payload schema. */
 export const jobSchemas = {

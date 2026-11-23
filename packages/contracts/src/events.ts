@@ -41,6 +41,12 @@ export const nodeRunFinishedSchema = z.discriminatedUnion('status', [
     // Null when the agent submitted but the run was not scored. The daemon doesn't score
     // runs yet, and a made-up score would mislead the escalation decision.
     note: escalationNoteSchema.nullable(),
+    // True when a Tier 3 run changed the live app through the ops API and left no code
+    // change: no PR, and a workspace that matches the baseline. The fix is then live already
+    // and there is nothing to approve. False whenever the daemon can't tell, so a diff it
+    // couldn't read or that is over the cap still goes to review. A daemon from before the
+    // field sends none, which reads as false.
+    opsOnly: z.boolean().default(false),
   }),
   z.strictObject({
     ...runFinishedBase,

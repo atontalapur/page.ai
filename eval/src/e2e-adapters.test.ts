@@ -17,6 +17,7 @@ const issue = {
   occurrences: 2,
   created_at: at,
   last_seen_at: at,
+  ops_fixed: false,
 };
 
 /** Answers each query with the rows of the first entry whose key it contains. */
@@ -51,6 +52,7 @@ describe('PgPipelineReader', () => {
         occurrences: 2,
         createdAt: at,
         lastSeenAt: at,
+        opsFixed: false,
       },
     ]);
     expect(queries[0]!.params).toEqual([at]);

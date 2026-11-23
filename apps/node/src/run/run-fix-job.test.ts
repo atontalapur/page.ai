@@ -554,6 +554,95 @@ describe('runFixJob', () => {
       ]);
     });
 
+    describe('opsOnly', () => {
+      const STATUS = `${SAFE_GIT} status --porcelain=v1 -z --untracked-files=all`;
+      const broken = () => new FakeOps({ SHIPPING_FLAT_CENTS: '2500000000' });
+      // The sandbox's answers to the diff and to `git status`; everything else exits 0.
+      const workspace =
+        (
+          diff: ReturnType<typeof FakeRunner.exited>,
+          status: ReturnType<typeof FakeRunner.exited>,
+        ) =>
+        ({ command }: RunRequest) =>
+          command === DIFF ? diff : command === STATUS ? status : FakeRunner.exited(0, '');
+
+      it('reports a fix made only through the ops API, and leaves it live', async () => {
+        const ops = broken();
+        const { deps, sandboxes, results } = setup(
+          [unsetReply, restartReply, submitReply()],
+          undefined,
+          { ops },
+        );
+        const finished = await runFixJob(atTier(3), deps);
+
+        expect(finished).toMatchObject({ status: 'succeeded', prUrl: null, opsOnly: true });
+        expect(results.sent).toMatchObject([{ tier: 3, diff: '', result: { opsOnly: true } }]);
+        expect(sandboxes.runners.get(container)?.requests.map((r) => r.command)).toEqual([
+          DIFF,
+          STATUS,
+        ]);
+        expect(ops.calls).toEqual(['deleteConfig SHIPPING_FLAT_CENTS', 'restart']);
+        expect(ops.served).toEqual({});
+      });
+
+      it.each([
+        ['a diff', FakeRunner.exited(0, 'diff --git a b\n'), FakeRunner.exited(0, ' M a.ts\0')],
+        [
+          'a diff over the cap',
+          FakeRunner.exited(0, 'x'.repeat(MAX_RUN_DIFF_CHARS + 1)),
+          FakeRunner.exited(0, ' M a.ts\0'),
+        ],
+        ['only a new file', FakeRunner.exited(0, ''), FakeRunner.exited(0, '?? a.ts\0')],
+        ['a workspace git cannot read', FakeRunner.exited(0, ''), FakeRunner.exited(128, '')],
+      ])('sends ops changes with %s to review', async (_, diff, status) => {
+        const { deps } = setup([unsetReply, submitReply()], workspace(diff, status), {
+          ops: broken(),
+        });
+        expect(await runFixJob(atTier(3), deps)).toMatchObject({
+          status: 'succeeded',
+          opsOnly: false,
+        });
+      });
+
+      it('sends ops changes with a PR to review', async () => {
+        const github = new FakeGitHub({ 'a.ts': 'x\n' });
+        const pushReply = '```page_push_branch\nfix: shipping\n```';
+        const prReply = '```page_open_pr\nfix: shipping\nDrop the override.\n```';
+        // One changed file for the push, which the agent then puts back.
+        let statuses = 0;
+        const sandbox = ({ command }: RunRequest) => {
+          if (command === STATUS) return FakeRunner.exited(0, statuses++ === 0 ? ' M a.ts\0' : '');
+          if (command.startsWith('stat -c')) return FakeRunner.exited(0, '2 644 regular file\n');
+          if (command.startsWith('base64')) return FakeRunner.exited(0, 'eQo=\n.\n');
+          return FakeRunner.exited(0, '');
+        };
+        const { deps } = setup([unsetReply, pushReply, prReply, submitReply()], sandbox, {
+          ops: broken(),
+          github,
+        });
+        expect(await runFixJob(atTier(3), deps)).toMatchObject({
+          status: 'succeeded',
+          prUrl: 'https://github.com/page-demo/shop/pull/1',
+          opsOnly: false,
+        });
+        // The push read the workspace; the PR alone settles it after that.
+        expect(statuses).toBe(1);
+      });
+
+      it('is false for a run that left the live app as it found it', async () => {
+        const { deps, sandboxes } = setup([configReply, submitReply()], undefined, {
+          ops: broken(),
+        });
+        expect(await runFixJob(atTier(3), deps)).toMatchObject({ opsOnly: false });
+        expect(sandboxes.runners.get(container)?.requests.map((r) => r.command)).toEqual([DIFF]);
+      });
+
+      it.each([1, 2] as const)('is false at Tier %i, which has no ops tools', async (tier) => {
+        const { deps } = setup([submitReply()], undefined, { ops: broken() });
+        expect(await runFixJob(atTier(tier), deps)).toMatchObject({ opsOnly: false });
+      });
+    });
+
     it('puts back the ops changes of a run that did not succeed', async () => {
       const ops = new FakeOps({ SHIPPING_FLAT_CENTS: '2500000000' });
       const { deps } = setup([unsetReply, restartReply], undefined, {

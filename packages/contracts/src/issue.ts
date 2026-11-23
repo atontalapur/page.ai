@@ -42,6 +42,9 @@ export const issueEventSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('triage'), class: bugClassSchema, severity: severitySchema }),
   z.strictObject({ type: z.literal('start_fix') }),
   z.strictObject({ type: z.literal('patch_ready'), runId: idSchema }),
+  // A Tier 3 run fixed the live app through the ops API and left no code change. The fix is
+  // live already, so the issue resolves with nothing for a human to approve.
+  z.strictObject({ type: z.literal('ops_fixed'), runId: idSchema }),
   z.strictObject({ type: z.literal('escalate'), runId: idSchema, reason }),
   // The run failed in a way a higher tier can't fix (a broken sandbox, model or audit log).
   // The issue goes to `failed` and a human takes over.

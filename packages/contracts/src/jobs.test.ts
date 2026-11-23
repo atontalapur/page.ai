@@ -56,16 +56,27 @@ describe('jobSchemas', () => {
   });
 
   describe('run_finished', () => {
+    const { runId } = jobFixtures.run_finished.result;
     const escalated = {
       ...jobFixtures.run_finished,
       diff: null,
       result: {
-        ...jobFixtures.run_finished.result,
+        v: 1,
+        runId,
+        prUrl: null,
+        confidence: null,
         status: 'escalated',
         reason: 'budget_exhausted',
         toTier: 2,
         note: escalationNoteFixture,
       },
+    };
+    // A Tier 3 run that fixed the live app through the ops API and changed no code.
+    const opsOnly = {
+      ...jobFixtures.run_finished,
+      tier: 3,
+      diff: '',
+      result: { ...jobFixtures.run_finished.result, opsOnly: true },
     };
 
     it('round-trips an escalation to the tier above', () => {
@@ -80,6 +91,38 @@ describe('jobSchemas', () => {
     it('rejects a diff over the cap', () => {
       const job = { ...jobFixtures.run_finished, diff: 'x'.repeat(MAX_RUN_DIFF_CHARS + 1) };
       expect(() => jobSchemas.run_finished.parse(job)).toThrow();
+    });
+
+    it('round-trips an ops-only success, with an empty diff or none', () => {
+      expect(roundTrip(jobSchemas.run_finished, opsOnly)).toEqual(opsOnly);
+      const noDiff = { ...opsOnly, diff: null };
+      expect(roundTrip(jobSchemas.run_finished, noDiff)).toEqual(noDiff);
+    });
+
+    it('reads a success without opsOnly, from an older daemon, as not ops-only', () => {
+      const old = {
+        ...jobFixtures.run_finished,
+        result: { v: 1, runId, status: 'succeeded', prUrl: null, confidence: null, note: null },
+      };
+      expect(jobSchemas.run_finished.parse(old).result).toMatchObject({ opsOnly: false });
+    });
+
+    it.each([
+      ['below Tier 3', { tier: 2 }],
+      ['with a diff', { diff: '--- a/x\n+++ b/x\n' }],
+      [
+        'with a PR',
+        {
+          result: {
+            ...opsOnly.result,
+            prUrl: 'https://github.com/atontalapur/page-demo/pull/7',
+          },
+        },
+      ],
+    ])('rejects an ops-only success %s', (_, change) => {
+      expect(() => jobSchemas.run_finished.parse({ ...opsOnly, ...change })).toThrow(
+        /no PR and no diff/,
+      );
     });
 
     it('rejects a result that breaks the node.run.finished contract', () => {

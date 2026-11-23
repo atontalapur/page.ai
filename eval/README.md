@@ -162,16 +162,16 @@ applies `start_fix` after triage. Past `AUTO_START_FIX_MAX_PER_HOUR` fix starts 
 orchestrator logs `auto-start cap reached`. Raise it for `--runs` above that. The daemon reports each run's end as a `run_finished` job,
 which the orchestrator records (#136).
 
-| Step      | Waits for                                                                          | Default limit         |
-| --------- | ---------------------------------------------------------------------------------- | --------------------- |
-| `seed`    | the bug live on the target (see below)                                             | 20m                   |
-| `trigger` | `trigger.sh` to exit 0                                                             | 2m                    |
-| `issue`   | an `issues` row opened after the trigger, titled like the report's error           | 5m                    |
-| `triage`  | the issue to leave `new`                                                           | 2m                    |
-| `claim`   | a fix run on the issue that a daemon picked up (pg-boss job, steps or row)         | 5m                    |
-| `fix`     | the issue to wait on a human, following each tier of a ladder climb                | 16m per expected tier |
-| `outcome` | an open PR from `pageagents/<runId>`, or `awaiting_approval` or a pending approval | 2m                    |
-| `reset`   | the reset below                                                                    | 10m, plus the drain   |
+| Step      | Waits for                                                                        | Default limit         |
+| --------- | -------------------------------------------------------------------------------- | --------------------- |
+| `seed`    | the bug live on the target (see below)                                           | 20m                   |
+| `trigger` | `trigger.sh` to exit 0                                                           | 2m                    |
+| `issue`   | an `issues` row opened after the trigger, titled like the report's error         | 5m                    |
+| `triage`  | the issue to leave `new`                                                         | 2m                    |
+| `claim`   | a fix run on the issue that a daemon picked up (pg-boss job, steps or row)       | 5m                    |
+| `fix`     | the issue to wait on a human or resolve by an ops fix, following each tier       | 16m per expected tier |
+| `outcome` | an open PR, `awaiting_approval`, a pending approval, or `resolved` by an ops fix | 2m                    |
+| `reset`   | the reset below                                                                  | 10m, plus the drain   |
 
 Change a limit with `--timeout fix=20m`. A step that runs out names the last state it saw,
 such as `issue triaged at tier -, no run (nothing sent start_fix after triage)`. The
@@ -184,18 +184,24 @@ seeding, so there is nothing to reset.
 
 The `fix` and `outcome` steps also fail when the issue ends `failed`, `killed` or
 `resolved`, and `fix` when the run's job has finished but the issue is still `fixing` a
-minute later (its result never reached the orchestrator). Only a human's `approve`
-resolves an issue (`apps/orchestrator/src/issues/transitions.ts`), so a resolved issue
-means someone acted before the test saw the outcome, and it can't tell a PR from a patch
-any more.
+minute later (its result never reached the orchestrator). A resolved issue is an outcome
+only when an `ops_fixed` event got it there: a Tier 3 run fixed the live app through the
+ops API and changed no code (`apps/orchestrator/src/issues/transitions.ts`). Otherwise only
+a human's `approve` resolves an issue, so a resolved issue means someone acted before the
+test saw the outcome, and it can't tell a PR from a patch any more.
 
-`--expect pr` waits for a PR; `--expect approval` for a human approval. The default is
-`pr` for a Tier 2 code scenario and `approval` otherwise, since Tier 1 can't push and Tier
-3 asks before an ops action. So with `--expect pr`, an issue that ends `awaiting_approval`
-at Tier 1 fails `outcome` at once instead of waiting out its limit. The checks after the
+`--expect pr` waits for a PR; `--expect approval` for a human approval; `--expect resolved`
+for an ops fix that resolved the issue. The default is `pr` for a Tier 2 code scenario,
+`resolved` for an ops scenario and `approval` otherwise, since Tier 1 can't push and an ops
+fix is live once Tier 3 makes it. Pass `--expect approval` for a Tier 3 run that should stop
+on a pending approval request. With `--expect pr`, an issue that ends `awaiting_approval` at
+Tier 1 fails `outcome` at once instead of waiting out its limit. So does an ops fix under
+`pr` or `approval`, and a patch left for review under `resolved`. The checks after the
 outcome: the issue's status, its class and severity set, the run it ended on, at least one
-`steps` row, a fix job that didn't fail, the `runs` row (when there is one) and its
-`pr_url` matching the PR, and the time from the trigger to the outcome within `--budget`.
+`steps` row, a fix job that wasn't failed or cancelled (an ops fix may leave it cancelled,
+since resolving the issue cancels the finished run's job), the `runs` row (when there is
+one) and its `pr_url` matching the PR, and the time from the trigger to the outcome within
+`--budget`.
 The default budget is the sum of the limits of the steps it covers, `trigger` through
 `outcome`, so it follows `fix` up the tiers (32m at Tier 1, 48m at Tier 2, 64m at Tier 3)
 and any `--timeout`; pass `--budget` for a tighter bar. A class or tier other than the

@@ -71,6 +71,14 @@ describe('PgPipelineReader against Postgres', () => {
     expect((await reader.issue(issueId))?.title).toBe('RangeError: x');
     expect(await reader.issue(randomUUID())).toBeNull();
 
+    // Only an ops_fixed event marks the issue fixed through the ops API.
+    const event = `insert into issue_events (issue_id, event, from_status, to_status, current_tier)
+       values ($1, $2, 'fixing', $3, 2)`;
+    await pool.query(event, [issueId, { type: 'patch_ready', runId }, 'awaiting_approval']);
+    expect((await reader.issue(issueId))?.opsFixed).toBe(false);
+    await pool.query(event, [issueId, { type: 'ops_fixed', runId }, 'resolved']);
+    expect((await reader.issue(issueId))?.opsFixed).toBe(true);
+
     expect(await reader.run(runId)).toMatchObject({
       run: { id: runId, tier: 2, status: 'running', prUrl: 'https://github.com/o/r/pull/3' },
       jobState: 'active',

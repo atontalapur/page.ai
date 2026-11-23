@@ -84,9 +84,10 @@ export async function runFixJob(
   let opsTools: OpsHostTools | undefined;
   let releaseOps: ReleaseOps | undefined;
   let diff: string | null = null;
+  let opsOnly = false;
 
   const finish = async (end: RunEnd): Promise<RunFinished> => {
-    const event = finishedEvent(runId, tier, end, tried, githubTools?.prUrl ?? null);
+    const event = finishedEvent(runId, tier, end, tried, githubTools?.prUrl ?? null, opsOnly);
     deps.link.send('node.run.finished', event);
     await deps.results.send({
       v: 1,
@@ -214,6 +215,7 @@ export async function runFixJob(
 
     if (end.kind === 'agent' && end.run.exitStatus === 'submitted') {
       diff = await sendDiff(sandbox, runId, deps.link, logger);
+      opsOnly = await isOpsOnly(sandbox, opsTools, githubTools?.prUrl ?? null, diff, logger);
     }
     // A kill or expiry that lands after the agent returned (say during sendDiff) still
     // ends the run, and removing the sandbox may have cost it the diff.
@@ -315,6 +317,34 @@ async function undoUnfinishedOps(tools: OpsHostTools, end: RunEnd, logger: Logge
   } catch (error) {
     logger.warn({ err: error }, 'could not put back the ops changes of a run that did not succeed');
   }
+}
+
+/**
+ * Whether a submitted run's fix is its ops changes alone: it changed the live app (Tier 3),
+ * opened no PR, and left the workspace as it found it, new files included. A null diff
+ * can't say so, since a diff that couldn't be read or is over the cap is null too, and
+ * `git diff` leaves out new files, so this asks `git status`. Anything it can't confirm
+ * counts as a code change, which goes to review.
+ */
+async function isOpsOnly(
+  sandbox: Sandbox,
+  opsTools: OpsHostTools | undefined,
+  prUrl: string | null,
+  diff: string | null,
+  logger: Logger,
+): Promise<boolean> {
+  if (opsTools?.changedApp !== true || prUrl !== null || (diff ?? '') !== '') return false;
+  try {
+    const result = await sandbox.runner.run({
+      command: `${SAFE_GIT} status --porcelain=v1 -z --untracked-files=all`,
+      timeoutMs: DIFF_TIMEOUT_MS,
+    });
+    if (result.status === 'exited' && result.exitCode === 0) return result.stdout === '';
+    logger.warn({ result: result.status }, 'git status failed; sending the ops fix to review');
+  } catch (error) {
+    logger.warn({ err: error }, 'git status failed; sending the ops fix to review');
+  }
+  return false;
 }
 
 /**

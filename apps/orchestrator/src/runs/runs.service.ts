@@ -14,16 +14,17 @@ type RunResult = RunFinishedJob['result'];
 const reason = (text: string) => clip(text, MAX_REASON_CHARS);
 
 /**
- * The issue event a run's result applies. A success is a patch for review. An escalation
- * moves up a tier (or to `failed` past Tier 3) and hands its note to the next run. A failure
- * goes straight to `failed`: the daemon only fails a run a higher tier can't fix. A killed
- * run kills the issue.
+ * The issue event a run's result applies. A success is a patch for review, unless the run
+ * fixed the live app through the ops API and left no code change: that fix is live already,
+ * so the issue resolves. An escalation moves up a tier (or to `failed` past Tier 3) and hands
+ * its note to the next run. A failure goes straight to `failed`: the daemon only fails a run
+ * a higher tier can't fix. A killed run kills the issue.
  */
 export function issueEventFor(result: RunResult): IssueEvent {
   const { runId } = result;
   switch (result.status) {
     case 'succeeded':
-      return { type: 'patch_ready', runId };
+      return result.opsOnly ? { type: 'ops_fixed', runId } : { type: 'patch_ready', runId };
     case 'escalated':
       return {
         type: 'escalate',

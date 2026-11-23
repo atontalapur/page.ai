@@ -160,6 +160,52 @@ describe('OpsHostTools', () => {
     expect(await tools.undo()).toMatchObject({ unknown: [], restarted: false });
   });
 
+  describe('changedApp', () => {
+    it('is false until a change lands, and after one the run set back itself', async () => {
+      const ops = new FakeOps({ A: '1' });
+      const tools = new OpsHostTools({ ops });
+      await tools.run(get, 1000);
+      expect(tools.changedApp).toBe(false);
+      await tools.run(set('A', '2'), 1000);
+      expect(tools.changedApp).toBe(true);
+      await tools.run(set('A', '1'), 1000);
+      expect(tools.changedApp).toBe(false);
+      await tools.run(unset('B'), 1000);
+      expect(tools.changedApp).toBe(false);
+    });
+
+    it('counts a restart after a change, even one the run took back later', async () => {
+      const tools = new OpsHostTools({ ops: new FakeOps() });
+      await tools.run(restart, 1000);
+      expect(tools.changedApp).toBe(false);
+      await tools.run(set('X', 'a'), 1000);
+      await tools.run(restart, 1000);
+      await tools.run(unset('X'), 1000);
+      expect(tools.changedApp).toBe(true);
+    });
+
+    it('leaves out a change that failed or never answered', async () => {
+      const ops = opsWith({
+        setConfig: (key) =>
+          key === 'LOST'
+            ? Promise.reject(new OpsError('ops API PUT failed: reset'))
+            : Promise.resolve({ status: 400, body: { error: 'invalid_value' } }),
+      });
+      const tools = new OpsHostTools({ ops });
+      await tools.run(set('BAD', 'x'), 1000);
+      await tools.run(set('LOST', 'x'), 1000);
+      expect(tools.changedApp).toBe(false);
+    });
+
+    it('is false once undo has put everything back', async () => {
+      const tools = new OpsHostTools({ ops: new FakeOps({ A: '1' }) });
+      await tools.run(unset('A'), 1000);
+      await tools.run(restart, 1000);
+      await tools.undo();
+      expect(tools.changedApp).toBe(false);
+    });
+  });
+
   describe('undo', () => {
     it('puts back every override the run changed, and restarts if the run had', async () => {
       const ops = new FakeOps({ SHIPPING_FLAT_CENTS: '2500000000' });

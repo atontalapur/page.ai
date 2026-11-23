@@ -77,6 +77,7 @@ describe('orchestrator HTTP API', () => {
     const runId = '00000000-0000-4000-8000-000000000001';
     for (const event of [
       { type: 'patch_ready', runId },
+      { type: 'ops_fixed', runId },
       { type: 'escalate', runId, reason: 'stuck' },
       { type: 'fail', runId, reason: 'sandbox' },
     ]) {

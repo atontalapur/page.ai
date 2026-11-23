@@ -20,8 +20,19 @@ describe('finishedEvent', () => {
       prUrl: null,
       confidence: null,
       note: null,
+      opsOnly: false,
     });
     expect(schema.parse(event)).toEqual(event);
+  });
+
+  it('says whether a submitted run fixed the live app with no code change', () => {
+    const event = finishedEvent(runId, 3, agent('submitted'), [], null, true);
+    expect(event).toMatchObject({ status: 'succeeded', opsOnly: true });
+    expect(schema.parse(event)).toEqual(event);
+    // Only a success carries it.
+    const failed = finishedEvent(runId, 3, agent('step_limit'), [], null, true);
+    expect(failed).toMatchObject({ status: 'failed' });
+    expect(failed).not.toHaveProperty('opsOnly');
   });
 
   it('carries the PR the run opened', () => {
