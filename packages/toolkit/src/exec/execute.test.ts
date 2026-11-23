@@ -287,6 +287,14 @@ describe('execute host tools', () => {
       '{"tool":"ops.setConfig","key":"K","value":"5"}',
     ],
     [{ kind: 'host_tool' as const, tool: 'ops.restart' as const }, '{"tool":"ops.restart"}'],
+    [
+      { kind: 'host_tool' as const, tool: 'ops.planRollback' as const },
+      '{"tool":"ops.planRollback"}',
+    ],
+    [
+      { kind: 'host_tool' as const, tool: 'ops.rollback' as const, to: 'dep-1' },
+      '{"tool":"ops.rollback","to":"dep-1"}',
+    ],
   ])('logs %j with its arguments', async (call, input) => {
     const sink = new InMemoryAuditSink();
     await execute(call, {

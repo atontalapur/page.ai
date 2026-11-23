@@ -135,6 +135,28 @@ describe('rollback', () => {
     expect(newest).toMatchObject({ status: 'SUCCESS', commitSha: previous.commitSha });
   });
 
+  it('refuses, deploying nothing, when another deployment is live than the plan saw', async () => {
+    const { live, previous, list } = history();
+    const deployer = new FakeDeployer(list);
+    const to = previous.id;
+    expect(await rollback(deployer, { dryRun: false, to, from: live.id })).toMatchObject({
+      ok: true,
+    });
+    // The rollback's own deployment is live now, so a second one made against `live` stops.
+    expect(await rollback(deployer, { dryRun: false, to, from: live.id })).toEqual({
+      ok: false,
+      error: {
+        type: 'live_changed',
+        message: `deployment rollback-0 is live now, not ${live.id}, which the plan was made against`,
+      },
+    });
+    expect(await rollback(deployer, { dryRun: true, from: live.id })).toMatchObject({
+      ok: false,
+      error: { type: 'live_changed' },
+    });
+    expect(deployer.rollbacks).toEqual([to]);
+  });
+
   it('returns a plan failure without deploying', async () => {
     const deployer = new FakeDeployer([deployment({ status: 'SUCCESS' })]);
     expect(await rollback(deployer, { dryRun: false })).toMatchObject({

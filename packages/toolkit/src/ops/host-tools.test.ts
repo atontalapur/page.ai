@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import type { Deployment } from '../deploy/deployer.ts';
+import { FakeDeployer } from '../deploy/fake-deployer.ts';
+import { deployment } from '../deploy/test-utils.ts';
 import type { HostToolCall } from '../exec/types.ts';
 import { FakeOps } from './fake-ops.ts';
-import { MAX_SETTING_VALUE, OpsHostTools } from './host-tools.ts';
+import { MAX_SETTING_VALUE, OpsHostTools, type OpsHostToolsOptions } from './host-tools.ts';
 import { OpsError, type OpsApi } from './ops.ts';
 
 const get: HostToolCall = { kind: 'host_tool', tool: 'ops.getConfig' };
@@ -221,6 +224,7 @@ describe('OpsHostTools', () => {
         unknown: [],
         restarted: true,
         failed: [],
+        rollback: null,
       });
       expect(ops.calls).toEqual([
         'setConfig SHIPPING_FLAT_CENTS=2500000000',
@@ -235,6 +239,7 @@ describe('OpsHostTools', () => {
         unknown: [],
         restarted: false,
         failed: [],
+        rollback: null,
       });
     });
 
@@ -278,6 +283,7 @@ describe('OpsHostTools', () => {
         unknown: ['LOST'],
         restarted: false,
         failed: [],
+        rollback: null,
       });
     });
 
@@ -327,8 +333,276 @@ describe('OpsHostTools', () => {
           'putting B back: refused',
           'restarting the app: 202 {}',
         ],
+        rollback: null,
       });
       expect(fake.overrides.has('C')).toBe(false);
+    });
+  });
+
+  describe('rollback', () => {
+    const plan: HostToolCall = { kind: 'host_tool', tool: 'ops.planRollback' };
+    const rollBack = (to: string): HostToolCall => ({
+      kind: 'host_tool',
+      tool: 'ops.rollback',
+      to,
+    });
+
+    // A bad deploy is live, and the deploy before it served traffic.
+    function setup(options: Partial<OpsHostToolsOptions> = {}) {
+      const previous = deployment({ commitSha: 'good' });
+      const live = deployment({ status: 'SUCCESS', commitSha: 'bad' });
+      const deployer = options.deployer ?? new FakeDeployer([live, previous]);
+      const ops = new FakeOps();
+      const tools = new OpsHostTools({ ops, deployer, rollbackPollMs: 1, ...options });
+      return { live, previous, deployer: deployer as FakeDeployer, ops, tools };
+    }
+
+    it('is not set up without a deployer', async () => {
+      const tools = new OpsHostTools({ ops: new FakeOps() });
+      expect(tools.handles('ops.planRollback')).toBe(false);
+      expect(tools.handles('ops.rollback')).toBe(false);
+      expect(tools.handles('ops.restart')).toBe(true);
+      expect(await tools.run(plan, 1000)).toEqual({
+        ok: false,
+        output: 'ops.planRollback is not set up on this node',
+      });
+      expect(setup().tools.handles('ops.rollback')).toBe(true);
+    });
+
+    it('plans first, deploying nothing, and shows what is live and what would go back', async () => {
+      const { live, previous, deployer, tools } = setup();
+      const out = await tools.run(plan, 1000);
+
+      expect(out.ok).toBe(true);
+      expect(out.output).toMatch(/^Rollback plan, a dry run: nothing was deployed\.\n/);
+      expect(out.output).toContain(`"id": "${live.id}"`);
+      expect(out.output).toContain('"commit": "bad"');
+      expect(out.output).toContain(`"rollBackTo": {\n    "id": "${previous.id}"`);
+      expect(out.output).toMatch(
+        new RegExp(
+          `ops.rollback to ${previous.id} deploys that build again in place of ${live.id}\\.$`,
+        ),
+      );
+      expect(deployer.rollbacks).toEqual([]);
+      expect(tools.changedApp).toBe(false);
+    });
+
+    it('rolls back to the planned target, waits until it is live, and counts it', async () => {
+      const { live, previous, deployer, tools } = setup();
+      await tools.run(plan, 1000);
+      const out = await tools.run(rollBack(previous.id), 1000);
+
+      expect(out).toEqual({
+        ok: true,
+        output:
+          `Rolled back: ${previous.id} (good) is deploying in place of ${live.id} (bad).\n` +
+          'Deployment rollback-0 is live after 0s.',
+      });
+      expect(deployer.rollbacks).toEqual([previous.id]);
+      expect(tools.rollbacks).toBe(1);
+      expect(tools.changedApp).toBe(true);
+    });
+
+    it('refuses a rollback with no plan, or to a target the plan did not name', async () => {
+      const { live, previous, deployer, tools } = setup();
+      expect(await tools.run(rollBack(previous.id), 1000)).toEqual({
+        ok: false,
+        output:
+          'plan the rollback first: ops.planRollback shows what is live and what a rollback would deploy',
+      });
+      await tools.run(plan, 1000);
+      expect(await tools.run(rollBack(live.id), 1000)).toEqual({
+        ok: false,
+        output: `the last plan goes back to ${previous.id}, not ${live.id}; send the target it named`,
+      });
+      expect(deployer.rollbacks).toEqual([]);
+      // Neither used up the run's one rollback.
+      expect((await tools.run(rollBack(previous.id), 1000)).ok).toBe(true);
+    });
+
+    it('rolls back once per run', async () => {
+      const older = deployment({ commitSha: 'older' });
+      const { deployer, tools } = setup();
+      deployer.deployments.push(older);
+      await tools.run(plan, 1000);
+      await tools.run(rollBack(deployer.deployments[1]!.id), 1000);
+
+      // There is still something to go back to, but the run has had its rollback.
+      expect((await tools.run(plan, 1000)).ok).toBe(true);
+      expect(await tools.run(rollBack(older.id), 1000)).toEqual({
+        ok: false,
+        output: 'this run has rolled the app back once, the most one run may',
+      });
+      expect(deployer.rollbacks).toHaveLength(1);
+    });
+
+    it('refuses while a deploy is in flight, and sends nothing', async () => {
+      const { previous, deployer, tools } = setup();
+      await tools.run(plan, 1000);
+      const building = deployment({ status: 'BUILDING' });
+      deployer.deployments.unshift(building);
+
+      expect(await tools.run(rollBack(previous.id), 1000)).toEqual({
+        ok: false,
+        output: `no rollback: deployment ${building.id} is BUILDING and would replace the rollback; wait for it or cancel it`,
+      });
+      expect((await tools.run(plan, 1000)).ok).toBe(false);
+      expect(deployer.rollbacks).toEqual([]);
+      expect(tools.rollbacks).toBe(0);
+    });
+
+    it('refuses when another deployment went live after the plan, which must be made again', async () => {
+      const { live, previous, deployer, tools } = setup();
+      await tools.run(plan, 1000);
+      deployer.deployments[0]!.status = 'REMOVED';
+      const newer = deployment({ status: 'SUCCESS' });
+      deployer.deployments.unshift(newer);
+
+      expect(await tools.run(rollBack(previous.id), 1000)).toEqual({
+        ok: false,
+        output: `no rollback: deployment ${newer.id} is live now, not ${live.id}, which the plan was made against`,
+      });
+      expect(await tools.run(rollBack(previous.id), 1000)).toMatchObject({
+        output: expect.stringMatching(/^plan the rollback first/) as string,
+      });
+      expect(deployer.rollbacks).toEqual([]);
+    });
+
+    it('counts a rollback the deployer never answered, but not as a change to the app', async () => {
+      const { live, previous, deployer, tools } = setup();
+      await tools.run(plan, 1000);
+      deployer.failOn = 'rollback';
+
+      expect(await tools.run(rollBack(previous.id), 1000)).toEqual({
+        ok: false,
+        output:
+          `rolling back to ${previous.id}: deployer is down\n` +
+          'The rollback may have started. ops.planRollback shows what is live now.',
+      });
+      expect(tools.rollbacks).toBe(1);
+      expect(tools.changedApp).toBe(false);
+      expect((await tools.undo()).rollback).toEqual({
+        from: live.id,
+        to: previous.id,
+        accepted: false,
+      });
+    });
+
+    describe('waiting for the new deployment', () => {
+      /** A FakeDeployer whose rollback deployment goes through `stages`, one per listing. */
+      class StagedDeployer extends FakeDeployer {
+        private readonly stages: string[];
+        constructor(deployments: Deployment[], stages: string[]) {
+          super(deployments);
+          this.stages = [...stages];
+        }
+        override listDeployments(limit: number) {
+          const stage = this.rollbacks.length > 0 ? this.stages.shift() : undefined;
+          if (stage !== undefined) this.deployments[0]!.status = stage;
+          return super.listDeployments(limit);
+        }
+      }
+      const staged = (stages: string[]) => {
+        const previous = deployment();
+        const live = deployment({ status: 'SUCCESS' });
+        return { previous, deployer: new StagedDeployer([live, previous], stages) };
+      };
+
+      it('keeps asking while it deploys', async () => {
+        const { previous, deployer } = staged(['INITIALIZING', 'DEPLOYING', 'SUCCESS']);
+        const { tools } = setup({ deployer });
+        await tools.run(plan, 1000);
+        const out = await tools.run(rollBack(previous.id), 1000);
+        expect(out.ok).toBe(true);
+        expect(out.output).toMatch(/\nDeployment rollback-\d+ is live after 0s\.$/);
+      });
+
+      it('fails when the new deployment fails', async () => {
+        const { previous, deployer } = staged(['DEPLOYING', 'FAILED']);
+        const { tools } = setup({ deployer });
+        await tools.run(plan, 1000);
+        const out = await tools.run(rollBack(previous.id), 1000);
+        expect(out.ok).toBe(false);
+        expect(out.output).toMatch(
+          /\nDeployment rollback-\d+ ended FAILED after 0s, so the rollback is not live\. ops\.planRollback shows what is live now\.$/,
+        );
+        // The deployer took it, so it may have changed the app.
+        expect(tools.changedApp).toBe(true);
+      });
+
+      it('gives up when its time runs out, and says what it last saw', async () => {
+        const { previous, deployer } = staged(['DEPLOYING']);
+        const { tools } = setup({ deployer });
+        await tools.run(plan, 1000);
+        const out = await tools.run(rollBack(previous.id), 30);
+        expect(out.ok).toBe(false);
+        expect(out.output).toMatch(
+          /\nIt was not live within 0s: deployment rollback-\d+ is DEPLOYING\.$/,
+        );
+      });
+
+      it('says so when no new deployment shows up, and keeps asking a deployer that fails', async () => {
+        /** Takes the rollback, then lists nothing new and fails every other listing. */
+        class Silent extends FakeDeployer {
+          private lists = 0;
+          override rollbackTo(id: string) {
+            this.rollbacks.push(id);
+            return Promise.resolve();
+          }
+          override listDeployments(limit: number) {
+            this.lists += 1;
+            return this.rollbacks.length > 0 && this.lists % 2 === 0
+              ? Promise.reject(new Error('deployer is down'))
+              : super.listDeployments(limit);
+          }
+        }
+        const previous = deployment();
+        const live = deployment({ status: 'SUCCESS' });
+        const { tools } = setup({ deployer: new Silent([live, previous]) });
+        await tools.run(plan, 1000);
+        const out = await tools.run(rollBack(previous.id), 30);
+        expect(out.ok).toBe(false);
+        expect(out.output).toMatch(
+          /\nIt was not live within 0s: no new deployment has shown up\.$/,
+        );
+      });
+    });
+
+    it('sends nothing once the run is stopped', async () => {
+      const stop = new AbortController();
+      const { deployer, tools } = setup({ signal: stop.signal });
+      stop.abort();
+      expect(await tools.run(plan, 1000)).toEqual({
+        ok: false,
+        output: 'ops.planRollback stopped: the run was stopped',
+      });
+      expect(deployer.rollbacks).toEqual([]);
+    });
+
+    it('is refused with the other ops tools when given a refusal', async () => {
+      const { deployer, tools } = setup({ refusal: 'the app is in use' });
+      expect(await tools.run(plan, 1000)).toEqual({ ok: false, output: 'the app is in use' });
+      expect(deployer.rollbacks).toEqual([]);
+    });
+
+    it('stays live after undo, which still puts back the overrides', async () => {
+      const ops = new FakeOps({ A: '1' });
+      const { live, previous, deployer, tools } = setup({ ops });
+      await tools.run(unset('A'), 1000);
+      await tools.run(plan, 1000);
+      await tools.run(rollBack(previous.id), 1000);
+
+      expect(await tools.undo()).toEqual({
+        restored: ['A'],
+        unknown: [],
+        restarted: false,
+        failed: [],
+        rollback: { from: live.id, to: previous.id, accepted: true },
+      });
+      expect(ops.overrides.get('A')).toBe('1');
+      expect(deployer.rollbacks).toEqual([previous.id]);
+      expect(deployer.deployments[0]).toMatchObject({ status: 'SUCCESS', commitSha: 'good' });
+      expect(tools.changedApp).toBe(true);
     });
   });
 });

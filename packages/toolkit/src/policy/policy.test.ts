@@ -153,18 +153,22 @@ describe('checkHostTool', () => {
     },
   );
 
-  it.each(['ops.getConfig', 'ops.setConfig', 'ops.deleteConfig', 'ops.restart'])(
-    'refuses %s below Tier 3 and allows it at Tier 3',
-    (tool) => {
-      for (const tier of [1, 2] as const) {
-        expect(checkHostTool(tool, tier)).toEqual({
-          allowed: false,
-          reason: `${tool} needs Tier 3; this run is Tier ${tier}`,
-        });
-      }
-      expect(checkHostTool(tool, 3)).toEqual({ allowed: true });
-    },
-  );
+  it.each([
+    'ops.getConfig',
+    'ops.setConfig',
+    'ops.deleteConfig',
+    'ops.restart',
+    'ops.planRollback',
+    'ops.rollback',
+  ])('refuses %s below Tier 3 and allows it at Tier 3', (tool) => {
+    for (const tier of [1, 2] as const) {
+      expect(checkHostTool(tool, tier)).toEqual({
+        allowed: false,
+        reason: `${tool} needs Tier 3; this run is Tier ${tier}`,
+      });
+    }
+    expect(checkHostTool(tool, 3)).toEqual({ allowed: true });
+  });
 
   it('lists every host tool in one of the two tables above', () => {
     expect(Object.keys(HOST_TOOL_TIERS).sort()).toEqual([
@@ -172,12 +176,14 @@ describe('checkHostTool', () => {
       'github.openPr',
       'ops.deleteConfig',
       'ops.getConfig',
+      'ops.planRollback',
       'ops.restart',
+      'ops.rollback',
       'ops.setConfig',
     ]);
   });
 
-  it.each(['ops.rollback', 'toString', '__proto__'])(
+  it.each(['ops.redeploy', 'toString', '__proto__'])(
     'refuses %s, which is not a host tool',
     (tool) => {
       expect(checkHostTool(tool, 3)).toEqual({
