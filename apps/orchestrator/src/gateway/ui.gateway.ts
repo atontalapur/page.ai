@@ -12,11 +12,11 @@ import {
 import type { Namespace, Socket } from 'socket.io';
 import { z } from 'zod';
 import { ApprovalsService } from '../approvals/approvals.service.ts';
-import type { Config } from '../config.ts';
+import { ApiTokens, type Caller } from '../auth/api-tokens.ts';
 import { IssueUpdates } from '../issues/issue-updates.ts';
 import type { Logger } from '../logger.ts';
 import { RateLimiter } from '../rate-limit.ts';
-import { CONFIG, LOGGER } from '../tokens.ts';
+import { LOGGER } from '../tokens.ts';
 import { RunKills } from './run-kills.ts';
 import {
   guardHandshakes,
@@ -28,7 +28,9 @@ import {
 
 /** What the server keeps on a tab's socket. */
 interface TabData {
-  /** `ui:<name>` from the handshake's `auth.name`, or undefined when it gave none. */
+  /** Who the handshake's token names. Set before the socket joins. */
+  caller: Caller;
+  /** What the tab's Tier 3 decisions are recorded as, or undefined when it can't decide. */
   decider?: string;
 }
 
@@ -51,17 +53,20 @@ export const HANDSHAKES_PER_MINUTE = 30;
 export const MESSAGES_PER_10_SECONDS = 20;
 
 /**
- * The Socket.IO namespace for the UI. A handshake needs ORCHESTRATOR_API_TOKEN as
- * `auth.token`, the same token as the HTTP API, and is refused with `unauthorized` without
- * it. Every issue change IssuesService commits goes to every connected tab as `issue.updated`,
+ * The Socket.IO namespace for the UI. A handshake needs a token the HTTP API takes (ApiTokens)
+ * as `auth.token`: ORCHESTRATOR_API_TOKEN or a person's dashboard token. Without one it is
+ * refused with `unauthorized`, and an address past its wrong tokens with `rate_limited`.
+ * Every issue change IssuesService commits goes to every connected tab as `issue.updated`,
  * and NodeGateway sends each run's events through `send`. What a tab sends is checked against
  * `uiToServerEvents`, and one that fails is logged and dropped.
  *
- * Every tab shares the one token, so the token says nothing about who is there. A tab that
- * approves or rejects Tier 3 requests also sends the person's name as `auth.name`
- * (approverNameSchema), and each decision it sends is recorded as `ui:<name>`. The name is
- * what they typed, not a login: it tells honest teammates apart and can't be set per
- * decision, but anyone with the token can connect under any name.
+ * Who decides a Tier 3 request comes from the handshake, never from what the tab sends:
+ *
+ * - A personal token decides as the person it names, `ui:<name>`. Any `auth.name` is ignored.
+ * - The shared token, once any personal token is configured, can't decide.
+ * - The shared token, with none configured, decides under the name the tab sends as
+ *   `auth.name` (approverNameSchema), as `ui:<name>`. That name is what someone typed, not a
+ *   login: anyone with the token can connect under any name. Boot warns while this holds.
  */
 @WebSocketGateway({ namespace: UI_NAMESPACE, serveClient: false })
 export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnection, OnModuleDestroy {
@@ -80,15 +85,20 @@ export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnectio
   };
 
   constructor(
-    @Inject(CONFIG) config: Config,
     @Inject(LOGGER) private readonly logger: Logger,
+    private readonly tokens: ApiTokens,
     private readonly updates: IssueUpdates,
     private readonly kills: RunKills,
     private readonly approvals: ApprovalsService,
   ) {
     this.guard = {
       name: 'ui',
-      secret: config.apiToken,
+      admit: (token, socket: UiSocket) => {
+        const check = this.tokens.check(token, socketAddress(socket));
+        if (!check.ok) return check.refusal;
+        socket.data.caller = check.caller;
+        return undefined;
+      },
       handshakes: new RateLimiter(HANDSHAKES_PER_MINUTE, 60_000),
       messages: new RateLimiter(MESSAGES_PER_10_SECONDS, 10_000),
       logger,
@@ -105,11 +115,8 @@ export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnectio
 
   handleConnection(socket: UiSocket): void {
     limitMessages(socket, this.guard);
-    const decider = deciderOf(socket);
+    const decider = this.deciderOf(socket);
     if (decider !== undefined) socket.data.decider = decider;
-    else if (socket.handshake.auth.name !== undefined) {
-      this.logger.warn({ address: socketAddress(socket) }, 'ui socket gave a name it may not use');
-    }
     listen(socket, uiToServerEvents, this.guard, (event, payload) => {
       const handler: Handler<TabEvent> | undefined = this.handlers[event];
       if (!handler) {
@@ -127,18 +134,39 @@ export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnectio
   }
 
   /**
-   * A person's decision on a Tier 3 request, recorded under the name their tab connected
-   * with. A tab with no name can't decide. A second decision is refused, and the tab that
-   * sent it gets the one that stands, so it stops showing the request.
+   * What a tab's decisions are recorded as (the class comment says when), or undefined when
+   * it can't decide.
+   */
+  private deciderOf(socket: UiSocket): string | undefined {
+    const { caller } = socket.data;
+    if (caller.kind === 'person') return deciderFor(caller.name);
+    if (this.tokens.personal) return undefined;
+    const { name } = socket.handshake.auth as { name?: unknown };
+    const parsed = approverNameSchema.safeParse(name);
+    if (parsed.success) return deciderFor(parsed.data);
+    if (name !== undefined) {
+      this.logger.warn({ address: socketAddress(socket) }, 'ui socket gave a name it may not use');
+    }
+    return undefined;
+  }
+
+  /**
+   * A person's decision on a Tier 3 request, recorded as the tab's decider. A tab without one
+   * can't decide. A second decision is refused, and the tab that sent it gets the one that
+   * stands, so it stops showing the request.
    */
   private async decide(
     socket: UiSocket,
     approvalId: string,
     decision: 'approved' | 'rejected',
   ): Promise<void> {
-    const { decider } = socket.data;
+    const { decider, caller } = socket.data;
     if (decider === undefined) {
-      this.logger.warn({ approvalId }, 'approval.decide from a tab that gave no name; dropped');
+      const why =
+        caller.kind === 'shared' && this.tokens.personal
+          ? 'the shared token, which may not decide once personal tokens are configured'
+          : 'a tab that gave no name';
+      this.logger.warn({ approvalId }, `approval.decide from ${why}; dropped`);
       return;
     }
     const outcome = await this.approvals.decide(approvalId, decision, decider);
@@ -175,11 +203,4 @@ export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnectio
     const emit = to.emit.bind(to) as (e: string, p: unknown) => boolean;
     emit(event, parsed.data);
   }
-}
-
-/** `ui:<name>` for the name a tab's handshake gave, or undefined for none or a bad one. */
-function deciderOf(socket: UiSocket): string | undefined {
-  const { name } = socket.handshake.auth as { name?: unknown };
-  const parsed = approverNameSchema.safeParse(name);
-  return parsed.success ? deciderFor(parsed.data) : undefined;
 }

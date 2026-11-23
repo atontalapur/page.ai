@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { baseConfigSchema, envSchema } from '@page/contracts';
 import { z } from 'zod';
+import { hashToken, parseDashboardTokens, type DashboardToken } from './auth/dashboard-tokens.ts';
 
 type Env = Record<string, string | undefined>;
 
@@ -49,6 +50,21 @@ const schema = envSchema(
     // Bearer token for every route but /health and /ingest. Blank is unset: those routes
     // then return 401, and the service still boots so the deploy health check passes.
     ORCHESTRATOR_API_TOKEN: z.string().min(1).optional(),
+    // Personal tokens for the people who use the dashboard, as `name:sha256hex` entries,
+    // comma-separated (scripts/dashboard-token.ts makes one). A personal token opens what the
+    // API token opens, and names its holder: only they can decide Tier 3 approvals. Blank
+    // keeps the shared token's name labels (README, Tier 3 approvals).
+    DASHBOARD_TOKENS: z
+      .string()
+      .optional()
+      .transform((value, ctx) => {
+        try {
+          return parseDashboardTokens(value ?? '');
+        } catch (err) {
+          ctx.issues.push({ code: 'custom', message: (err as Error).message, input: value });
+          return z.NEVER;
+        }
+      }),
     // The node daemons' socket secret, sent as `auth.token` on the /node namespace. Blank is
     // unset: every daemon is then refused, and the service still boots.
     NODE_SHARED_SECRET: z.string().min(1).optional(),
@@ -92,6 +108,8 @@ export interface Config {
   useFakeAdapters: boolean;
   logLevel: LogLevel;
   apiToken: string | undefined;
+  /** Personal tokens, by name and hash. Empty keeps the shared token's name labels. */
+  dashboardTokens: DashboardToken[];
   /** What a node daemon's handshake must carry. Unset refuses every daemon. */
   nodeSharedSecret: string | undefined;
   posthogWebhookSecret: string | undefined;
@@ -165,6 +183,16 @@ export function loadPagerConfig(env: Env = process.env): PagerConfig {
 
 export function loadConfig(env: Env = process.env): Config {
   const config = parseEnv(schema, env);
+  const apiToken = config.ORCHESTRATOR_API_TOKEN;
+  // A shared token that is also someone's would let every script decide as that person.
+  if (
+    apiToken !== undefined &&
+    config.DASHBOARD_TOKENS.some(({ sha256 }) => sha256 === hashToken(apiToken))
+  ) {
+    throw new ConfigError(
+      'invalid config: ORCHESTRATOR_API_TOKEN is also in DASHBOARD_TOKENS; give that person a token of their own',
+    );
+  }
   return {
     ...pagerConfig(config),
     databaseUrl: config.DATABASE_URL,
@@ -173,7 +201,8 @@ export function loadConfig(env: Env = process.env): Config {
     pgbossSchema: config.PGBOSS_SCHEMA,
     useFakeAdapters: config.USE_FAKE_ADAPTERS,
     logLevel: config.LOG_LEVEL,
-    apiToken: config.ORCHESTRATOR_API_TOKEN,
+    apiToken,
+    dashboardTokens: config.DASHBOARD_TOKENS,
     nodeSharedSecret: config.NODE_SHARED_SECRET,
     posthogWebhookSecret: config.POSTHOG_WEBHOOK_SECRET,
     openRouterApiKey: config.OPENROUTER_API_KEY,

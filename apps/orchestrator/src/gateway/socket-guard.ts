@@ -9,8 +9,11 @@ import { clientAddress, type RateLimiter } from '../rate-limit.ts';
 export interface SocketGuard {
   /** `ui` or `node`, for the log lines. */
   name: string;
-  /** The secret a handshake must carry as `auth.token`. Unset refuses every handshake. */
-  secret: string | undefined;
+  /**
+   * Checks the `auth.token` a handshake carried, and keeps whatever the namespace needs about
+   * the caller on the socket. Returns the refusal, or undefined to admit it.
+   */
+  admit(token: unknown, socket: Socket): SocketRefusal | undefined;
   /** Handshakes per address. */
   handshakes: RateLimiter;
   /** Messages per socket. */
@@ -24,8 +27,8 @@ export function socketAddress(socket: Socket): string {
 }
 
 /**
- * Refuses a handshake past its address's limit with `rate_limited`, then one without the
- * secret with `unauthorized`. The limit runs first, so guessing the secret stays bounded.
+ * Refuses a handshake past its address's limit with `rate_limited`, then one `admit` turns
+ * away with its refusal. The limit runs first, so guessing the secret stays bounded.
  * Middleware runs before the socket joins, so a refused one never receives an event.
  */
 export function guardHandshakes(namespace: Namespace, guard: SocketGuard): void {
@@ -43,8 +46,12 @@ function refusalOf(socket: Socket, guard: SocketGuard): SocketRefusal | undefine
     return 'rate_limited';
   }
   const { token } = socket.handshake.auth as { token?: unknown };
-  if (!tokenAuthorized(token, guard.secret)) return 'unauthorized';
-  return undefined;
+  return guard.admit(token, socket);
+}
+
+/** `admit` for a namespace whose every caller carries one shared secret. */
+export function secretAdmits(secret: string | undefined): SocketGuard['admit'] {
+  return (token) => (tokenAuthorized(token, secret) ? undefined : 'unauthorized');
 }
 
 /**

@@ -120,12 +120,14 @@ a new one.
 | GET    | `/nodes`              |                                            |
 | GET    | `/nodes/:name/runs`   | `?limit=` 1 to 100, default 20             |
 | GET    | `/approvals?issueId=` | or `?runId=`; below                        |
+| GET    | `/me`                 | who the token names; Tokens, below         |
 | POST   | `/ingest/posthog`     | a PostHog `$exception` webhook             |
 | GET    | `/` and `/assets/*`   | the built UI, below                        |
 
-Every route but `/health` and `/ingest/posthog` needs `Authorization: Bearer
-<ORCHESTRATOR_API_TOKEN>` and returns 401 without it. With the token unset they all return 401,
-and boot logs a warning, so a service without it is closed rather than open. `/health` stays
+Every route but `/health` and `/ingest/posthog` needs `Authorization: Bearer <token>`, where
+the token is `ORCHESTRATOR_API_TOKEN` or a personal dashboard token (Tokens, below), and
+returns 401 without one. With no token configured they all return 401, and boot logs a
+warning, so a service without one is closed rather than open. `/health` stays
 open for Railway's health check, and `/ingest/posthog` checks `POSTHOG_WEBHOOK_SECRET` instead.
 `POST /issues` has no rate limit: only token holders reach it, and a repeat report with the same
 fingerprint bumps `occurrences` instead of adding a row.
@@ -143,6 +145,48 @@ newest. `/nodes/:name/runs` lists the runs a daemon worked, the one it took last
 including the one in progress. A name a daemon can't have returns 400, and a name no daemon
 used returns an empty list.
 
+## Tokens
+
+Two kinds of token open the API and the `/ui` socket, sent as `Authorization: Bearer <token>`
+or as `auth.token` in the socket handshake:
+
+- **The shared token**, `ORCHESTRATOR_API_TOKEN`, for scripts and machines such as the e2e
+  harness. It names no one.
+- **Personal dashboard tokens**, one per person, listed in `DASHBOARD_TOKENS` as
+  `name:sha256hex` entries, comma-separated. A personal token opens the same routes, and the
+  request or socket that carries it is that person's.
+
+Make a personal token with:
+
+```sh
+pnpm --filter @page/orchestrator dashboard-token Arjun
+```
+
+It prints the token, to hand to that person once, and the entry to add to `DASHBOARD_TOKENS`,
+such as `Arjun:5e88...`. The environment holds only each token's SHA-256, and nothing keeps
+the token itself, so a lost token is replaced: make a new one and swap the person's entry. A
+token is 32 random bytes, so a plain SHA-256 can't be worked back to it. Names follow
+`approverNameSchema` and differ even ignoring case, and no two entries hold the same hash.
+Boot refuses an entry it can't read, naming it by its position, and an
+`ORCHESTRATOR_API_TOKEN` that is also someone's token. `DASHBOARD_TOKENS` isn't shared
+through `pnpm env:pull`, so local runs keep the fallback below.
+
+A check hashes the token it got and compares it with every configured digest using
+`timingSafeEqual`, without stopping at a match (`ApiTokens`, `src/auth/api-tokens.ts`), so
+its time says nothing about which token matched or how close a guess came. `GET /me` says who
+a token names (`sessionSchema` in contracts): `{ "token": "personal", "name": "Arjun" }`, or
+`{ "token": "shared", "canDecide": false }`.
+
+|                                                        | Personal token      | Shared token, personal tokens set | Shared token, none set    |
+| ------------------------------------------------------ | ------------------- | --------------------------------- | ------------------------- |
+| Read issues, runs, nodes and approvals                 | yes                 | yes                               | yes                       |
+| Send issue events (`start_fix`, `kill`, `approve` ...) | yes                 | yes                               | yes                       |
+| Decide a Tier 3 approval                               | yes, as `ui:<name>` | no                                | yes, under the tab's name |
+
+**Fallback.** With `DASHBOARD_TOKENS` unset, as in local runs and on staging until it is set,
+nothing changes: a tab with the shared token decides under the name it sends as `auth.name`,
+which anyone with the token can choose. Boot logs a warning while this holds.
+
 ## UI
 
 The orchestrator serves the built dashboard (`apps/ui/dist`, from `UI_DIST_DIR`) on the same
@@ -157,9 +201,9 @@ With no `index.html` in `UI_DIST_DIR`, boot logs a warning and only the API is s
 ## Live events
 
 `UiGateway` serves Socket.IO on the HTTP port, under `/socket.io/`, in the `/ui` namespace
-(`UI_NAMESPACE` in `@page/contracts`). The handshake sends the API token as `auth.token`, since
-a browser can't set headers on a WebSocket. Without it, or with a wrong one, the connection is
-refused with `connect_error` `unauthorized`. Each connected tab gets `issue.updated` (`{ v: 1,
+(`UI_NAMESPACE` in `@page/contracts`). The handshake sends a token (Tokens, above) as
+`auth.token`, since a browser can't set headers on a WebSocket. Without one, or with a wrong
+one, the connection is refused with `connect_error` `unauthorized`. Each connected tab gets `issue.updated` (`{ v: 1,
 issue }`, `serverToUiEvents` in contracts) whenever an issue is opened, repeated or moved,
 whether by ingest, triage, an API event or a run result. The payload is checked against its
 contract before it goes out. IssuesService publishes the issue after the transaction commits
@@ -244,14 +288,24 @@ and `?runId=<id>` a run's. A tab loads them when it opens an incident and after 
 since it misses what was sent while it was away. Without exactly one of the two it answers 400,
 and 404 for an unknown issue.
 
-**Identity.** Every tab shares `ORCHESTRATOR_API_TOKEN`, so the token says nothing about who
-is there. A tab that decides also sends the person's name as `auth.name` in its handshake
-(`approverNameSchema`: 1 to 40 letters, digits, spaces or `.'_-`), and the server keeps
-`ui:<name>` on the socket. `approval.decide` carries no decider, and the server takes it from
-the socket, never from the payload; a tab with no name, or one that isn't allowed, can't
-decide. The name is what the person typed, not a login: it tells honest teammates apart in the
-record, and anyone with the token can connect under any name. The server's own decisions are
-`system:timed_out` and `system:run_ended`, which no name can match since a name has no colon.
+**Identity.** `approval.decide` carries no decider: the server takes it from the tab's
+handshake, never from the payload (`UiGateway`).
+
+- A tab that connected with a personal token decides as that person, `ui:<name>`. A name it
+  sends as `auth.name` is ignored.
+- Once any personal token is configured, a tab with the shared token can't decide. It still
+  sees the requests and loads them from `GET /approvals`; its `approval.decide` is logged and
+  dropped.
+- With no personal token configured (the fallback under Tokens), a tab with the shared token
+  sends the person's name as `auth.name` (`approverNameSchema`: 1 to 40 letters, digits,
+  spaces or `.'_-`) and decides as `ui:<name>`. That name is what someone typed, not a login:
+  anyone with the token can connect under any name. A tab with no name, or one that isn't
+  allowed, can't decide.
+
+The record looks the same either way, `ui:<name>`; whether the name was checked depends on
+whether `DASHBOARD_TOKENS` was set when the decision was made, which boot logs. The server's
+own decisions are `system:timed_out` and `system:run_ended`, which no name can match since a
+name has no colon.
 
 ## Rate limits
 
@@ -266,6 +320,7 @@ memory (`src/rate-limit.ts`), so each instance counts its own and a restart star
 | Node socket handshakes, per address | 30 a minute   | Refused with `connect_error` `rate_limited` |
 | Node socket messages, per socket    | 300 every 10s | The socket is closed                        |
 | `/nodes` routes, per address        | 60 a minute   | 429 with `Retry-After`                      |
+| Wrong API tokens, per address       | 10 in 10 min  | 429 or `rate_limited`, right token included |
 
 A page load is index.html and about ten hashed files, so 300 a minute is about 30 full reloads.
 A tab handshakes once and socket.io-client retries a lost connection at most every 5s, under
@@ -282,7 +337,17 @@ and its steps are in the `steps` table either way. A tab loads `/nodes` when it 
 reconnects, and an agent's runs again when that daemon takes or lets go of a run, so a few a
 minute; 60 leaves room for several tabs behind one address. The two `/nodes` routes share
 one count, which runs after the token check (`RateLimitGuard`), so a request without the
-token gets its 401 and isn't counted. API routes don't count toward the UI's limit. The address is the last `X-Forwarded-For` entry,
+token gets its 401 and isn't counted. API routes don't count toward the UI's limit.
+
+Wrong tokens are counted per address over HTTP and the `/ui` socket together (`ApiTokens`): a
+request or handshake that sent a token that matches none. One that sent no token isn't a
+guess and isn't counted. After 10 in a window of 10 minutes, every check from that address
+is refused until the window ends, with 429 and `Retry-After` on HTTP and `rate_limited` on
+the socket, even with a right token, so a guesser learns nothing more. Someone who mistypes or
+pastes an old token tries a few times, and a tab that is refused asks for a new token instead
+of retrying, so 10 leaves room for honest mistakes. The `/node` socket isn't part of this
+count: a daemon with a stale secret retrying would otherwise lock out a UI on the same
+machine, and its handshake limit already bounds it. The address is the last `X-Forwarded-For` entry,
 which Railway's proxy adds, or the socket's own address. Without a proxy in front a client can
 set that header itself, so the limits slow a misbehaving client; the token is what keeps
 strangers out.
@@ -315,6 +380,8 @@ so the app is compiled with `tsc` to `dist/` rather than run from source.
 | `PGBOSS_SCHEMA`               | `pgboss`                | Must match the node daemon's                                                  |
 | `USE_FAKE_ADAPTERS`           | `false`                 | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`                               |
 | `LOG_LEVEL`                   | `info`                  | `fatal`, `error`, `warn`, `info`, `debug`, `trace`                            |
+| `ORCHESTRATOR_API_TOKEN`      |                         | The shared API token. Unset leaves only personal tokens, if any               |
+| `DASHBOARD_TOKENS`            |                         | Personal tokens as `name:sha256hex,...` (Tokens). Unset keeps the name labels |
 | `NODE_SHARED_SECRET`          |                         | What a node daemon sends as `auth.token` on `/node`. Unset refuses every one  |
 | `POSTHOG_WEBHOOK_SECRET`      |                         | Bearer secret for `POST /ingest/posthog`. Unset rejects every webhook         |
 | `OPENROUTER_API_KEY`          |                         | Unset, or `USE_FAKE_ADAPTERS`, uses the rule fallback                         |

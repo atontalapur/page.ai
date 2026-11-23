@@ -1,4 +1,5 @@
 import { Global, Module, type DynamicModule } from '@nestjs/common';
+import { ApiTokens } from './auth/api-tokens.ts';
 import type { AppDeps } from './deps.ts';
 import { IssueUpdates } from './issues/issue-updates.ts';
 import { IssuesService } from './issues/issues.service.ts';
@@ -19,10 +20,13 @@ export class CoreModule {
         { provide: CONFIG, useValue: deps.config },
         { provide: PAGER, useValue: deps.pager },
         { provide: CLASSIFIER, useValue: deps.classifier },
+        // One instance, so HTTP and the UI socket count an address's wrong tokens together.
+        { provide: ApiTokens, useValue: new ApiTokens(deps.config, deps.logger) },
         IssueUpdates,
         IssuesService,
       ],
       exports: [
+        ApiTokens,
         DB,
         FIX_JOB_QUEUE,
         JOB_QUEUES,

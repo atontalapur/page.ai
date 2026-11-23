@@ -4,6 +4,7 @@ import { posthogWebhookFixture } from '@page/contracts/fixtures';
 import type { Socket } from 'socket.io-client';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
+import { FAILED_TOKENS_PER_WINDOW } from '../auth/api-tokens.ts';
 import { createTestDeps, testConfig } from '../db/test-utils.ts';
 import { TriageService } from '../triage/triage.service.ts';
 import { outcome, TestSockets } from './test-utils.ts';
@@ -113,11 +114,33 @@ describe('UI socket', () => {
 
   it(`refuses an address's handshakes past ${HANDSHAKES_PER_MINUTE} a minute`, async () => {
     const address = '198.51.100.7';
+    // No token is not a guess, so these count toward the handshake limit alone.
     for (let i = 0; i < HANDSHAKES_PER_MINUTE; i++) {
-      expect(await outcome(connect({ token: 'wrong' }, address))).toBe('unauthorized');
+      expect(await outcome(connect({}, address))).toBe('unauthorized');
     }
     // Even with the right token: the limit runs first, so guessing stays bounded.
     expect(await outcome(connect({ token }, address))).toBe('rate_limited');
+    expect(await outcome(connect({ token }))).toBe('connected');
+  });
+
+  it(`refuses an address after ${FAILED_TOKENS_PER_WINDOW} wrong tokens, over HTTP and the socket together`, async () => {
+    const address = '198.51.100.8';
+    const wrongOverHttp = { authorization: 'Bearer wrong', 'x-forwarded-for': address };
+    for (let i = 0; i < FAILED_TOKENS_PER_WINDOW / 2; i++) {
+      expect(await outcome(connect({ token: 'wrong' }, address))).toBe('unauthorized');
+      const res = await app.inject({ method: 'GET', url: '/issues', headers: wrongOverHttp });
+      expect(res.statusCode).toBe(401);
+    }
+    // The right token too, until the window ends, so guessing stops.
+    expect(await outcome(connect({ token }, address))).toBe('rate_limited');
+    const refused = await app.inject({
+      method: 'GET',
+      url: '/issues',
+      headers: { ...api, 'x-forwarded-for': address },
+    });
+    expect(refused.statusCode).toBe(429);
+    expect(Number(refused.headers['retry-after'])).toBeGreaterThan(0);
+    // Other addresses carry on.
     expect(await outcome(connect({ token }))).toBe('connected');
   });
 

@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { hashToken } from './auth/dashboard-tokens.ts';
 import { ConfigError, loadConfig, loadPagerConfig } from './config.ts';
 
 const DATABASE_URL = 'postgres://page:page@localhost:5432/page';
@@ -14,6 +15,7 @@ describe('loadConfig', () => {
       useFakeAdapters: false,
       logLevel: 'info',
       apiToken: undefined,
+      dashboardTokens: [],
       nodeSharedSecret: undefined,
       posthogWebhookSecret: undefined,
       openRouterApiKey: undefined,
@@ -40,6 +42,52 @@ describe('loadConfig', () => {
     expect(loadConfig({ DATABASE_URL, NODE_SHARED_SECRET: 'node-secret' }).nodeSharedSecret).toBe(
       'node-secret',
     );
+  });
+
+  it('reads DASHBOARD_TOKENS as names and hashes', () => {
+    const arjun = hashToken('arjun-token');
+    const daniyal = hashToken('daniyal-token');
+    const DASHBOARD_TOKENS = ` Arjun:${arjun.toUpperCase()}, ,Daniyal K:${daniyal},`;
+    expect(loadConfig({ DATABASE_URL, DASHBOARD_TOKENS }).dashboardTokens).toEqual([
+      { name: 'Arjun', sha256: arjun },
+      { name: 'Daniyal K', sha256: daniyal },
+    ]);
+    expect(loadConfig({ DATABASE_URL, DASHBOARD_TOKENS: ' ' }).dashboardTokens).toEqual([]);
+  });
+
+  it('names what is wrong with a DASHBOARD_TOKENS entry, without the hash', () => {
+    const hash = hashToken('t');
+    const problem = (DASHBOARD_TOKENS: string) => {
+      try {
+        loadConfig({ DATABASE_URL, DASHBOARD_TOKENS });
+      } catch (err) {
+        expect(err).toBeInstanceOf(ConfigError);
+        expect((err as Error).message).not.toContain(hash);
+        return (err as Error).message;
+      }
+      throw new Error('loaded');
+    };
+    expect(problem(`Arjun:${hash},Daniyal`)).toBe(
+      'invalid config: DASHBOARD_TOKENS: entry 2 is not name:sha256',
+    );
+    expect(problem(`Arjun:${hash}:x`)).toContain('entry 1 is not name:sha256');
+    expect(problem(`system:timed_out:${hash}`)).toContain('entry 1 is not name:sha256');
+    expect(problem(`-arjun:${hash}`)).toContain('entry 1: the name must be');
+    expect(problem('Arjun:abc123')).toContain('entry 1: the hash must be 64 hex characters');
+    expect(problem(`Arjun:${hash},arjun:${hashToken('u')}`)).toContain(
+      'entries 1 and 2 name one person',
+    );
+    expect(problem(`Arjun:${hash},Daniyal:${hash}`)).toContain('entries 1 and 2 hold one token');
+  });
+
+  it('refuses a shared API token that is also a personal one', () => {
+    expect(() =>
+      loadConfig({
+        DATABASE_URL,
+        ORCHESTRATOR_API_TOKEN: 'shared',
+        DASHBOARD_TOKENS: `Arjun:${hashToken('shared')}`,
+      }),
+    ).toThrow('ORCHESTRATOR_API_TOKEN is also in DASHBOARD_TOKENS');
   });
 
   it('reads AUTO_START_FIX', () => {

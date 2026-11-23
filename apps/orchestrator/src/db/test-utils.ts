@@ -22,6 +22,8 @@ export const testConfig: Config = {
   useFakeAdapters: true,
   logLevel: 'info',
   apiToken: 'test-api-token',
+  // None, so decisions use the name labels. Tests of personal tokens pass their own.
+  dashboardTokens: [],
   nodeSharedSecret: 'test-node-secret',
   posthogWebhookSecret: 'test-webhook-secret',
   openRouterApiKey: undefined,

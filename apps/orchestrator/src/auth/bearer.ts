@@ -12,8 +12,12 @@ export function bearerAuthorized(
   authorization: string | undefined,
   secret: string | undefined,
 ): boolean {
-  const match = /^Bearer (.+)$/.exec(authorization ?? '');
-  return tokenAuthorized(match?.[1], secret);
+  return tokenAuthorized(bearerToken(authorization), secret);
+}
+
+/** The token in `Bearer <token>`, or undefined for no header or one of another shape. */
+export function bearerToken(authorization: string | undefined): string | undefined {
+  return /^Bearer (.+)$/.exec(authorization ?? '')?.[1];
 }
 
 /**
