@@ -1,25 +1,23 @@
 // @vitest-environment jsdom
-import { TaskProvider } from '../context/TaskContext';
-import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup, within } from '@testing-library/react';
+import { screen, cleanup, within } from '@testing-library/react';
 
 import DashboardPage from './DashboardPage';
-import { mockIncidents } from '../data/mockIncidents';
 import { initialMockTasks } from '../data/mockTasks';
+import { issue, renderWithIssues, testSource } from '../test-utils';
 
 afterEach(() => {
   cleanup();
 });
 
-function renderDashboard() {
-  return render(
-    <MemoryRouter>
-      <TaskProvider>
-        <DashboardPage />
-      </TaskProvider>
-    </MemoryRouter>,
-  );
+const issues = [1, 2, 3, 4, 5, 6].map((n) =>
+  issue(n, n === 1 ? { status: 'resolved' } : { severity: n % 2 ? 'critical' : 'medium' }),
+);
+
+function renderDashboard(list = issues) {
+  const source = testSource(list);
+  renderWithIssues(<DashboardPage />, source);
+  return source;
 }
 
 describe('DashboardPage', () => {
@@ -53,9 +51,7 @@ describe('DashboardPage', () => {
     ).toBeTruthy();
   });
 
-  it('lists recent incidents newest first without reordering the source data', () => {
-    const sourceOrder = mockIncidents.map((incident) => incident.id);
-
+  it('lists the five most recently updated incidents, newest first', () => {
     renderDashboard();
 
     const table = screen.getByText('Recent Incidents').closest('[data-slot="card"]') as HTMLElement;
@@ -64,53 +60,52 @@ describe('DashboardPage', () => {
       .slice(1)
       .map((row) => within(row).getByRole('link').textContent);
 
-    const expected = [...mockIncidents]
-      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
-      .slice(0, 5)
-      .map((incident) => incident.id);
-
-    expect(rowIds).toEqual(expected);
-    expect(rowIds[0]).toBe('INC-005');
-    expect(mockIncidents.map((incident) => incident.id)).toEqual(sourceOrder);
+    expect(rowIds).toEqual(['00000006', '00000005', '00000004', '00000003', '00000002']);
+    expect(within(table).getByRole('link', { name: '00000006' }).getAttribute('href')).toBe(
+      `/incidents/${issues[5]!.id}`,
+    );
   });
 
-  it('renders the recent incidents table', () => {
+  it('counts total and active incidents from the live issues', () => {
     renderDashboard();
 
-    expect(screen.getByText('Recent Incidents')).toBeTruthy();
-    expect(screen.getByText('Database connection timeout')).toBeTruthy();
-    expect(screen.getByText('API response latency')).toBeTruthy();
+    const total = screen.getByText('Total Incidents').closest('[data-slot="card"]') as HTMLElement;
+    const active = screen
+      .getByText('Active Incidents')
+      .closest('[data-slot="card"]') as HTMLElement;
+    expect(within(total).getByText('6')).toBeTruthy();
+    expect(within(active).getByText('5')).toBeTruthy();
   });
 
-  it('displays incident severity and status', () => {
+  it('displays incident severity and status with colors for both themes', () => {
     renderDashboard();
 
-    expect(screen.getAllByText('Critical').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Medium').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Investigating').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Open').length).toBeGreaterThan(0);
-  });
-
-  it('applies severity colors correctly', () => {
-    renderDashboard();
-
-    const criticalBadges = screen.getAllByText('Critical');
-    const mediumBadges = screen.getAllByText('Medium');
-
-    criticalBadges.forEach((badge) => {
+    const critical = screen.getAllByText('Critical');
+    expect(critical.length).toBeGreaterThan(0);
+    for (const badge of critical) {
       expect(badge.className).toContain('bg-red-100');
-    });
-
-    mediumBadges.forEach((badge) => {
-      expect(badge.className).toContain('bg-yellow-100');
-    });
+      expect(badge.className).toContain('dark:border-red-900');
+    }
+    expect(screen.getAllByText('Fixing')[0]!.className).toContain('dark:border-purple-900');
   });
 
-  it('gives incident badges dark mode variants', () => {
-    renderDashboard();
+  it('updates a recent incident live', () => {
+    const source = renderDashboard();
 
-    expect(screen.getAllByText('Critical')[0]!.className).toContain('dark:border-red-900');
-    expect(screen.getAllByText('Investigating')[0]!.className).toContain('dark:border-purple-900');
+    source.send({
+      v: 1,
+      issue: { ...issues[1]!, status: 'killed', updatedAt: '2026-11-22T12:00:00.000Z' },
+    });
+
+    const table = screen.getByText('Recent Incidents').closest('[data-slot="card"]') as HTMLElement;
+    const first = within(table).getAllByRole('row')[1]!;
+    expect(within(first).getByText('Killed')).toBeTruthy();
+  });
+
+  it('says so when there are no incidents yet', () => {
+    renderDashboard([]);
+
+    expect(screen.getByText('No incidents yet.')).toBeTruthy();
   });
 
   it('renders the AgentOverview component', () => {

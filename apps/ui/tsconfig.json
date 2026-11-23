@@ -1,4 +1,6 @@
 {
   "extends": "@page/config/tsconfig/react.json",
+  // @page/contracts exports its .ts sources, which import each other with the extension.
+  "compilerOptions": { "allowImportingTsExtensions": true },
   "include": ["src", "vite.config.ts"]
 }

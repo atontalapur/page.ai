@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module.ts';
 import type { AppDeps } from './deps.ts';
+import { serveUi } from './static/serve-ui.ts';
 
 export async function createApp(
   deps: AppDeps,
@@ -16,5 +17,6 @@ export async function createApp(
   );
   // Validates every parameter declared with `{ schema }` against its zod contract.
   app.useGlobalPipes(new StandardSchemaValidationPipe());
+  await serveUi(app, deps.config.uiDistDir, deps.logger);
   return app;
 }

@@ -1,220 +1,119 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { cleanup, screen, within } from '@testing-library/react';
 
 import IncidentDetailsPage from './IncidentDetailsPage';
-import { mockIncidents } from '../data/mockIncidents';
+import { issue, renderWithIssues, testSource, type TestSource } from '../test-utils';
 
 afterEach(() => {
   cleanup();
 });
 
-function renderIncidentDetails(id: string) {
-  return render(
-    <MemoryRouter initialEntries={[`/incidents/${id}`]}>
-      <Routes>
-        <Route path="/incidents/:id" element={<IncidentDetailsPage />} />
-      </Routes>
-    </MemoryRouter>,
-  );
+const fixing = issue(1, {
+  title: 'Database connection timeout',
+  status: 'fixing',
+  class: 'database',
+  severity: 'critical',
+  occurrences: 24,
+  currentTier: 2,
+});
+const fresh = issue(2, { status: 'new', class: null, severity: null, currentTier: null });
+
+function renderDetails(id: string, source: TestSource = testSource([fixing, fresh])) {
+  renderWithIssues(<IncidentDetailsPage />, source, {
+    path: `/incidents/${id}`,
+    route: '/incidents/:id',
+  });
+  return source;
 }
 
-function getMetricCard(label: string) {
-  const title = screen.getByText(label, {
-    selector: '[data-slot="card-title"]',
-  });
-
-  const card = title.closest('[data-slot="card"]');
-
-  if (!card) {
-    throw new Error(`Metric card not found: ${label}`);
-  }
-
-  return within(card as HTMLElement);
+function metric(label: string) {
+  const title = screen.getByText(label, { selector: '[data-slot="card-title"]' });
+  return within(title.closest('[data-slot="card"]') as HTMLElement);
 }
 
 describe('IncidentDetailsPage', () => {
-  it('renders incident title and description', () => {
-    const incident = mockIncidents[0]!;
+  it("shows the issue's fields", () => {
+    renderDetails(fixing.id);
 
-    renderIncidentDetails(incident.id);
-
-    expect(screen.getByRole('heading', { name: incident.title })).toBeTruthy();
-
-    expect(screen.getByText(incident.description)).toBeTruthy();
-  });
-
-  it('displays the incident ID', () => {
-    const incident = mockIncidents[0]!;
-
-    renderIncidentDetails(incident.id);
-
-    expect(screen.getByText(incident.id)).toBeTruthy();
-  });
-
-  it('displays severity and status badges', () => {
-    const incident = mockIncidents[0]!;
-
-    renderIncidentDetails(incident.id);
-
-    const badges = document.querySelectorAll('[data-slot="badge"]');
-
-    expect(badges).toHaveLength(2);
-
-    expect(Array.from(badges).some((badge) => badge.textContent === incident.severity)).toBe(true);
-
-    expect(Array.from(badges).some((badge) => badge.textContent === incident.status)).toBe(true);
-  });
-
-  it('displays the correct occurrence count', () => {
-    const incident = mockIncidents[0]!;
-
-    renderIncidentDetails(incident.id);
-
-    expect(getMetricCard('Occurrences').getByText(String(incident.occurrences))).toBeTruthy();
-  });
-
-  it('displays the incident source', () => {
-    const incident = mockIncidents[0]!;
-
-    renderIncidentDetails(incident.id);
-
-    expect(getMetricCard('Source').getByText(incident.source)).toBeTruthy();
-  });
-
-  it('displays the last updated timestamp', () => {
-    const incident = mockIncidents[0]!;
-
-    renderIncidentDetails(incident.id);
-
+    expect(screen.getByRole('heading', { name: fixing.title })).toBeTruthy();
+    expect(screen.getByText(fixing.id.slice(0, 8))).toBeTruthy();
+    expect(metric('Occurrences').getByText('24')).toBeTruthy();
+    expect(metric('Class').getByText('Database')).toBeTruthy();
+    expect(metric('Current Tier').getByText('Tier 2')).toBeTruthy();
     expect(
-      getMetricCard('Last Updated').getByText(new Date(incident.updatedAt).toLocaleString()),
+      metric('Last Updated').getByText(new Date(fixing.updatedAt).toLocaleString()),
     ).toBeTruthy();
-  });
-
-  it('displays the error stack trace', () => {
-    const incident = mockIncidents[0]!;
-
-    renderIncidentDetails(incident.id);
-
-    expect(screen.getByText('Error Stack Trace')).toBeTruthy();
-
-    const code = document.querySelector('pre code');
-
-    expect(code).not.toBeNull();
-    expect(code?.textContent).toBe(incident.stackTrace);
-  });
-
-  it('displays the investigation timeline', () => {
-    const incident = mockIncidents[0]!;
-
-    renderIncidentDetails(incident.id);
-
-    expect(screen.getByText('Investigation Timeline')).toBeTruthy();
-
-    expect(screen.getByText('Incident detected')).toBeTruthy();
-
-    expect(screen.getByText('Current status')).toBeTruthy();
-
-    expect(screen.getByText(`Error detected through ${incident.source}`)).toBeTruthy();
-  });
-
-  it('shows the assigned agent and workspace link', () => {
-    const incident = mockIncidents.find((item) => item.assignedAgent !== null);
-
-    expect(incident).toBeDefined();
-
-    renderIncidentDetails(incident!.id);
-
-    expect(getMetricCard('Assigned Agent').getByText(incident!.assignedAgent!)).toBeTruthy();
-
-    expect(screen.getByText('Agent assigned')).toBeTruthy();
-
-    const workspaceLink = screen.getByRole('link', {
-      name: 'View Agent Workspace',
-    });
-
-    expect(workspaceLink.getAttribute('href')).toBe(`/agents/${incident!.assignedAgent}`);
-  });
-
-  it('renders the workspace link as a full-width button-styled link with no wrapping button', () => {
-    const incident = mockIncidents.find((item) => item.assignedAgent !== null)!;
-
-    renderIncidentDetails(incident.id);
-
-    const workspaceLink = screen.getByRole('link', {
-      name: 'View Agent Workspace',
-    });
-
-    expect(workspaceLink.tagName).toBe('A');
-    expect(workspaceLink.closest('button')).toBeNull();
-    expect(workspaceLink.querySelector('button')).toBeNull();
-    expect(workspaceLink.className).toContain('w-full');
-    expect(screen.queryByRole('button', { name: 'View Agent Workspace' })).toBeNull();
-  });
-
-  it('gives severity and status badges dark mode variants', () => {
-    const incident = mockIncidents[0]!;
-
-    renderIncidentDetails(incident.id);
+    expect(screen.getByText(fixing.id)).toBeTruthy();
+    expect(screen.getByText(fixing.fingerprint)).toBeTruthy();
 
     const badges = Array.from(document.querySelectorAll('[data-slot="badge"]'));
-
-    expect(badges).toHaveLength(2);
-
-    for (const badge of badges) {
-      expect(badge.className).toMatch(/dark:bg-\w+-950/);
-    }
+    expect(badges.map((badge) => badge.textContent)).toEqual(['Critical', 'Fixing']);
+    for (const badge of badges) expect(badge.className).toMatch(/dark:bg-\w+-950/);
   });
 
-  it('shows an unassigned message when no agent is assigned', () => {
-    const incident = mockIncidents.find((item) => !item.assignedAgent);
+  it('shows an untriaged issue as such', () => {
+    renderDetails(fresh.id);
 
-    expect(incident).toBeDefined();
+    expect(metric('Class').getByText('Untriaged')).toBeTruthy();
+    expect(metric('Current Tier').getByText('None')).toBeTruthy();
+    expect(screen.getByText('Untriaged', { selector: '[data-slot="badge"]' })).toBeTruthy();
+  });
 
-    renderIncidentDetails(incident!.id);
+  it('keeps a placeholder for agent runs', () => {
+    renderDetails(fixing.id);
 
-    expect(getMetricCard('Assigned Agent').getByText('None')).toBeTruthy();
+    expect(screen.getByText('Agent Runs')).toBeTruthy();
+  });
 
-    expect(screen.getByText('No agent has been assigned to this incident.')).toBeTruthy();
+  it('updates live from issue.updated', () => {
+    const source = renderDetails(fixing.id);
 
-    expect(
-      screen.queryByRole('link', {
-        name: 'View Agent Workspace',
-      }),
-    ).toBeNull();
+    source.send({
+      v: 1,
+      issue: {
+        ...fixing,
+        status: 'awaiting_approval',
+        occurrences: 25,
+        updatedAt: '2026-11-22T12:00:00.000Z',
+      },
+    });
+
+    expect(screen.getByText('Awaiting approval')).toBeTruthy();
+    expect(metric('Occurrences').getByText('25')).toBeTruthy();
+  });
+
+  it('fetches an issue the list does not hold', async () => {
+    const old = issue(40, { title: 'An old one' });
+    const source = testSource([fixing]);
+    source.extra.set(old.id, old);
+
+    renderDetails(old.id, source);
+
+    expect(await screen.findByRole('heading', { name: 'An old one' })).toBeTruthy();
+  });
+
+  it('says the incident does not exist once the lookup finds nothing', async () => {
+    renderDetails('INC-001');
+
+    expect(await screen.findByRole('heading', { name: 'Incident not found' })).toBeTruthy();
+    const back = screen.getByRole('link', { name: 'Back to Incidents' });
+    expect(back.getAttribute('href')).toBe('/incidents');
+    expect(back.closest('button')).toBeNull();
+  });
+
+  it('asks for the token instead of saying not found', () => {
+    renderDetails(fixing.id, testSource([], 'needs_token'));
+
+    expect(screen.getByLabelText('API token')).toBeTruthy();
+    expect(screen.queryByText('Loading incident...')).toBeNull();
   });
 
   it('renders a back link to the incidents page', () => {
-    const incident = mockIncidents[0]!;
+    renderDetails(fixing.id);
 
-    renderIncidentDetails(incident.id);
-
-    const backLink = screen.getByRole('link', {
-      name: 'Back to Incidents',
-    });
-
-    expect(backLink.getAttribute('href')).toBe('/incidents');
-  });
-
-  it('handles an invalid incident ID', () => {
-    renderIncidentDetails('INVALID-ID');
-
-    expect(
-      screen.getByRole('heading', {
-        name: 'Incident not found',
-      }),
-    ).toBeTruthy();
-
-    expect(screen.getByText('The requested incident does not exist.')).toBeTruthy();
-
-    const backLink = screen.getByRole('link', {
-      name: 'Back to Incidents',
-    });
-
-    expect(backLink.getAttribute('href')).toBe('/incidents');
-    expect(backLink.closest('button')).toBeNull();
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Back to Incidents' }).getAttribute('href')).toBe(
+      '/incidents',
+    );
   });
 });

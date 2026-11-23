@@ -7,7 +7,7 @@ through Kysely, moves them through a state machine, and queues fix jobs on pg-bo
 ## Modules
 
 `AppModule` serves `/health`, `/issues` and `/ingest/posthog`, and imports seven feature modules.
-Ingest, triage, runs and notify are wired. The other three are still stubs.
+Ingest, triage, runs, notify and the gateway are wired. Tiers and approvals are still stubs.
 
 | Module            | Owns                                                                       |
 | ----------------- | -------------------------------------------------------------------------- |
@@ -17,7 +17,7 @@ Ingest, triage, runs and notify are wired. The other three are still stubs.
 | `TiersModule`     | Escalation after a run: up a tier, or to failed past Tier 3. Stub.         |
 | `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions. Stub.        |
 | `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone   |
-| `GatewayModule`   | Socket.IO events to and from the UI and node daemons (#34). Stub.          |
+| `GatewayModule`   | Socket.IO for the UI: `issue.updated` on every issue change (#34)          |
 
 ## Issue lifecycle
 
@@ -114,6 +114,7 @@ a new one.
 | GET    | `/issues/:id/events` |                                            |
 | POST   | `/issues/:id/events` | an `issueEvent`, e.g. `{ "type": "kill" }` |
 | POST   | `/ingest/posthog`    | a PostHog `$exception` webhook             |
+| GET    | `/` and `/assets/*`  | the built UI, below                        |
 
 Every route but `/health` and `/ingest/posthog` needs `Authorization: Bearer
 <ORCHESTRATOR_API_TOKEN>` and returns 401 without it. With the token unset they all return 401,
@@ -127,11 +128,56 @@ Bodies are validated against the zod contracts (400). `POST /issues/:id/events` 
 through the `run_finished` queue, which also writes the `runs` and `escalations` rows. Unknown ids return 404. Events the current status doesn't allow return 409. `GET /issues`
 returns at most 200 issues, most recently updated first; a repeat report counts as an update.
 
+## UI
+
+The orchestrator serves the built dashboard (`apps/ui/dist`, from `UI_DIST_DIR`) on the same
+origin as the API and the socket, so the UI needs no CORS and no API URL. `src/static/serve-ui.ts`
+registers one route per file in the build, cached for a year since Vite hashes their names.
+Any other GET a browser makes for a page (HTML acceptable, no file extension) gets
+`index.html` uncached, so a reload on `/incidents/:id` works. Every API route above is matched
+before that fallback, and a request that isn't for a page (curl, `fetch`, a missing asset)
+still gets the JSON 404. The files need no token; the API and the socket do.
+With no `index.html` in `UI_DIST_DIR`, boot logs a warning and only the API is served.
+
+## Live events
+
+`UiGateway` serves Socket.IO on the HTTP port, under `/socket.io/`, in the `/ui` namespace
+(`UI_NAMESPACE` in `@page/contracts`). The handshake sends the API token as `auth.token`, since
+a browser can't set headers on a WebSocket. Without it, or with a wrong one, the connection is
+refused with `connect_error` `unauthorized`. Each connected tab gets `issue.updated` (`{ v: 1,
+issue }`, `serverToUiEvents` in contracts) whenever an issue is opened, repeated or moved,
+whether by ingest, triage, an API event or a run result. The payload is checked against its
+contract before it goes out. IssuesService publishes the issue after the transaction commits
+(`report`, and `afterCommit` for every status change), so a rolled-back change is never sent.
+Events go only to tabs on the instance that made the change, which is fine with one instance.
+
+## Rate limits
+
+The routes and the socket added for the UI are limited per client, in memory
+(`src/rate-limit.ts`), so each instance counts its own and a restart starts over:
+
+| What                           | Limit        | Past it                                     |
+| ------------------------------ | ------------ | ------------------------------------------- |
+| UI files, per address          | 300 a minute | 429 with `Retry-After`                      |
+| Socket handshakes, per address | 30 a minute  | Refused with `connect_error` `rate_limited` |
+| Socket messages, per socket    | 20 every 10s | The socket is closed                        |
+
+A page load is index.html and about ten hashed files, so 300 a minute is about 30 full reloads.
+A tab handshakes once and socket.io-client retries a lost connection at most every 5s, under
+12 a minute, so 30 leaves room for a few tabs behind one address. The handshake limit runs
+before the token check, so it also holds a token guesser to 30 tries a minute. The UI sends no
+messages yet; kill, chat and approval decisions will be clicks, far under 20 in 10s. API
+routes don't count toward the UI's limit. The address is the last `X-Forwarded-For` entry,
+which Railway's proxy adds, or the socket's own address. Without a proxy in front a client can
+set that header itself, so the limits slow a misbehaving client; the token is what keeps
+strangers out.
+
 ## Run locally
 
 ```sh
 pnpm db:up                                  # repo root, starts Postgres
 cp .env.example .env                        # repo root, if you haven't
+pnpm --filter @page/ui build                # optional: the UI served on :4000
 pnpm --filter @page/orchestrator dev        # builds, migrates, listens on :4000
 ```
 
@@ -166,7 +212,8 @@ so the app is compiled with `tsc` to `dist/` rather than run from source.
 | `TWILIO_MACHINE_DETECTION`    | `false`                 | Voicemail or fax counts as not answered. Paid accounts only: trial rejects it |
 | `TWILIO_TRIAL`                | `false`                 | Trial account: calls and texts use Twilio's templates, not the page text      |
 | `NOTIFY_TO_NUMBERS`           |                         | Comma-separated E.164 numbers                                                 |
-| `DASHBOARD_URL`               | `http://localhost:3000` | Link included in the call and the SMS                                         |
+| `DASHBOARD_URL`               | `http://localhost:4000` | Where the UI is served; the call and SMS link `<url>/incidents/<id>`          |
+| `UI_DIST_DIR`                 | `../ui/dist`            | The built UI, relative to the working directory (`apps/orchestrator`)         |
 
 A missing or bad `DATABASE_URL` stops startup with exit code 1 and one log line naming each
 problem, e.g. `invalid config: DATABASE_URL is required`. As in `apps/node`, a blank var

@@ -14,6 +14,7 @@ import { titleReport } from '../ingest/report.ts';
 import { issueLogger, type Logger } from '../logger.ts';
 import type { FixJobQueue } from '../queue/fix-jobs.ts';
 import { DB, FIX_JOB_QUEUE, LOGGER } from '../tokens.ts';
+import { IssueUpdates } from './issue-updates.ts';
 import { isTerminal, IssueStateMachine } from './transitions.ts';
 
 export class IssueNotFoundError extends Error {
@@ -57,7 +58,7 @@ export interface ApplyOptions {
   escalationNote?: EscalationNote;
 }
 
-/** A change `applyIn` made, for the log line written once its transaction commits. */
+/** A change `applyIn` made, logged and published once its transaction commits. */
 export interface Moved {
   event: IssueEvent;
   issue: Issue;
@@ -95,12 +96,15 @@ export class IssuesService {
     @Inject(DB) private readonly db: Db,
     @Inject(FIX_JOB_QUEUE) private readonly fixJobs: FixJobQueue,
     @Inject(LOGGER) private readonly logger: Logger,
+    // Nest injects the shared one. Tests that build the service by hand get their own.
+    private readonly updates: IssueUpdates = new IssueUpdates(logger),
   ) {}
 
   /**
    * Opens an issue, or counts another occurrence of the open one with this fingerprint.
    * `report` is the sanitized error report fix jobs carry. A repeat keeps the first one and
-   * only fills it in when the issue had none.
+   * only fills it in when the issue had none. Both publish the issue, since a repeat changes
+   * `occurrences`.
    */
   async report(input: NewIssue, report?: string): Promise<{ issue: Issue; created: boolean }> {
     const row = await this.db
@@ -125,7 +129,9 @@ export class IssuesService {
       .executeTakeFirstOrThrow();
     const { created, ...issue } = row;
     if (created) issueLogger(this.logger, { issueId: issue.id }).info('issue opened');
-    return { issue: toIssue(issue), created };
+    const reported = toIssue(issue);
+    this.updates.publish(reported);
+    return { issue: reported, created };
   }
 
   async list(status?: IssueStatus): Promise<Issue[]> {
@@ -191,23 +197,27 @@ export class IssuesService {
     const moved = await this.db
       .transaction()
       .execute((trx) => this.applyIn(trx, id, event, options));
-    // Logged after the commit, so a rolled-back change never shows up.
-    this.logMoved(moved);
+    // After the commit, so a rolled-back change is never logged or sent to the UI.
+    this.afterCommit(moved);
     return moved.issue;
   }
 
-  /** The `issue moved` line for a change, once the transaction that made it has committed. */
-  logMoved({ event, issue, from, runId, cancelledRunId }: Moved): void {
+  /**
+   * Logs `issue moved` for a change and publishes the issue to IssueUpdates. Every status
+   * change passes through here once the transaction that made it has committed.
+   */
+  afterCommit({ event, issue, from, runId, cancelledRunId }: Moved): void {
     issueLogger(this.logger, { issueId: issue.id, runId, tier: issue.currentTier }).info(
       { event: event.type, from, to: issue.status, cancelledRunId },
       'issue moved',
     );
+    this.updates.publish(issue);
   }
 
   /**
    * `apply` inside the caller's transaction, so the change commits or rolls back with the
-   * caller's own writes (RunsService). Nothing is logged: the caller passes the result to
-   * `logMoved` once its transaction commits.
+   * caller's own writes (RunsService). Nothing is logged or published: the caller passes the
+   * result to `afterCommit` once its transaction commits.
    */
   async applyIn(
     trx: Transaction<Database>,

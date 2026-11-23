@@ -4,8 +4,7 @@ import { createApp } from './app.ts';
 import { ApprovalsController } from './approvals/approvals.controller.ts';
 import { ApprovalsService } from './approvals/approvals.service.ts';
 import { createTestDeps } from './db/test-utils.ts';
-import { GatewayController } from './gateway/gateway.controller.ts';
-import { GatewayService } from './gateway/gateway.service.ts';
+import { UiGateway } from './gateway/ui.gateway.ts';
 import { IngestController } from './ingest/ingest.controller.ts';
 import { IngestService } from './ingest/ingest.service.ts';
 import { NotifyController } from './notify/notify.controller.ts';
@@ -34,10 +33,13 @@ describe('orchestrator modules', () => {
     { service: TiersService, controller: TiersController },
     { service: ApprovalsService, controller: ApprovalsController },
     { service: NotifyService, controller: NotifyController },
-    { service: GatewayService, controller: GatewayController },
   ])('resolves $service.name and its controller', ({ service, controller }) => {
     expect(app.get(service)).toBeInstanceOf(service);
     expect(app.get(controller)).toBeInstanceOf(controller);
+  });
+
+  it('resolves UiGateway', () => {
+    expect(app.get(UiGateway)).toBeInstanceOf(UiGateway);
   });
 
   it('still serves /health', async () => {

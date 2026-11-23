@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, loadConfig, loadPagerConfig } from './config.ts';
 
@@ -21,8 +22,14 @@ describe('loadConfig', () => {
       autoStartFixMaxPerHour: 5,
       twilio: undefined,
       notifyTo: [],
-      dashboardUrl: 'http://localhost:3000',
+      dashboardUrl: 'http://localhost:4000',
+      uiDistDir: resolve('../ui/dist'),
     });
+  });
+
+  it('resolves UI_DIST_DIR against the working directory', () => {
+    expect(loadConfig({ DATABASE_URL, UI_DIST_DIR: '/srv/ui' }).uiDistDir).toBe('/srv/ui');
+    expect(loadConfig({ DATABASE_URL, UI_DIST_DIR: 'build' }).uiDistDir).toBe(resolve('build'));
   });
 
   it('reads overrides', () => {

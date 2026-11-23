@@ -18,6 +18,18 @@ import { escalationNoteSchema } from './escalation.ts';
 
 const v = z.literal(1);
 
+/** The Socket.IO namespace the orchestrator serves the UI on. */
+export const UI_NAMESPACE = '/ui';
+
+/**
+ * The `connect_error` messages a namespace sends when it turns a handshake away: a missing or
+ * wrong token, or too many handshakes from one address. Socket.IO doesn't retry either, so
+ * the client decides: ask for a token, or wait and connect again.
+ */
+export const SOCKET_REFUSALS = ['unauthorized', 'rate_limited'] as const;
+
+export type SocketRefusal = (typeof SOCKET_REFUSALS)[number];
+
 const runKill = z.strictObject({ v, runId: idSchema });
 const runChat = z.strictObject({ v, runId: idSchema, message: z.string().min(1) });
 const runDiff = z.strictObject({ v, runId: idSchema, diff: z.string() });

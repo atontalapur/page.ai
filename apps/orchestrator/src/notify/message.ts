@@ -1,6 +1,6 @@
 import type { BugClass, Severity } from '@page/contracts';
 
-/** The sentence spoken on the call and sent in the SMS. */
+/** The sentence spoken on the call and sent in the SMS, ending in the issue's UI page. */
 export function pageMessage(input: {
   severity: Severity;
   class: BugClass;
@@ -9,5 +9,5 @@ export function pageMessage(input: {
   dashboardUrl: string;
 }): string {
   const base = input.dashboardUrl.replace(/\/$/, '');
-  return `${input.severity} ${input.class}: ${input.title} ${base}/issues/${input.issueId}`;
+  return `${input.severity} ${input.class}: ${input.title} ${base}/incidents/${input.issueId}`;
 }
