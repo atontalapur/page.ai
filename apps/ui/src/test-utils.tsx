@@ -12,7 +12,6 @@ import type {
 import { issueFixture } from '@page/contracts/fixtures';
 
 import { IssuesProvider } from './context/IssuesContext';
-import { TaskProvider } from './context/TaskContext';
 import {
   parseIssueUpdated,
   parseNodeUpdated,
@@ -33,6 +32,36 @@ export function issue(n: number, fields: Partial<Issue> = {}): Issue {
     title: `Error number ${n}`,
     createdAt: at,
     updatedAt: at,
+    ...fields,
+  };
+}
+
+/** A run as the agents page lists it, on `issueOf`, with its own id and the given fields. */
+export function nodeRun(n: number, issueOf: Issue, fields: Partial<NodeRun> = {}): NodeRun {
+  return {
+    id: `${n.toString(16).padStart(8, '0')}-2222-4222-8222-222222222222`,
+    issueId: issueOf.id,
+    issueTitle: issueOf.title,
+    tier: 1,
+    status: 'running',
+    startedAt: '2026-11-22T09:00:00.000Z',
+    finishedAt: null,
+    prUrl: null,
+    confidence: null,
+    stepCount: 0,
+    lastStep: null,
+    ...fields,
+  };
+}
+
+/** A node daemon called `name`: connected and idle unless the fields say otherwise. */
+export function daemon(name: string, fields: Partial<NodeSummary> = {}): NodeSummary {
+  return {
+    name,
+    connected: true,
+    since: '2026-11-22T08:00:00.000Z',
+    current: [],
+    lastRunAt: null,
     ...fields,
   };
 }
@@ -154,11 +183,9 @@ export function renderWithIssues(
   return render(
     <MemoryRouter initialEntries={[path]}>
       <IssuesProvider source={source}>
-        <TaskProvider>
-          <Routes>
-            <Route path={route} element={ui} />
-          </Routes>
-        </TaskProvider>
+        <Routes>
+          <Route path={route} element={ui} />
+        </Routes>
       </IssuesProvider>
     </MemoryRouter>,
   );

@@ -1,74 +1,84 @@
+import { Link } from 'react-router-dom';
+import type { NodeSummary } from '@page/contracts';
 import { Card, CardHeader, CardTitle, CardContent } from '@page/design-system/components/ui/card';
-import { Badge } from '@page/design-system/components/ui/badge';
 
-import type { AgentStatus } from '../../data/mockAgents';
-import { agentStatusStyles } from '../../lib/statusStyles';
+import { agentStatus, byActivity, type AgentStatus } from '../../lib/agents';
+import { AgentStatusBadge } from './AgentBadges';
 
-export type Agent = {
-  id: string;
-  name: string;
-  status: AgentStatus;
-  task: string;
-};
+/** What an agent is doing, in a few words. */
+function doing(node: NodeSummary): string {
+  const [run] = node.current;
+  if (run) return `Tier ${run.tier} on ${run.issueTitle}`;
+  return node.connected ? 'Waiting for a fix job' : 'Not connected';
+}
 
-type AgentOverviewProps = {
-  agents: Agent[];
-};
+const tiles: { status: AgentStatus; label: string; className: string; text: string }[] = [
+  {
+    status: 'running',
+    label: 'Running',
+    className: 'rounded-xl bg-violet-a2',
+    text: 'text-violet-11',
+  },
+  { status: 'idle', label: 'Idle', className: 'rounded-lg border bg-muted/50', text: '' },
+  {
+    status: 'offline',
+    label: 'Offline',
+    className: 'rounded-xl bg-amber-a2',
+    text: 'text-amber-11',
+  },
+];
 
-export default function AgentOverview({ agents }: AgentOverviewProps) {
-  const counts = agents.reduce<Record<Agent['status'], number>>(
-    (acc, agent) => {
-      acc[agent.status]++;
-      return acc;
-    },
-    { Running: 0, Idle: 0, Failed: 0 },
-  );
-
-  const runningAgents = counts.Running;
-  const idleAgents = counts.Idle;
-  const failedAgents = counts.Failed;
+/** The dashboard's agents card: how many run, idle or are offline, and the busiest three. */
+export default function AgentOverview({ agents }: { agents: NodeSummary[] }) {
+  const counts = { running: 0, idle: 0, offline: 0 };
+  for (const agent of agents) counts[agentStatus(agent)] += 1;
+  const busiest = [...agents].sort(byActivity).slice(0, 3);
 
   return (
     <Card className="w-full min-w-0">
       <CardHeader>
-        <CardTitle>AI Agents</CardTitle>
-        <p className="text-sm text-muted-foreground">{agents.length} Total Agents</p>
+        <CardTitle>Agents</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          {agents.length} {agents.length === 1 ? 'node daemon' : 'node daemons'}
+        </p>
       </CardHeader>
 
       <CardContent className="space-y-6">
         <div className="grid grid-cols-3 gap-2 sm:gap-4">
-          <div data-testid="running-count" className="rounded-xl bg-green-a2 p-3 text-center">
-            <p className="text-2xl font-bold text-green-11">{runningAgents}</p>
-            <p className="text-xs text-green-11 sm:text-sm">Running</p>
-          </div>
-
-          <div data-testid="idle-count" className="rounded-lg border bg-muted/50 p-3 text-center">
-            <p className="text-2xl font-bold">{idleAgents}</p>
-            <p className="text-xs text-muted-foreground sm:text-sm">Idle</p>
-          </div>
-
-          <div data-testid="failed-count" className="rounded-xl bg-red-a2 p-3 text-center">
-            <p className="text-2xl font-bold text-red-11">{failedAgents}</p>
-            <p className="text-xs text-red-11 sm:text-sm">Failed</p>
-          </div>
+          {tiles.map((tile) => (
+            <div
+              key={tile.status}
+              data-testid={`${tile.status}-count`}
+              className={`${tile.className} p-3 text-center`}
+            >
+              <p className={`text-2xl font-bold ${tile.text}`}>{counts[tile.status]}</p>
+              <p className={`text-xs sm:text-sm ${tile.text || 'text-muted-foreground'}`}>
+                {tile.label}
+              </p>
+            </div>
+          ))}
         </div>
 
         <div className="space-y-3">
-          <h3 className="text-sm font-semibold">Recently Active Agents</h3>
-
-          {agents.slice(0, 3).map((agent) => (
+          <h3 className="text-sm font-semibold">Most active</h3>
+          {busiest.length === 0 && (
+            <p className="text-sm text-muted-foreground">No node daemon has connected yet.</p>
+          )}
+          {busiest.map((agent) => (
             <div
-              key={agent.id}
+              key={agent.name}
               className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 last:border-0"
             >
               <div className="min-w-0 flex-1">
-                <p className="font-medium">{agent.name}</p>
-                <p className="text-sm text-muted-foreground">{agent.task}</p>
+                <Link
+                  to={`/agents/${encodeURIComponent(agent.name)}`}
+                  className="font-medium hover:underline"
+                >
+                  {agent.name}
+                </Link>
+                <p className="truncate text-sm text-muted-foreground">{doing(agent)}</p>
               </div>
-
-              <Badge variant="outline" className={agentStatusStyles[agent.status]}>
-                {agent.status}
-              </Badge>
+              <AgentStatusBadge status={agentStatus(agent)} />
             </div>
           ))}
         </div>

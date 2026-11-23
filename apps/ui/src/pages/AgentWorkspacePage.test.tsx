@@ -1,243 +1,159 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import type { IssueRun, Step } from '@page/contracts';
+import { stepFixture } from '@page/contracts/fixtures';
+
+// jsdom can't run the highlighter; these stand in for its views.
+vi.mock('@pierre/diffs/react', () => ({
+  PatchDiff: ({ patch }: { patch: string }) => <pre data-testid="patch-diff">{patch}</pre>,
+  MultiFileDiff: () => <pre data-testid="edit-diff" />,
+}));
 
 import AgentWorkspacePage from './AgentWorkspacePage';
-import { TaskProvider, useTasks } from '../context/TaskContext';
-import { mockAgents } from '../data/mockAgents';
-import { getExecutionByIncident } from '../data/mockExecution';
+import {
+  daemon,
+  issue,
+  nodeRun,
+  renderWithIssues,
+  testSource,
+  type TestSource,
+} from '../test-utils';
 
 afterEach(() => {
   cleanup();
 });
 
-interface SeedTask {
-  agentId: string;
-  incidentId: string | null;
+const fixing = issue(1, { title: 'TypeError: price is undefined', status: 'fixing' });
+const older = issue(2, { title: 'RangeError: bad date', status: 'failed' });
+const held = nodeRun(1, fixing, { stepCount: 1 });
+const done = nodeRun(2, older, {
+  status: 'escalated',
+  stepCount: 5,
+  finishedAt: '2026-11-22T09:05:00.000Z',
+});
+
+const step = (seq: number, input: string): Step => ({ ...stepFixture, runId: held.id, seq, input });
+
+const fullRun: IssueRun = {
+  id: held.id,
+  issueId: fixing.id,
+  tier: 1,
+  status: 'running',
+  startedAt: held.startedAt,
+  finishedAt: null,
+  prUrl: null,
+  confidence: null,
+  diff: null,
+  steps: [step(0, 'ls -la')],
+};
+
+const busy = daemon('busy-node', { current: [held], lastRunAt: held.startedAt });
+
+function renderAgent(name: string, source: TestSource) {
+  renderWithIssues(<AgentWorkspacePage />, source, {
+    path: `/agents/${name}`,
+    route: '/agents/:id',
+  });
+  return source;
 }
 
-// Stands in for the Assign Task dialog: creates a task in the shared provider.
-function TaskSeeder({ seed }: { seed: SeedTask }) {
-  const { createTask } = useTasks();
-
-  return (
-    <button
-      type="button"
-      onClick={() =>
-        createTask({
-          title: `Investigate ${seed.incidentId ?? 'issue'}`,
-          instructions: 'Find the root cause.',
-          agentId: seed.agentId,
-          incidentId: seed.incidentId,
-          priority: 'High',
-        })
-      }
-    >
-      Seed Task
-    </button>
-  );
+function busySource() {
+  const source = testSource([fixing, older], 'live', [busy, daemon('idle-node')]);
+  source.runs.set(fixing.id, [fullRun]);
+  source.nodeRuns.set('busy-node', [held, done]);
+  return source;
 }
 
-function renderWorkspace(agentId: string, seed?: SeedTask) {
-  return render(
-    <MemoryRouter initialEntries={[`/agents/${agentId}`]}>
-      <TaskProvider>
-        {seed && <TaskSeeder seed={seed} />}
-        <Routes>
-          <Route path="/agents/:id" element={<AgentWorkspacePage />} />
-        </Routes>
-      </TaskProvider>
-    </MemoryRouter>,
-  );
-}
-
-function getCard(title: string): HTMLElement {
-  const card = screen.getByText(title).closest<HTMLElement>('[data-slot="card"]');
-
-  if (!card) {
-    throw new Error(`No card titled ${title}`);
-  }
-
-  return card;
-}
-
-function getStep(title: string): HTMLElement {
-  const step = within(getCard('Execution Timeline')).getByText(title).closest('li');
-
-  if (!step) {
-    throw new Error(`No timeline step titled ${title}`);
-  }
-
-  return step;
-}
-
-function getAgentStatusBadge(agentName: string): HTMLElement {
-  const heading = screen.getByRole('heading', { name: agentName });
-  const badge = heading
-    .closest('.justify-between')
-    ?.querySelector<HTMLElement>('[data-slot="badge"]');
-
-  if (!badge) {
-    throw new Error(`No status badge for ${agentName}`);
-  }
-
-  return badge;
+function recent() {
+  return within(screen.getByRole('table', { name: 'Recent runs' }));
 }
 
 describe('AgentWorkspacePage', () => {
-  it('renders the workspace for a valid agent', () => {
-    renderWorkspace('AG-001');
+  it('shows the daemon, the run it holds with its steps, and the runs it worked', async () => {
+    renderAgent('busy-node', busySource());
 
-    expect(screen.getByText('Diagnostic Agent')).toBeTruthy();
-  });
+    const heading = screen.getByRole('heading', { name: 'busy-node' });
+    const header = heading.closest('.justify-between') as HTMLElement;
+    expect(within(header).getByText('Running', { selector: '[data-slot="badge"]' })).toBeTruthy();
+    expect(screen.getByText(/^Connected since /)).toBeTruthy();
+    expect(await screen.findByText('$ ls -la')).toBeTruthy();
+    const incident = screen.getAllByRole('link', { name: /price is undefined/ })[0]!;
+    expect(incident.getAttribute('href')).toBe(`/incidents/${fixing.id}`);
 
-  it('renders the correct agent based on the route', () => {
-    renderWorkspace('AG-002');
-
-    expect(screen.getByText('Fix Agent')).toBeTruthy();
-  });
-
-  it('renders the workspace for each mock agent', () => {
-    for (const agent of mockAgents) {
-      const { unmount } = renderWorkspace(agent.id);
-
-      expect(screen.getByText(agent.name)).toBeTruthy();
-
-      unmount();
-    }
-  });
-
-  it('shows an assigned task once it starts, not the static Idle state', () => {
-    renderWorkspace('AG-003', { agentId: 'AG-003', incidentId: 'INC-002' });
-
-    expect(getAgentStatusBadge('Review Agent').textContent).toBe('Idle');
-    expect(screen.getByText('No execution is available for this agent.')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Seed Task' }));
-
-    expect(getAgentStatusBadge('Review Agent').textContent).toBe('Queued');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Start Task' }));
-
-    expect(getAgentStatusBadge('Review Agent').textContent).toBe('Running');
-    expect(screen.queryByText('No execution is available for this agent.')).toBeNull();
-    expect(within(getCard('Current Incident')).getByRole('link', { name: 'INC-002' })).toBeTruthy();
-    expect(getStep('Root cause analysis').textContent).toContain('Completed');
-    expect(getStep('Generate proposed fix').textContent).toContain('In progress');
-    expect(getStep('Run tests').textContent).toContain('Pending');
-    expect(screen.getByText('src/routes/users.ts')).toBeTruthy();
-  });
-
-  it('approves the awaiting task from the Human Review panel', () => {
-    renderWorkspace('AG-002');
-
-    const review = getCard('Human Review');
-
-    expect(within(review).getByText('TASK-002 · INC-003')).toBeTruthy();
-    expect(within(review).getByText('Pending')).toBeTruthy();
-    expect(getStep('Human approval').textContent).toContain('In progress');
-
-    fireEvent.click(within(review).getByRole('button', { name: 'Approve' }));
-
-    expect(within(getCard('Assigned Tasks (1)')).getByText('Completed')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
-    expect(within(getCard('Human Review')).getByText('Decision: Approved')).toBeTruthy();
-    expect(getStep('Human approval').textContent).toContain('Completed');
-    expect(getStep('Human approval').textContent).toContain('A reviewer approved the fix.');
-    expect(getAgentStatusBadge('Fix Agent').textContent).toBe('Idle');
-  });
-
-  it('rejects the awaiting task from the Human Review panel', () => {
-    renderWorkspace('AG-002');
-
-    fireEvent.click(within(getCard('Human Review')).getByRole('button', { name: 'Reject' }));
-
-    expect(within(getCard('Assigned Tasks (1)')).getByText('Failed')).toBeTruthy();
-    expect(within(getCard('Human Review')).getByText('Decision: Rejected')).toBeTruthy();
-    expect(getStep('Human approval').textContent).toContain('Failed');
-  });
-
-  it('reflects approvals made from the task card in the Human Review panel', () => {
-    renderWorkspace('AG-002');
-
-    fireEvent.click(within(getCard('Assigned Tasks (1)')).getByRole('button', { name: 'Approve' }));
-
-    expect(within(getCard('Human Review')).getByText('Decision: Approved')).toBeTruthy();
-  });
-
-  it('keeps the awaiting task in view when a new task is queued behind it', () => {
-    renderWorkspace('AG-002', { agentId: 'AG-002', incidentId: null });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Seed Task' }));
-
-    expect(getAgentStatusBadge('Fix Agent').textContent).toBe('Awaiting Approval');
-    expect(within(getCard('Current Incident')).getByRole('link', { name: 'INC-003' })).toBeTruthy();
-    expect(within(getCard('Human Review')).getByText('TASK-002 · INC-003')).toBeTruthy();
-    expect(screen.getByText('src/workers/task.ts')).toBeTruthy();
-    expect(screen.queryByText('No execution is available for this agent.')).toBeNull();
-  });
-
-  it("shows execution data for the agent's own incident", () => {
-    renderWorkspace('AG-002');
-
-    expect(screen.getByText('src/workers/task.ts')).toBeTruthy();
-    expect(screen.queryByText('src/db/connection.ts')).toBeNull();
-    expect(screen.getByText(/this\.emit\("result", job\.payload\)/)).toBeTruthy();
-  });
-
-  it('does not show finished tests or a diff while the task is running', () => {
-    renderWorkspace('AG-001');
-
-    expect(getStep('Run tests').textContent).toContain('Pending');
-    expect(screen.getByText('src/db/connection.ts')).toBeTruthy();
-    expect(screen.getByText('The agent has not proposed a change yet.')).toBeTruthy();
+    await waitFor(() => expect(recent().getAllByRole('row')).toHaveLength(3));
+    expect(recent().getByText('Escalated')).toBeTruthy();
+    expect(recent().getByText('5')).toBeTruthy();
     expect(
-      within(getCard('Human Review')).getByText('No proposed changes are awaiting review.'),
-    ).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Execution Logs' }));
-
-    expect(screen.getByText(/Generating proposed patch/)).toBeTruthy();
-    expect(screen.queryByText(/Tests completed/)).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Test Results' }));
-
-    expect(screen.getByText('Tests have not run yet.')).toBeTruthy();
+      recent()
+        .getByRole('link', { name: /bad date/ })
+        .getAttribute('href'),
+    ).toBe(`/incidents/${older.id}`);
   });
 
-  it('shows an explicit empty state for incidents without execution data', () => {
-    renderWorkspace('AG-004', { agentId: 'AG-004', incidentId: 'INC-005' });
+  it('streams the current run as the daemon sends steps, without a reload', async () => {
+    const source = renderAgent('busy-node', busySource());
+    expect(await screen.findByText('$ ls -la')).toBeTruthy();
+    await waitFor(() => expect(recent().getAllByRole('row')).toHaveLength(3));
+    const loads = { ...source.loads };
 
-    fireEvent.click(screen.getByRole('button', { name: 'Seed Task' }));
+    source.sendRun('run.step', { v: 1, step: step(1, 'git diff') });
+    expect(await screen.findByText('$ git diff')).toBeTruthy();
+    // The history row counts it too.
+    expect(within(recent().getAllByRole('row')[1]!).getByText('2')).toBeTruthy();
 
-    expect(getExecutionByIncident('INC-005')).toBeUndefined();
-    expect(screen.getByText('No execution data yet for INC-005.')).toBeTruthy();
+    const finished = {
+      id: held.id,
+      issueId: fixing.id,
+      tier: 1,
+      status: 'succeeded',
+      startedAt: held.startedAt,
+      finishedAt: '2026-11-22T09:06:00.000Z',
+      prUrl: null,
+      confidence: null,
+    };
+    source.sendRun('run.finished', { v: 1, run: finished, note: null });
+    expect(await recent().findByText('Patch ready')).toBeTruthy();
+    expect(source.loads).toEqual(loads);
   });
 
-  it('derives the validation summary from the incident test results', () => {
-    renderWorkspace('AG-001');
+  it('loads its runs again when the daemon takes a new one, and after a reconnect', async () => {
+    const source = renderAgent('busy-node', busySource());
+    expect(await screen.findByText('$ ls -la')).toBeTruthy();
+    await waitFor(() => expect(source.loads.nodeRuns).toBe(1));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mark Awaiting Approval' }));
+    source.sendNode({ v: 1, node: { ...busy, lastRunAt: '2026-11-22T10:00:00.000Z' } });
+    await waitFor(() => expect(source.loads.nodeRuns).toBe(2));
 
-    expect(
-      within(getCard('Human Review')).getByText('3 tests passed, 1 test failed.'),
-    ).toBeTruthy();
+    // Steps sent while the tab was away reach it from the database.
+    source.runs.set(fixing.id, [{ ...fullRun, steps: [step(0, 'ls -la'), step(1, 'pwd')] }]);
+    source.reconnect();
+    expect(await screen.findByText('$ pwd')).toBeTruthy();
+    await waitFor(() => expect(source.loads.nodeRuns).toBe(3));
+  });
 
+  it('says when an idle or offline daemon runs nothing', async () => {
+    const source = testSource([], 'live', [
+      daemon('idle-node'),
+      daemon('gone-node', { connected: false, since: null }),
+    ]);
+    renderAgent('idle-node', source);
+    expect(screen.getByText(/No run in progress/)).toBeTruthy();
+    expect(await screen.findByText('This agent has not worked a run yet.')).toBeTruthy();
     cleanup();
-    renderWorkspace('AG-002');
 
-    expect(
-      within(getCard('Human Review')).getByText('3 tests passed, 0 tests failed.'),
-    ).toBeTruthy();
+    renderAgent('gone-node', source);
+    expect(screen.getByText('The agent is offline, so it is not running anything.')).toBeTruthy();
+    expect(screen.getByText('Offline', { selector: 'p' })).toBeTruthy();
+  });
 
+  it('says so for a name no daemon has used, and waits for the list before deciding', () => {
+    renderAgent('nobody', testSource([], 'live', []));
+    expect(screen.getByRole('heading', { name: 'Agent not found' })).toBeTruthy();
     cleanup();
-    renderWorkspace('AG-003', { agentId: 'AG-003', incidentId: 'INC-004' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Seed Task' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Start Task' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Mark Awaiting Approval' }));
-
-    expect(within(getCard('Human Review')).getByText('1 test passed, 1 test failed.')).toBeTruthy();
+    renderAgent('nobody', testSource([], 'needs_token'));
+    expect(screen.queryByText('Agent not found')).toBeNull();
+    expect(screen.getByText('Connect to the orchestrator')).toBeTruthy();
   });
 });

@@ -1,209 +1,194 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import type { Step } from '@page/contracts';
+import { stepFixture } from '@page/contracts/fixtures';
 
 import AgentsPage from './AgentsPage';
-import { TaskProvider } from '../context/TaskContext';
-import { mockAgents } from '../data/mockAgents';
+import {
+  daemon,
+  issue,
+  nodeRun,
+  renderWithIssues,
+  testSource,
+  type TestSource,
+} from '../test-utils';
 
 afterEach(() => {
   cleanup();
 });
 
-function renderAgentsPage() {
-  return render(
-    <MemoryRouter>
-      <TaskProvider>
-        <AgentsPage />
-      </TaskProvider>
-    </MemoryRouter>,
-  );
+const fixing = issue(1, { title: 'TypeError: price is undefined', status: 'fixing' });
+const triaged = issue(2, { title: 'RangeError: bad date', status: 'triaged', severity: 'high' });
+const held = nodeRun(1, fixing, {
+  tier: 2,
+  stepCount: 3,
+  lastStep: { ...stepFixture, seq: 2, input: 'cat -n src/shop/products.ts', exitCode: 0 },
+});
+
+const busy = daemon('busy-node', { current: [held], lastRunAt: held.startedAt });
+const idle = daemon('idle-node', { lastRunAt: '2026-11-22T07:00:00.000Z' });
+const gone = daemon('gone-node', { connected: false, since: null });
+
+function renderAgents(
+  source: TestSource = testSource([fixing, triaged], 'live', [gone, idle, busy]),
+) {
+  renderWithIssues(<AgentsPage />, source);
+  return source;
 }
 
+/** The card of the agent called `name`. */
+function card(name: string) {
+  const title = screen.getByText(name, { selector: '[data-slot="card-title"]' });
+  return within(title.closest('[data-slot="card"]') as HTMLElement);
+}
+
+function metric(label: string) {
+  const title = screen.getByText(label, { selector: '[data-slot="card-title"]' });
+  return within(title.closest('[data-slot="card"]') as HTMLElement);
+}
+
+const step = (seq: number, input: string): Step => ({ ...stepFixture, runId: held.id, seq, input });
+
 describe('AgentsPage', () => {
-  it('renders the page heading', () => {
-    renderAgentsPage();
+  it('lists each daemon, running first, with what it is doing', () => {
+    renderAgents();
 
-    expect(screen.getByRole('heading', { name: 'Agents' })).toBeTruthy();
+    const titles = Array.from(document.querySelectorAll('[data-slot="card-title"]'))
+      .map((t) => t.textContent)
+      .filter((t) => t?.endsWith('-node'));
+    expect(titles).toEqual(['busy-node', 'idle-node', 'gone-node']);
 
-    expect(screen.getByText('Monitor AI agents and their current investigations.')).toBeTruthy();
+    const running = card('busy-node');
+    // The agent's badge, and its run's.
+    expect(running.getAllByText('Running', { selector: '[data-slot="badge"]' })).toHaveLength(2);
+    const link = running.getByRole('link', { name: /price is undefined/ });
+    expect(link.getAttribute('href')).toBe(`/incidents/${fixing.id}`);
+    expect(running.getByText('Tier 2')).toBeTruthy();
+    expect(running.getByText('3 steps')).toBeTruthy();
+    expect(running.getByText('Read src/shop/products.ts')).toBeTruthy();
+    expect(running.getByText('OK')).toBeTruthy();
+    expect(running.getByRole('link', { name: 'View agent' }).getAttribute('href')).toBe(
+      '/agents/busy-node',
+    );
+
+    expect(card('idle-node').getByText('Idle')).toBeTruthy();
+    expect(card('idle-node').getByText('No run in progress')).toBeTruthy();
+    expect(card('idle-node').getByText(/^Last run started /)).toBeTruthy();
+    expect(
+      card('gone-node').getByText('Offline', { selector: '[data-slot="badge"]' }),
+    ).toBeTruthy();
+    expect(card('gone-node').getByText('No runs yet')).toBeTruthy();
+
+    expect(metric('Agents').getByText('3')).toBeTruthy();
+    expect(metric('Running').getByText('1')).toBeTruthy();
+    expect(metric('Idle').getByText('1')).toBeTruthy();
+    expect(metric('Offline').getByText('1')).toBeTruthy();
   });
 
-  it('renders all agent metrics', () => {
-    renderAgentsPage();
+  it('updates without a reload as daemons connect, leave and write steps', async () => {
+    const source = renderAgents();
 
-    expect(screen.getByText('Total Agents')).toBeTruthy();
+    source.sendNode({ v: 1, node: daemon('new-node') });
+    expect(await screen.findByText('new-node')).toBeTruthy();
 
-    const running = mockAgents.filter((agent) => agent.status === 'Running').length;
-
-    const idle = mockAgents.filter((agent) => agent.status === 'Idle').length;
-
-    const failed = mockAgents.filter((agent) => agent.status === 'Failed').length;
-
-    expect(mockAgents).toHaveLength(4);
-    expect(running).toBe(2);
-    expect(idle).toBe(1);
-    expect(failed).toBe(1);
-  });
-
-  it('renders all four agents', () => {
-    renderAgentsPage();
-
-    for (const agent of mockAgents) {
-      expect(screen.getByText(agent.name)).toBeTruthy();
-    }
-  });
-
-  it('filters agents by name', () => {
-    renderAgentsPage();
-
-    const searchInput = screen.getByPlaceholderText('Search agents...');
-
-    fireEvent.change(searchInput, {
-      target: { value: 'Diagnostic' },
+    source.sendNode({
+      v: 1,
+      node: { ...idle, connected: false, since: '2026-11-22T10:00:00.000Z' },
     });
+    expect(card('idle-node').getByText(/^Offline since /)).toBeTruthy();
 
-    expect(screen.getByText('Diagnostic Agent')).toBeTruthy();
+    source.sendRun('run.step', { v: 1, step: step(3, 'pnpm --filter @page/demo-app lint') });
+    expect(card('busy-node').getByText('4 steps')).toBeTruthy();
+    expect(card('busy-node').getByText('Lint demo app')).toBeTruthy();
 
-    expect(screen.queryByText('Fix Agent')).toBeNull();
-    expect(screen.queryByText('Review Agent')).toBeNull();
-    expect(screen.queryByText('Monitoring Agent')).toBeNull();
+    // The daemon lets its run go once it finishes.
+    source.sendNode({ v: 1, node: { ...busy, current: [] } });
+    expect(card('busy-node').getByText('No run in progress')).toBeTruthy();
+    expect(metric('Running').getByText('0')).toBeTruthy();
   });
 
-  it('filters agents by ID', () => {
-    renderAgentsPage();
+  it('drops a node.updated that breaks the contract', () => {
+    const source = renderAgents();
+    source.sendNode({ v: 1, node: { ...idle, name: 'not a name' } });
+    expect(screen.queryByText('not a name')).toBeNull();
+  });
+
+  it('loads the daemons again after the socket reconnects', async () => {
+    const source = renderAgents();
+    source.nodes = [daemon('fresh-node')];
+    source.reconnect();
+    expect(await screen.findByText('fresh-node')).toBeTruthy();
+    expect(screen.queryByText('busy-node')).toBeNull();
+  });
+
+  it('filters by name and by status', () => {
+    renderAgents();
 
     fireEvent.change(screen.getByPlaceholderText('Search agents...'), {
-      target: { value: 'AG-003' },
+      target: { value: 'IDLE' },
     });
+    expect(screen.getByText('idle-node')).toBeTruthy();
+    expect(screen.queryByText('busy-node')).toBeNull();
 
-    expect(screen.getByText('Review Agent')).toBeTruthy();
-
-    expect(screen.queryByText('Diagnostic Agent')).toBeNull();
-    expect(screen.queryByText('Fix Agent')).toBeNull();
-  });
-
-  it('filters agents by status', () => {
-    renderAgentsPage();
-
-    const statusFilter = screen.getByRole('combobox', {
-      name: 'Filter agents by status',
+    fireEvent.change(screen.getByPlaceholderText('Search agents...'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Filter agents by status'), {
+      target: { value: 'offline' },
     });
-
-    fireEvent.change(statusFilter, {
-      target: { value: 'Idle' },
-    });
-
-    expect(screen.getByText('Review Agent')).toBeTruthy();
-
-    expect(screen.queryByText('Diagnostic Agent')).toBeNull();
-    expect(screen.queryByText('Fix Agent')).toBeNull();
-    expect(screen.queryByText('Monitoring Agent')).toBeNull();
-  });
-
-  it('displays an empty state when no agents match', () => {
-    renderAgentsPage();
+    expect(screen.getByText('gone-node')).toBeTruthy();
+    expect(screen.queryByText('idle-node')).toBeNull();
 
     fireEvent.change(screen.getByPlaceholderText('Search agents...'), {
-      target: { value: 'nonexistent-agent-xyz' },
+      target: { value: 'nobody' },
     });
-
     expect(screen.getByText('No agents match your search or filters.')).toBeTruthy();
   });
 
-  it('tints agent status badges with Radix steps, which follow the theme', () => {
-    renderAgentsPage();
-
-    const badges = Array.from(document.querySelectorAll('[data-slot="badge"]'));
-
-    expect(badges).toHaveLength(mockAgents.length);
-
-    for (const badge of badges) {
-      expect(badge.className).toMatch(/bg-\w+-a3 text-\w+-11/);
-    }
+  it('says how to start a daemon when none has connected', () => {
+    renderAgents(testSource([], 'live', []));
+    expect(screen.getByText(/No node daemon has connected yet/)).toBeTruthy();
   });
 
-  it('renders workspace links for every agent', () => {
-    renderAgentsPage();
-
-    const workspaceLinks = screen.getAllByRole('link', {
-      name: 'View Workspace',
-    });
-
-    expect(workspaceLinks).toHaveLength(mockAgents.length);
-
-    for (const agent of mockAgents) {
-      const expectedPath = `/agents/${agent.id}`;
-
-      expect(workspaceLinks.some((link) => link.getAttribute('href') === expectedPath)).toBe(true);
-    }
+  it('asks for the token, rather than saying there are no agents, when it has none', () => {
+    renderAgents(testSource([], 'needs_token'));
+    expect(screen.getByText('Connect to the orchestrator to see its agents.')).toBeTruthy();
   });
 
-  it('renders incident links for assigned agents', () => {
-    renderAgentsPage();
+  it('starts a fix on a triaged incident, the only real action an agent takes on request', async () => {
+    const source = renderAgents();
 
-    const agentsWithIncidents = mockAgents.filter((agent) => agent.currentIncident !== null);
+    fireEvent.click(screen.getByRole('button', { name: 'Start a fix' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    const select = dialog.getByLabelText<HTMLSelectElement>('Incident');
+    // Only triaged incidents are offered.
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['', triaged.id]);
 
-    for (const agent of agentsWithIncidents) {
-      const incidentLinks = screen.getAllByRole('link', {
-        name: agent.currentIncident!,
-      });
-
-      expect(
-        incidentLinks.some(
-          (link) => link.getAttribute('href') === `/incidents/${agent.currentIncident}`,
-        ),
-      ).toBe(true);
-    }
+    fireEvent.change(select, { target: { value: triaged.id } });
+    fireEvent.click(dialog.getByRole('button', { name: 'Start fix' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(source.applied).toEqual([{ id: triaged.id, event: { type: 'start_fix' } }]);
   });
 
-  it('opens the assignment dialog', () => {
-    renderAgentsPage();
+  it('shows why the orchestrator refused to start a fix', async () => {
+    const source = testSource([fixing, triaged], 'live', []);
+    source.respond = () => Promise.reject(new Error('fix starts are capped for this hour'));
+    renderAgents(source);
 
-    expect(screen.queryByRole('dialog')).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Assign Task' }));
-
-    const dialog = screen.getByRole('dialog');
-
-    expect(dialog).toBeTruthy();
-
-    expect(within(dialog).getByText('Assign New Task')).toBeTruthy();
-  });
-
-  it('closes the assignment dialog', () => {
-    renderAgentsPage();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Assign Task' }));
-
-    expect(screen.getByRole('dialog')).toBeTruthy();
-
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
-
-    expect(screen.queryByRole('dialog')).toBeNull();
-  });
-
-  it('combines search and status filtering', () => {
-    renderAgentsPage();
-
-    fireEvent.change(screen.getByPlaceholderText('Search agents...'), {
-      target: { value: 'Agent' },
-    });
-
-    fireEvent.change(
-      screen.getByRole('combobox', {
-        name: 'Filter agents by status',
-      }),
-      {
-        target: { value: 'Failed' },
-      },
+    fireEvent.click(screen.getByRole('button', { name: 'Start a fix' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    fireEvent.change(dialog.getByLabelText('Incident'), { target: { value: triaged.id } });
+    fireEvent.click(dialog.getByRole('button', { name: 'Start fix' }));
+    expect((await dialog.findByRole('alert')).textContent).toBe(
+      'fix starts are capped for this hour',
     );
+  });
 
-    expect(screen.getByText('Monitoring Agent')).toBeTruthy();
-
-    expect(screen.queryByText('Diagnostic Agent')).toBeNull();
-    expect(screen.queryByText('Fix Agent')).toBeNull();
-    expect(screen.queryByText('Review Agent')).toBeNull();
+  it('says so when no incident is waiting for a fix', async () => {
+    renderAgents(testSource([fixing], 'live', []));
+    fireEvent.click(screen.getByRole('button', { name: 'Start a fix' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.getByText('No incident is triaged and waiting for a fix.')).toBeTruthy();
+    const start = dialog.getByRole<HTMLButtonElement>('button', { name: 'Start fix' });
+    expect(start.disabled).toBe(true);
   });
 });

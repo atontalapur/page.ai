@@ -1,486 +1,222 @@
-import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import {
-  AltArrowLeftIcon,
-  BotIcon,
-  BranchingPathsUpIcon,
-  CheckCircleIcon,
-  ClockCircleIcon,
-  CloseCircleIcon,
-  CodeFileIcon,
-  ProgrammingIcon,
-  RecordIcon,
-  TestTubeIcon,
-} from '@solar-icons/react/linear';
+import { AltArrowLeftIcon, BotIcon, HistoryIcon, PulseIcon } from '@solar-icons/react/linear';
+import type { NodeRun, NodeSummary } from '@page/contracts';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
-import { Badge } from '@page/design-system/components/ui/badge';
-import { Button } from '@page/design-system/components/ui/button';
-
-import { getAgentById } from '../data/mockAgents';
-import { getIncidentById } from '../data/mockIncidents';
 import {
-  formatTestSummary,
-  getExecutionByIncident,
-  getExecutionSteps,
-  hasCompletedStep,
-  hasReachedStep,
-  type ExecutionStepStatus,
-} from '../data/mockExecution';
-import { getLatestFinishedTask, type AgentTask } from '../data/mockTasks';
-import { useTasks } from '../context/TaskContext';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@page/design-system/components/ui/table';
 
-type ReviewStatus = 'Pending' | 'Approved' | 'Rejected';
-type WorkspaceTab = 'changes' | 'logs' | 'tests';
+import { AgentStatusBadge, LastStep, RunStatusBadge } from '../components/agents/AgentBadges';
+import { RunHeading, RunReview } from '../components/issues/RunsPanel';
+import TokenPrompt from '../components/issues/TokenPrompt';
+import { useAgents, useIssues } from '../context/IssuesContext';
+import { agentStatus, lastRunLine, presence } from '../lib/agents';
+import { shortId } from '../lib/issueLabels';
+import { useIssueRuns, useNodeRuns } from '../live/useLiveRuns';
 
-const reviewStatusByTaskStatus: Partial<Record<AgentTask['status'], ReviewStatus>> = {
-  'Awaiting Approval': 'Pending',
-  Completed: 'Approved',
-  Failed: 'Rejected',
-};
+function BackLink() {
+  return (
+    <Link
+      to="/agents"
+      className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+    >
+      <AltArrowLeftIcon className="size-4" />
+      Back to Agents
+    </Link>
+  );
+}
 
-const stepStatusLabels: Record<ExecutionStepStatus, string> = {
-  completed: 'Completed',
-  current: 'In progress',
-  pending: 'Pending',
-  failed: 'Failed',
-};
+function IssueLink({ run }: { run: NodeRun }) {
+  return (
+    <Link to={`/incidents/${run.issueId}`} className="min-w-0 text-primary hover:underline">
+      <span className="font-mono">{shortId(run.issueId)}</span> {run.issueTitle}
+    </Link>
+  );
+}
 
+/**
+ * The run the agent holds, with every step so far. The steps come from the issue's runs and
+ * arrive as the daemon sends them.
+ */
+function CurrentRun({ run }: { run: NodeRun }) {
+  const { getIssue } = useIssues();
+  const { runs, failed } = useIssueRuns(run.issueId, getIssue(run.issueId)?.updatedAt);
+  const full = runs?.find((r) => r.id === run.id);
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-semibold">
+        <IssueLink run={run} />
+      </p>
+      <RunHeading run={full ?? run} />
+      {full ? (
+        <RunReview run={full} />
+      ) : (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            {runs === undefined && !failed ? 'Loading the run...' : 'Could not load its steps.'}
+          </p>
+          <LastStep run={run} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const clock = (at: string | null) => (at ? new Date(at).toLocaleString() : 'Not started');
+
+/** The runs the agent worked, the newest first, kept current as they progress. */
+function RecentRuns({ node }: { node: NodeSummary }) {
+  // A new run moves lastRunAt, which loads the list again; steps and results arrive as events.
+  const { runs, failed } = useNodeRuns(node.name, node.lastRunAt ?? '');
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <HistoryIcon className="size-5" />
+          Recent runs
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        {runs === undefined ? (
+          <p className="text-sm text-muted-foreground">
+            {failed ? 'Could not load the runs.' : 'Loading runs...'}
+          </p>
+        ) : runs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">This agent has not worked a run yet.</p>
+        ) : (
+          <Table className="min-w-[640px]" aria-label="Recent runs">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Run</TableHead>
+                <TableHead>Incident</TableHead>
+                <TableHead>Tier</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Started</TableHead>
+                <TableHead className="text-right">Steps</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {runs.map((run) => (
+                <TableRow key={run.id}>
+                  <TableCell className="font-mono text-xs">{shortId(run.id)}</TableCell>
+                  <TableCell className="max-w-80 truncate">
+                    <IssueLink run={run} />
+                  </TableCell>
+                  <TableCell>Tier {run.tier}</TableCell>
+                  <TableCell>
+                    <RunStatusBadge status={run.status} />
+                  </TableCell>
+                  <TableCell className="text-xs">{clock(run.startedAt)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{run.stepCount}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** One node daemon: its connection, the run it is on with its steps live, and its history. */
 export default function AgentWorkspacePage() {
-  const { id } = useParams<{ id: string }>();
-  const agentId = id ?? '';
+  const { id = '' } = useParams<{ id: string }>();
+  const { getNode, loaded } = useAgents();
+  const { status } = useIssues();
+  const node = getNode(id);
 
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('changes');
-
-  const { tasks, getAgentTasks, getActiveAgentTask, updateTaskStatus } = useTasks();
-
-  const agentTasks = getAgentTasks(agentId);
-
-  const agent = id ? getAgentById(id) : undefined;
-
-  // The workspace follows the agent's active task, then its latest finished
-  // task. The static agent data is only used when the agent has no tasks.
-  const activeTask = getActiveAgentTask(agentId);
-  const workspaceTask = activeTask ?? getLatestFinishedTask(tasks, agentId);
-
-  const incidentId = workspaceTask ? workspaceTask.incidentId : (agent?.currentIncident ?? null);
-  const incident = incidentId ? getIncidentById(incidentId) : undefined;
-  const execution = incident ? getExecutionByIncident(incident.id) : undefined;
-
-  const agentStatus = activeTask ? activeTask.status : workspaceTask ? 'Idle' : agent?.status;
-
-  // Without a task, a static current incident is treated as work in progress.
-  const executionSteps = getExecutionSteps(workspaceTask?.status ?? 'Running');
-  const visibleLogs = execution?.logs.filter((log) => hasReachedStep(executionSteps, log.step));
-
-  const reviewTask =
-    agentTasks.find((task) => task.status === 'Awaiting Approval') ??
-    (workspaceTask && workspaceTask.status in reviewStatusByTaskStatus ? workspaceTask : undefined);
-  const reviewStatus = reviewTask ? reviewStatusByTaskStatus[reviewTask.status] : undefined;
-  const reviewExecution = reviewTask?.incidentId
-    ? getExecutionByIncident(reviewTask.incidentId)
-    : undefined;
-
-  if (!agent) {
+  if (!node) {
     return (
       <div className="space-y-4">
-        <h2 className="text-2xl font-bold">Agent not found</h2>
-        <p className="text-sm text-muted-foreground">The requested agent does not exist.</p>
-        <Link to="/agents" className="text-sm text-primary hover:underline">
-          Back to Agents
-        </Link>
+        <BackLink />
+        <TokenPrompt />
+        {!loaded ? (
+          status !== 'needs_token' && <p className="text-muted-foreground">Loading agent...</p>
+        ) : (
+          <>
+            <h2 className="text-2xl font-bold">Agent not found</h2>
+            <p className="text-sm text-muted-foreground">
+              No node daemon called {id} has connected or worked a run.
+            </p>
+          </>
+        )}
       </div>
     );
   }
 
-  const tabs: { id: WorkspaceTab; label: string }[] = [
-    { id: 'changes', label: 'Code Changes' },
-    { id: 'logs', label: 'Execution Logs' },
-    { id: 'tests', label: 'Test Results' },
+  const [current] = node.current;
+  const summary = [
+    { label: 'Connection', value: presence(node) },
+    { label: 'Last run', value: lastRunLine(node) },
   ];
 
   return (
     <div className="min-w-0 space-y-6">
-      {/* Back navigation */}
-      <Link
-        to="/agents"
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <AltArrowLeftIcon className="size-4" />
-        Back to Agents
-      </Link>
+      <BackLink />
 
-      {/* Workspace heading */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
             <BotIcon className="size-6 text-primary" />
           </div>
-
           <div className="min-w-0">
-            <h2 className="text-2xl font-bold tracking-tight">{agent.name}</h2>
-            <p className="text-sm text-muted-foreground">{agent.id} · Agent Workspace</p>
+            <h2 className="break-all text-2xl font-bold tracking-tight">{node.name}</h2>
+            <p className="text-sm text-muted-foreground">Node daemon</p>
           </div>
         </div>
-
-        <Badge variant="outline">{agentStatus}</Badge>
+        <AgentStatusBadge status={agentStatus(node)} />
       </div>
 
-      {/* Agent Overview */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Current Incident</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {incident ? (
-              <Link
-                to={`/incidents/${incident.id}`}
-                className="font-semibold text-primary hover:underline"
-              >
-                {incident.id}
-              </Link>
-            ) : (
-              <p className="font-semibold">No active incident</p>
-            )}
-            <p className="mt-1 text-xs text-muted-foreground">
-              {incident?.title ?? 'No investigation assigned'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Tasks Completed</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{agent.tasksCompleted}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Last Active</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm font-semibold">{new Date(agent.lastActive).toLocaleString()}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Assigned Tasks */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Assigned Tasks ({agentTasks.length})</CardTitle>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          {agentTasks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No tasks assigned to this agent.</p>
-          ) : (
-            agentTasks.map((task) => (
-              <div key={task.id} className="space-y-3 rounded-lg border p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="font-semibold">{task.title}</h3>
-                    <p className="text-xs text-muted-foreground">{task.id}</p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">{task.priority}</Badge>
-                    <Badge variant="outline">{task.status}</Badge>
-                  </div>
-                </div>
-
-                <p className="text-sm text-muted-foreground">{task.instructions}</p>
-
-                {task.incidentId && (
-                  <Link
-                    to={`/incidents/${task.incidentId}`}
-                    className="block text-sm text-primary hover:underline"
-                  >
-                    Related Incident: {task.incidentId}
-                  </Link>
-                )}
-
-                <p className="text-xs text-muted-foreground">
-                  Created: {new Date(task.createdAt).toLocaleString()}
-                </p>
-
-                {task.status === 'Queued' && (
-                  <Button size="sm" onClick={() => updateTaskStatus(task.id, 'Running')}>
-                    Start Task
-                  </Button>
-                )}
-
-                {task.status === 'Running' && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => updateTaskStatus(task.id, 'Awaiting Approval')}
-                  >
-                    Mark Awaiting Approval
-                  </Button>
-                )}
-
-                {task.status === 'Awaiting Approval' && (
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" onClick={() => updateTaskStatus(task.id, 'Completed')}>
-                      <CheckCircleIcon className="mr-2 size-4" />
-                      Approve
-                    </Button>
-
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => updateTaskStatus(task.id, 'Failed')}
-                    >
-                      <CloseCircleIcon className="mr-2 size-4" />
-                      Reject
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Execution Workspace */}
-      <div className="grid min-w-0 gap-6 lg:grid-cols-3">
-        {/* Left Column */}
-        <div className="min-w-0 space-y-6 lg:col-span-2">
-          {/* Execution Timeline */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ClockCircleIcon className="size-5" />
-                Execution Timeline
-              </CardTitle>
+        {summary.map((item) => (
+          <Card key={item.label}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">{item.label}</CardTitle>
             </CardHeader>
-
             <CardContent>
-              {incident ? (
-                <ol className="space-y-5">
-                  {executionSteps.map((step, index) => (
-                    <li key={step.id} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        {step.status === 'completed' ? (
-                          <CheckCircleIcon className="size-5 text-green-11" />
-                        ) : step.status === 'failed' ? (
-                          <CloseCircleIcon className="size-5 text-red-11" />
-                        ) : step.status === 'current' ? (
-                          <ClockCircleIcon className="size-5 text-primary" />
-                        ) : (
-                          <RecordIcon className="size-5 text-muted-foreground" />
-                        )}
-
-                        {index < executionSteps.length - 1 && (
-                          <div className="mt-2 min-h-8 w-px flex-1 bg-border" />
-                        )}
-                      </div>
-
-                      <div className="min-w-0 flex-1 pb-5">
-                        <p className="text-sm font-semibold">
-                          {step.title}
-                          <span className="sr-only">: {stepStatusLabels[step.status]}</span>
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No execution is available for this agent.
-                </p>
-              )}
+              <p className="text-sm font-semibold">{item.value}</p>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex flex-wrap gap-2">
-                {tabs.map((tab) => (
-                  <Button
-                    key={tab.id}
-                    variant={activeTab === tab.id ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setActiveTab(tab.id)}
-                  >
-                    {tab.id === 'changes' && <BranchingPathsUpIcon className="mr-2 size-4" />}
-                    {tab.id === 'logs' && <ProgrammingIcon className="mr-2 size-4" />}
-                    {tab.id === 'tests' && <TestTubeIcon className="mr-2 size-4" />}
-                    {tab.label}
-                  </Button>
-                ))}
-              </div>
-            </CardHeader>
-
-            <CardContent className="min-w-0">
-              {!incident ? (
-                <p className="text-sm text-muted-foreground">
-                  Assign an incident to view execution details.
-                </p>
-              ) : !execution ? (
-                <p className="text-sm text-muted-foreground">
-                  No execution data yet for {incident.id}.
-                </p>
-              ) : activeTab === 'changes' ? (
-                <div className="space-y-4">
-                  <div className="rounded-lg border p-3">
-                    <p className="mb-3 flex items-center gap-2 text-sm font-semibold">
-                      <CodeFileIcon className="size-4" />
-                      Code Explorer
-                    </p>
-
-                    <div className="space-y-2">
-                      {execution.files.map((file) => (
-                        <div
-                          key={file}
-                          className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2 text-xs"
-                        >
-                          <CodeFileIcon className="size-4 shrink-0" />
-                          <span className="break-all font-mono">{file}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="mb-2 text-sm font-semibold">Proposed Diff</p>
-
-                    {hasCompletedStep(executionSteps, 'fix') ? (
-                      <div className="overflow-x-auto rounded-lg border bg-slate-a3 p-4 font-mono text-xs leading-7">
-                        {execution.diff.map((line, index) => (
-                          <div
-                            key={index}
-                            className={
-                              line.type === 'added'
-                                ? 'whitespace-pre text-green-11'
-                                : line.type === 'removed'
-                                  ? 'whitespace-pre text-red-11'
-                                  : 'whitespace-pre text-slate-11'
-                            }
-                          >
-                            {line.text}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        The agent has not proposed a change yet.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ) : activeTab === 'logs' ? (
-                visibleLogs && visibleLogs.length > 0 ? (
-                  <div className="overflow-x-auto rounded-lg bg-slate-a3 p-4">
-                    <pre className="font-mono text-xs leading-7 text-green-11">
-                      {visibleLogs.map((log) => log.text).join('\n')}
-                    </pre>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No log output yet.</p>
-                )
-              ) : hasCompletedStep(executionSteps, 'tests') ? (
-                <div className="space-y-3">
-                  {execution.tests.map((test) => (
-                    <div
-                      key={test.name}
-                      className="flex items-center justify-between gap-3 rounded-lg border p-3"
-                    >
-                      <span className="text-sm">{test.name}</span>
-
-                      {test.passed ? (
-                        <Badge
-                          variant="outline"
-                          className="border-green-a5 bg-green-a3 text-green-11"
-                        >
-                          <CheckCircleIcon className="mr-1 size-3" />
-                          Passed
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="border-red-a5 bg-red-a3 text-red-11">
-                          <CloseCircleIcon className="mr-1 size-3" />
-                          Failed
-                        </Badge>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">Tests have not run yet.</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="min-w-0">
-          <Card>
-            <CardHeader>
-              <CardTitle>Human Review</CardTitle>
-            </CardHeader>
-
-            <CardContent className="space-y-4">
-              {!reviewTask || !reviewStatus ? (
-                <p className="text-sm text-muted-foreground">
-                  No proposed changes are awaiting review.
-                </p>
-              ) : (
-                <>
-                  <p className="text-sm text-muted-foreground">
-                    Review the proposed code changes and test results before making a decision.
-                  </p>
-
-                  <p className="text-xs text-muted-foreground">
-                    {reviewTask.id}
-                    {reviewTask.incidentId && ` · ${reviewTask.incidentId}`}
-                  </p>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Review Status</span>
-                    <Badge variant="outline">{reviewStatus}</Badge>
-                  </div>
-
-                  <div className="rounded-lg border p-3 text-sm">
-                    <p className="font-medium">Validation summary</p>
-                    <p className="mt-1 text-muted-foreground">
-                      {reviewExecution
-                        ? formatTestSummary(reviewExecution.tests)
-                        : 'No test results yet.'}
-                    </p>
-                  </div>
-
-                  {reviewStatus === 'Pending' ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button onClick={() => updateTaskStatus(reviewTask.id, 'Completed')}>
-                        <CheckCircleIcon className="mr-2 size-4" />
-                        Approve
-                      </Button>
-
-                      <Button
-                        variant="destructive"
-                        onClick={() => updateTaskStatus(reviewTask.id, 'Failed')}
-                      >
-                        <CloseCircleIcon className="mr-2 size-4" />
-                        Reject
-                      </Button>
-                    </div>
-                  ) : (
-                    <p className="text-sm font-medium">Decision: {reviewStatus}</p>
-                  )}
-
-                  <p className="text-xs text-muted-foreground">
-                    Decisions update the task status. They do not change source code.
-                  </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        ))}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Current incident</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {current ? (
+              <p className="truncate text-sm font-semibold">
+                <IssueLink run={current} />
+              </p>
+            ) : (
+              <p className="text-sm font-semibold">None</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      <section aria-labelledby="current-run-heading" className="min-w-0 space-y-3">
+        <h3 id="current-run-heading" className="flex items-center gap-2 text-base font-semibold">
+          <PulseIcon className="size-5" />
+          Current run
+        </h3>
+        {node.current.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {node.connected
+              ? 'No run in progress. The agent claims the next fix job that is queued.'
+              : 'The agent is offline, so it is not running anything.'}
+          </p>
+        ) : (
+          node.current.map((run) => <CurrentRun key={run.id} run={run} />)
+        )}
+      </section>
+
+      <RecentRuns node={node} />
     </div>
   );
 }

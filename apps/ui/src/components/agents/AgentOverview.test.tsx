@@ -1,88 +1,77 @@
 // @vitest-environment jsdom
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import type { NodeSummary } from '@page/contracts';
 
-import AgentOverview, { type Agent } from './AgentOverview';
+import AgentOverview from './AgentOverview';
+import { daemon, issue, nodeRun } from '../../test-utils';
 
-const mockAgents: Agent[] = [
-  {
-    id: 'AG-001',
-    name: 'Diagnostic Agent',
-    status: 'Running',
-    task: 'Analyzing database timeout',
-  },
-  {
-    id: 'AG-002',
-    name: 'Fix Agent',
-    status: 'Running',
-    task: 'Generating patch',
-  },
-  {
-    id: 'AG-003',
-    name: 'Review Agent',
-    status: 'Idle',
-    task: 'Waiting for approval',
-  },
-  {
-    id: 'AG-004',
-    name: 'Monitoring Agent',
-    status: 'Failed',
-    task: 'Connection lost',
-  },
+const fixing = issue(1, { title: 'TypeError: price is undefined' });
+
+const agents: NodeSummary[] = [
+  daemon('offline-node', { connected: false }),
+  daemon('idle-a'),
+  daemon('busy-node', { current: [nodeRun(1, fixing, { tier: 2 })] }),
+  daemon('idle-b'),
 ];
 
 afterEach(() => {
   cleanup();
 });
 
+function renderOverview(list: NodeSummary[] = agents) {
+  return render(
+    <MemoryRouter>
+      <AgentOverview agents={list} />
+    </MemoryRouter>,
+  );
+}
+
 describe('AgentOverview', () => {
-  it('renders the AI Agents heading', () => {
-    render(<AgentOverview agents={mockAgents} />);
+  it('counts running, idle and offline daemons', () => {
+    renderOverview();
 
-    expect(screen.getByText('AI Agents')).toBeTruthy();
+    expect(screen.getByText('4 node daemons')).toBeTruthy();
+    expect(within(screen.getByTestId('running-count')).getByText('1')).toBeTruthy();
+    expect(within(screen.getByTestId('idle-count')).getByText('2')).toBeTruthy();
+    expect(within(screen.getByTestId('offline-count')).getByText('1')).toBeTruthy();
   });
 
-  it('displays the total number of agents', () => {
-    render(<AgentOverview agents={mockAgents} />);
+  it('lists the three most active, running first, with what each is doing', () => {
+    renderOverview();
 
-    expect(screen.getByText('4 Total Agents')).toBeTruthy();
+    const names = screen.getAllByRole('link').map((link) => link.textContent);
+    expect(names).toEqual(['busy-node', 'idle-a', 'idle-b']);
+    expect(screen.getByRole('link', { name: 'busy-node' }).getAttribute('href')).toBe(
+      '/agents/busy-node',
+    );
+    expect(screen.getByText('Tier 2 on TypeError: price is undefined')).toBeTruthy();
+    expect(screen.getAllByText('Waiting for a fix job')).toHaveLength(2);
+    expect(screen.queryByText('offline-node')).toBeNull();
   });
 
-  it('calculates agent status counts correctly', () => {
-    const { container } = render(<AgentOverview agents={mockAgents} />);
+  it('says what an offline daemon is doing, and colours each status', () => {
+    renderOverview([daemon('offline-node', { connected: false }), agents[2]!]);
 
-    expect(container.textContent).toContain('2');
-    expect(container.textContent).toContain('Running');
-    expect(container.textContent).toContain('Idle');
-    expect(container.textContent).toContain('Failed');
+    expect(screen.getByText('Not connected')).toBeTruthy();
+    const badges = Array.from(document.querySelectorAll('[data-slot="badge"]'));
+    expect(badges.map((badge) => [badge.textContent, badge.className.includes('-a3')])).toEqual([
+      ['Running', true],
+      ['Offline', true],
+    ]);
   });
 
-  it('displays only the first three agents', () => {
-    render(<AgentOverview agents={mockAgents} />);
+  it('handles no daemons', () => {
+    renderOverview([]);
 
-    expect(screen.getByText('Diagnostic Agent')).toBeTruthy();
-    expect(screen.getByText('Fix Agent')).toBeTruthy();
-    expect(screen.getByText('Review Agent')).toBeTruthy();
-
-    expect(screen.queryByText('Monitoring Agent')).toBeNull();
+    expect(screen.getByText('0 node daemons')).toBeTruthy();
+    expect(screen.getByText('No node daemon has connected yet.')).toBeTruthy();
   });
 
-  it('handles an empty agent list', () => {
-    render(<AgentOverview agents={[]} />);
-
-    expect(screen.getByText('0 Total Agents')).toBeTruthy();
-    expect(screen.queryByText('Diagnostic Agent')).toBeNull();
-  });
-
-  it('applies the correct status badge colors', () => {
-    render(<AgentOverview agents={mockAgents} />);
-
-    const runningBadges = screen.getAllByText('Running');
-    const idleBadges = screen.getAllByText('Idle');
-
-    expect(runningBadges.some((element) => element.className.includes('bg-green-a3'))).toBe(true);
-
-    expect(idleBadges.some((element) => element.className.includes('bg-slate-a3'))).toBe(true);
+  it('names a single daemon in the singular', () => {
+    renderOverview([daemon('only-node')]);
+    expect(screen.getByText('1 node daemon')).toBeTruthy();
   });
 });

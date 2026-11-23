@@ -1,7 +1,14 @@
 import { BUG_CLASSES, SEVERITIES, type Issue, type IssueStatus } from '@page/contracts';
 
 import { isOpen } from '../lib/issueLabels';
-import { parseIssueUpdated, type IssueFeed, type IssueSource } from './source';
+import { mockNodes } from './mock-nodes';
+import {
+  parseIssueUpdated,
+  parseNodeUpdated,
+  parseRunEvent,
+  type IssueFeed,
+  type IssueSource,
+} from './source';
 
 const SEEDS: Pick<
   Issue,
@@ -73,14 +80,16 @@ export interface MockOptions {
 /**
  * Plays issue changes when no orchestrator is connected, so `pnpm --filter @page/ui dev`
  * shows the pages moving: an error arrives, gets triaged, repeats, starts a fix, escalates,
- * waits for approval and is approved. Every change goes out as an `issue.updated` payload and is parsed
- * like one from the server.
+ * waits for approval and is approved. Mock node daemons (mock-nodes.ts) take each fix, write a
+ * step every tick and finish when the issue moves on, and one drops off and comes back now and
+ * then. Every change goes out as the server's event would, and is parsed like one.
  */
 export function mockSource({
   intervalMs = 4_000,
   now = () => new Date(),
 }: MockOptions = {}): MockSource {
   const issues = new Map<string, Issue>();
+  const daemons = mockNodes(now);
   let count = 0;
   let ticks = 0;
   let feed: IssueFeed | undefined;
@@ -100,6 +109,7 @@ export function mockSource({
     const issue = make(seed, (i + 1) * 17);
     issues.set(issue.id, issue);
   });
+  daemons.seed([...issues.values()]);
 
   const sorted = () => [...issues.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const first = (status: IssueStatus) =>
@@ -156,11 +166,14 @@ export function mockSource({
   function push(payload: unknown) {
     const issue = parseIssueUpdated(payload);
     if (!issue) return;
+    const before = issues.get(issue.id);
     issues.set(issue.id, issue);
     feed?.update(issue);
+    daemons.follow(before, issue);
   }
 
   function tick() {
+    daemons.tick();
     const step = script[ticks % script.length]!;
     ticks += 1;
     const changed = step();
@@ -173,20 +186,48 @@ export function mockSource({
       feed.status('mock');
       feed.synced();
       feed.reset(sorted());
-      feed.resetNodes([]);
+      const nodes = daemons.start({
+        run(event, payload) {
+          const parsed = parseRunEvent(event, payload);
+          if (parsed) feed?.run(parsed);
+        },
+        node(payload) {
+          const node = parseNodeUpdated(payload);
+          if (node) feed?.node(node);
+        },
+      });
+      feed.resetNodes(nodes);
       const timer = intervalMs > 0 ? setInterval(tick, intervalMs) : undefined;
       return () => {
         clearInterval(timer);
+        daemons.stop();
         feed = undefined;
       };
     },
     tick,
     push,
     fetchIssue: (id) => Promise.resolve(issues.get(id)),
-    // The mock plays issues only; its fixes have no runs to show.
-    fetchRuns: () => Promise.resolve([]),
+    fetchRuns: (id) => Promise.resolve(daemons.runsOf(id)),
     fetchEvents: () => Promise.resolve([]),
-    fetchNodeRuns: () => Promise.resolve([]),
-    applyEvent: () => Promise.reject(new Error('Mock data has no orchestrator to review with.')),
+    fetchNodeRuns: (name) => Promise.resolve(daemons.runsBy(name)),
+    // Starting a fix works, so the agents page's button does something without a server.
+    // Reviews need the orchestrator.
+    applyEvent(id, event) {
+      const issue = issues.get(id);
+      if (event.type !== 'start_fix') {
+        return Promise.reject(new Error('Mock data has no orchestrator to review with.'));
+      }
+      if (issue?.status !== 'triaged') {
+        return Promise.reject(new Error('Only a triaged incident can start a fix.'));
+      }
+      const started: Issue = {
+        ...issue,
+        status: 'fixing',
+        currentTier: 1,
+        updatedAt: now().toISOString(),
+      };
+      push({ v: 1, issue: started });
+      return Promise.resolve(started);
+    },
   };
 }

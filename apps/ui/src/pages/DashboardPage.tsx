@@ -11,31 +11,30 @@ import {
   TableCell,
 } from '@page/design-system/components/ui/table';
 
-import AgentOverview, { type Agent } from '../components/agents/AgentOverview';
+import AgentOverview from '../components/agents/AgentOverview';
 import { SeverityBadge, StatusBadge } from '../components/issues/IssueBadges';
 import TokenPrompt from '../components/issues/TokenPrompt';
 
-import { mockAgents } from '../data/mockAgents';
-import { getActiveTask, getAgentStatus } from '../data/mockTasks';
-import { useIssues } from '../context/IssuesContext';
-import { useTasks } from '../context/TaskContext';
+import { useAgents, useIssues } from '../context/IssuesContext';
+import { agentStatus } from '../lib/agents';
+import { awaitsReview } from '../components/issues/ReviewActions';
 import { isOpen, shortId } from '../lib/issueLabels';
 
 export default function DashboardPage() {
-  const { tasks } = useTasks();
   const { issues } = useIssues();
+  const { nodes } = useAgents();
 
   const totalIncidents = issues.length;
 
   const activeIncidents = issues.filter(isOpen).length;
 
-  const runningAgents = mockAgents.filter(
-    (agent) => getAgentStatus(agent, tasks) === 'Running',
-  ).length;
+  const runningAgents = nodes.filter((node) => agentStatus(node) === 'running').length;
 
-  const queuedTasks = tasks.filter((task) => task.status === 'Queued').length;
+  const connectedAgents = nodes.filter((node) => node.connected).length;
 
-  const runningTasks = tasks.filter((task) => task.status === 'Running').length;
+  const fixing = issues.filter((issue) => issue.status === 'fixing').length;
+
+  const awaiting = issues.filter(awaitsReview).length;
 
   const metrics = [
     {
@@ -54,25 +53,18 @@ export default function DashboardPage() {
       id: 'running-agents',
       title: 'Running Agents',
       value: runningAgents,
-      description: `${runningTasks} ${runningTasks === 1 ? 'task' : 'tasks'} running`,
+      description: `${connectedAgents} of ${nodes.length} connected`,
     },
     {
-      id: 'queued-tasks',
-      title: 'Queued Tasks',
-      value: queuedTasks,
-      description: `${tasks.length} total ${tasks.length === 1 ? 'task' : 'tasks'}`,
+      id: 'fixes-in-progress',
+      title: 'Fixes in Progress',
+      value: fixing,
+      description: `${awaiting} awaiting review`,
     },
   ];
 
   // The store keeps issues most recently updated first.
   const recentIncidents = issues.slice(0, 5);
-
-  const agents: Agent[] = mockAgents.map((agent) => ({
-    id: agent.id,
-    name: agent.name,
-    status: getAgentStatus(agent, tasks),
-    task: getActiveTask(tasks, agent.id)?.title ?? 'No active task',
-  }));
 
   return (
     <div className="space-y-6">
@@ -145,7 +137,7 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      <AgentOverview agents={agents} />
+      <AgentOverview agents={nodes} />
     </div>
   );
 }
