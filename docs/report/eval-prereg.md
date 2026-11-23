@@ -48,6 +48,117 @@ frozen budgets in `threshold.ts`, which are unchanged). The bars, arms and resul
 they were. A run with confidence escalation is a new set on dev bugs, with an amendment of
 its own; the held-out reservation is used and is not run again.
 
+Amendment 5 (2026-11-23), committed before any run with confidence escalation: a dev-only
+run to calibrate the confidence threshold (#174). The question is whether the score
+(`scoreRun` in `packages/agent/src/confidence.ts`) separates submitted patches that pass
+`check.sh` from ones that don't, and what `CONFIDENCE_THRESHOLD` each tier should use. Only
+dev scenarios run. The held-out set is not read, run or summarized, and 024 is never run.
+
+Each attempt in a results file keeps its tier, its exit status, `checkPassed`, its score
+with every part (`confidence`: `score`, `changesCode`, `reproduced`, `testsPass`,
+`checksPass`, `liveAfterChange`) and `lowConfidence`. The escalation reason follows from the
+exit status and `lowConfidence` (`escalationReason` in `eval/src/runner.ts`). The check runs
+on every attempt and the agent never sees its score, so one recorded score says what every
+candidate threshold would have done with that attempt.
+
+Every run uses `deepseek/deepseek-v4.1-flash` on OpenRouter at the frozen limits
+(`ESCALATION_THRESHOLD` is unchanged), 3 runs per scenario. A code config plays the 18 dev
+code scenarios (`--set dev` with no live app, so 029 and 030 are listed as skipped, as in the
+frozen dev files) at `--concurrency 3`. An ops config plays 029 and 030 (`--set dev` and those
+two ids) one run at a time against a local compose demo app, as in Amendment 4. One code
+config runs at a time, and one ops config may run beside it.
+
+1. Phase 1, at today's threshold (0.3 at every tier): tier1-only on the code scenarios (54
+   runs) and on 029 and 030 (6 runs), then tier3-start on the same (54 and 6 runs). These
+   four files are the calibration data.
+2. Phase 2: the rule below picks each tier's threshold from the phase 1 files. If it picks a
+   value other than 0.3, a PR changes `threshold.ts` and its tests before phase 3.
+3. Phase 3, at the picked threshold: ladder on the code scenarios (54 runs) and on 029 and
+   030 (6 runs). It measures fix rate, cost, false escalations and pages end to end, next to
+   the frozen dev and ops numbers. No threshold decision rests on it; a change it suggests
+   needs another amendment.
+
+The Tier 1 and Tier 2 prompts are the ones the frozen dev runs saw. The Tier 3 prompt is the
+ops set's (Amendment 4), with the ops blocks, so tier3-start code runs here see a different
+Tier 3 prompt from the frozen dev runs. Gated ops calls are approved at once (`evalApprove`).
+
+The decision rule, per tier:
+
+- Data: phase 1's scored code fixes at that tier, from tier1-only for Tier 1 and tier3-start
+  for Tier 3, code and ops scenarios pooled. A code fix is a submitted attempt whose score
+  has `liveAfterChange` null. It passes when `checkPassed` is true. A submit with no score
+  (the scorer threw) is left out and counted.
+- Candidates: 0.2, 0.3, 0.5, 0.7, 0.8 and 1.0. A code fix scores a sum of 0.5, 0.3 and 0.2,
+  so these are the only points where moving the threshold changes which fixes fall under it.
+- For each candidate, false escalations F are the passing fixes that score under it (each
+  would escalate, or page at Tier 3), and caught patches C are the failing fixes under it.
+- A candidate is allowed when F is at most 1 in 50 of the tier's passing fixes P (F at most
+  P / 50: 1 false escalation for 50 to 99 passing fixes, none below 50). #174 proposed 1 in 54.
+- The pick is the allowed candidate with the most C. Ties go to the smaller F, then to 0.3,
+  then to the lower candidate. A higher threshold that catches no more wrong patches only
+  sends more working fixes up a tier, so the rule is not "the highest allowed candidate".
+- If no candidate is allowed, the tier gets 0.2, and the report flags the scorer for scoring
+  passing fixes at 0.
+- A tier with fewer than 20 scored code fixes keeps 0.3.
+- Tier 2 has no phase 1 data, since no single-tier config plays it. It takes Tier 1's value:
+  it plays the same code task with push and PR tools added, and its fixes score on the same
+  parts.
+- Ops-only fixes score 0 or 1, so every candidate treats them the same. They are reported
+  apart and don't enter the rule.
+- `pnpm eval:tune` gets a confidence section that prints these tables and the pick, with
+  tests, before it reads the phase 1 files.
+
+The weights (`CONFIDENCE_WEIGHTS`) don't change. The frozen dev runs had 2 wrong submits in
+162 runs, so phase 1 will likely see a handful of failing fixes, too few to fit three
+weights. The report shows how often each part held among passing and failing fixes, for a
+later amendment.
+
+What each result leads to:
+
+- The rule picks a value other than 0.3 at a tier: a PR sets it in `threshold.ts`, and phase
+  3 plays at that commit.
+- The rule keeps 0.3 at every tier: no code change, and phase 3 plays at the phase 1 commit.
+- A tier has no failing code fix: the score's separation is untested there, the rule keeps
+  0.3, and the report says so.
+- No allowed candidate catches a failing fix, because the failing fixes score as high as the
+  passing ones: moving the threshold can't help. The report lists the parts those patches
+  had, as input for a scorer change under a later amendment.
+
+Budget and stop rules:
+
+- Spend cap: $1.60 for the whole amendment, counted as OpenRouter's `usage.cost`. The user
+  approved up to $3, but the OpenRouter key had $1.94 left of its $5 limit on 2026-11-23,
+  and the cap leaves room on it for other use. In the frozen runs the four phase 1 configs
+  cost $1.03 and the two ladder files $0.88. Output tokens have since dropped from $0.567 to
+  $0.199 per million; input is $0.0498 per million, from $0.051.
+- `--max-cost` is $1.60 for a code config and $0.40 for an ops config, so no single process
+  can pass the cap. A watchdog reads the key's usage every minute and pauses every eval
+  process (Ctrl-C, which checkpoints) once the usage has grown $1.40 since phase 1 started.
+  The $0.20 left covers the attempts in flight; the costliest attempt in the frozen runs
+  spent $0.06. The key's usage counts any other use of it too, so it can only overstate this
+  run's spend. A pause ends the amendment's runs, and the report says what was left.
+- Before phase 3, its cost is projected from phase 1: the ladder code file at the tier1-only
+  code file's spend times (1 + 2e), where e is the share of those runs the picked threshold
+  would escalate (a low score or out of budget), and the ladder ops file at $0.39 times the
+  ratio of phase 1 spend to $1.03. If phase 1 spend plus the projection passes $1.40, the
+  ladder code file plays 1 run per bug; if it still passes, phase 3 plays only the ops file.
+- The first provider failure (`stoppedForProvider`) stops the runner on its own. The file is
+  resumed from its checkpoint once the provider is back. A second provider stop in the same
+  file ends it, and it is reported incomplete. Never retry in a loop.
+- A run in `errors` (a sandbox, script or check failure) is played again once with
+  `--resume`. A run that fails twice stays out and is reported.
+- A run with a `model_error` attempt is thrown out and rerun, as the bars require.
+- A held-out id in any command, results file or analysis: stop. `eval:tune` refuses a file
+  that names one.
+
+The ops configs play against a local compose demo app under its own project name and ports,
+with `POSTHOG_KEY` unset (checked in the running container before the first ops run) and
+`OPS_SECRET` set. `DEMO_APP_URL` points at localhost only. The staging app, the staging
+orchestrator and Railway are not touched. Other agents run tests on this machine, so its load
+is logged every five minutes during the runs. Attempts that end on a step, cost or time limit
+(`budget_exhausted` in the daemon) are reported apart, with the load, since the 14 minute
+wall clock runs on shared CPUs.
+
 ## Bars
 
 lesson: how close the full ladder gets to the Tier 3 from-start fix rate while granting
