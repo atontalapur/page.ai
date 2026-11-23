@@ -11,8 +11,6 @@ import { NotifyController } from './notify/notify.controller.ts';
 import { NotifyService } from './notify/notify.service.ts';
 import { RunsController } from './runs/runs.controller.ts';
 import { RunsService } from './runs/runs.service.ts';
-import { TiersController } from './tiers/tiers.controller.ts';
-import { TiersService } from './tiers/tiers.service.ts';
 import { TriageController } from './triage/triage.controller.ts';
 import { TriageService } from './triage/triage.service.ts';
 
@@ -30,7 +28,6 @@ describe('orchestrator modules', () => {
     { service: IngestService, controller: IngestController },
     { service: TriageService, controller: TriageController },
     { service: RunsService, controller: RunsController },
-    { service: TiersService, controller: TiersController },
     { service: ApprovalsService, controller: ApprovalsController },
     { service: NotifyService, controller: NotifyController },
   ])('resolves $service.name and its controller', ({ service, controller }) => {
