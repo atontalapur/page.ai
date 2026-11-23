@@ -65,7 +65,8 @@ describe('SocketIoLink', () => {
   let close = () => Promise.resolve();
   afterEach(() => close());
 
-  async function orchestrator(secret: string) {
+  /** A stand-in for the orchestrator's /node namespace, on `port` when given. */
+  async function orchestrator(secret: string, port = 0) {
     const http = createServer();
     const server = new Server(http);
     const nodes = server.of(NODE_NAMESPACE);
@@ -73,14 +74,17 @@ describe('SocketIoLink', () => {
       const { token } = socket.handshake.auth as { token?: string };
       next(token === secret ? undefined : new Error('bad secret'));
     });
-    http.listen(0);
+    http.listen(port);
     await once(http, 'listening');
-    close = async () => {
+    const stop = async () => {
       await server.close();
     };
-    const { port } = http.address() as AddressInfo;
-    return { url: `http://127.0.0.1:${port}`, nodes };
+    close = stop;
+    const address = http.address() as AddressInfo;
+    return { url: `http://127.0.0.1:${address.port}`, port: address.port, nodes, stop };
   }
+
+  const fast = { refusedMs: 50, closedMs: 50 };
 
   it('authenticates with the shared secret and delivers events', async () => {
     const { url, nodes } = await orchestrator('s3cret');
@@ -131,16 +135,75 @@ describe('SocketIoLink', () => {
     await link.close();
   });
 
-  it('is turned away with the wrong secret', async () => {
+  it('is turned away with the wrong secret, and tries again later', async () => {
     const { url } = await orchestrator('s3cret');
     const lines: string[] = [];
     const link = new SocketIoLink({
       url,
       secret: 'wrong',
       logger: pino({}, { write: (line: string) => lines.push(line) }),
+      retry: fast,
     });
-    await expect.poll(() => lines.join('')).toContain('cannot reach the orchestrator');
+    await expect.poll(() => lines.join('')).toContain('the orchestrator refused the socket');
     expect(lines.join('')).toContain('bad secret');
+    // socket.io-client gives up on a refusal; the link asks again.
+    await expect.poll(() => lines.filter((l) => l.includes('refused')).length).toBeGreaterThan(2);
     await link.close();
+  });
+
+  it('connects once the orchestrator stops refusing it', async () => {
+    const { url, nodes } = await orchestrator('s3cret');
+    let refusals = 2;
+    nodes.use((_socket, next) => next(refusals-- > 0 ? new Error('rate_limited') : undefined));
+    const received = new Promise<unknown>((resolve) => {
+      nodes.on('connection', (socket) => socket.on('node.step', resolve));
+    });
+    const link = new SocketIoLink({ url, secret: 's3cret', logger, retry: fast });
+    // Sent while refused, and kept until the link connects.
+    link.send('node.step', step);
+    expect(await received).toEqual(step);
+    await link.close();
+  });
+
+  it('connects again after the orchestrator closes the socket', async () => {
+    const { url, nodes } = await orchestrator('s3cret');
+    let connections = 0;
+    nodes.on('connection', (socket) => {
+      connections++;
+      if (connections === 1) socket.disconnect(true);
+    });
+    const link = new SocketIoLink({ url, secret: 's3cret', logger, retry: fast });
+    await expect.poll(() => connections).toBe(2);
+    await link.close();
+  });
+
+  it('connects again after the orchestrator restarts', async () => {
+    const first = await orchestrator('s3cret');
+    const link = new SocketIoLink({ url: first.url, secret: 's3cret', logger, retry: fast });
+    await once(first.nodes, 'connection');
+    await first.stop();
+    const second = await orchestrator('s3cret', first.port);
+    const kills: unknown[] = [];
+    link.on('run.kill', (payload) => kills.push(payload));
+    const [socket] = (await once(second.nodes, 'connection')) as [
+      { emit(e: string, p: unknown): void },
+    ];
+    socket.emit('run.kill', kill);
+    await expect.poll(() => kills).toEqual([kill]);
+    await link.close();
+  });
+
+  it('stops trying once closed', async () => {
+    const { url, nodes } = await orchestrator('s3cret');
+    let handshakes = 0;
+    nodes.use((_socket, next) => {
+      handshakes++;
+      next(new Error('rate_limited'));
+    });
+    const link = new SocketIoLink({ url, secret: 's3cret', logger, retry: fast });
+    await expect.poll(() => handshakes).toBe(1);
+    await link.close();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(handshakes).toBe(1);
   });
 });

@@ -109,8 +109,8 @@ call the app's ops API at `OPS_APP_URL` with `OPS_SECRET` as the bearer token, s
 `OPS_SECRET` to the app's own value (32 characters or more, surrounding spaces trimmed).
 `OPS_APP_URL` must be https, or plain http for `localhost`, `127.0.0.1` or `[::1]` only,
 and takes no user, password, query or fragment. Runs below Tier 3 are never given the
-tools. A job expiry, or a kill once the orchestrator relays one, aborts the agent's request
-in flight and stops any further one.
+tools. A job expiry or a kill aborts the agent's request in flight and stops any further
+one.
 
 A Tier 3 run claims the app before it starts, and holds it until it finishes, so two runs
 can't change and restart the app under each other. The claim is a Postgres advisory lock
@@ -201,12 +201,19 @@ pnpm --filter @page/node test:integration   # needs DATABASE_URL and Docker
 The integration tests claim a job from a real pg-boss queue, run it end to end with fake
 Docker and model and check the `steps` row, and start and remove a real container.
 
-## Open points for the orchestrator side
+## The orchestrator side
 
-- Socket.IO server: serve the `/node` namespace, check `auth.token` against
-  `NODE_SHARED_SECRET`, and accept the `nodeToServerEvents` from contracts.
-- The daemon writes steps itself, because `execute()` must not run a command whose step
-  it couldn't record. The server should relay `node.step` to the UI, not insert it again.
+- The orchestrator serves the `/node` namespace and refuses a handshake without
+  `NODE_SHARED_SECRET` as `auth.token`. It relays `node.step`, `node.diff` and
+  `node.run.finished` to the UI. The daemon writes steps itself, because `execute()` must
+  not run a command whose step it couldn't record, so the server doesn't insert them again.
+- A kill reaches the daemon as `run.kill`: at once when its socket has named the run, or on
+  its next event for a run killed while it was away. A kill for a run this daemon isn't
+  holding is logged and ignored.
+- The link reconnects on its own after a dropped connection or an orchestrator restart, and
+  sends the events it buffered meanwhile. socket.io-client gives up on a refused handshake
+  and on a socket the server closed, so the link tries again itself: a minute after a
+  refusal, 5 seconds after a close.
 - The orchestrator creates the `fix` queue with `retryLimit: 0`, a 20-minute expiry and
   the `fix_failed` dead letter queue, and the `run_finished` queue this daemon sends to. A
   result that can't be queued after 3 tries fails the fix job. So does a daemon that dies
