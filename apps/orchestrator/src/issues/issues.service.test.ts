@@ -107,7 +107,9 @@ describe('IssuesService', () => {
 
   it('fills in the report on a repeat when the issue had none', async () => {
     const { issue } = await service.report({ fingerprint: `fp-${++n}`, title: 'Boom' });
+    expect(await service.storedReport(issue.id)).toBeNull();
     await service.report({ fingerprint: `fp-${n}`, title: 'Boom' }, 'GET /\n\nError: Boom');
+    expect(await service.storedReport(issue.id)).toBe('GET /\n\nError: Boom');
     await service.apply(issue.id, triage);
     await service.apply(issue.id, { type: 'start_fix' });
     expect((await liveJob(issue.id)).data.report).toBe('GET /\n\nError: Boom');
@@ -258,6 +260,7 @@ describe('IssuesService', () => {
     const id = '00000000-0000-4000-8000-000000000000';
     await expect(service.get(id)).rejects.toThrow(IssueNotFoundError);
     await expect(service.events(id)).rejects.toThrow(IssueNotFoundError);
+    await expect(service.storedReport(id)).rejects.toThrow(IssueNotFoundError);
     await expect(service.apply(id, { type: 'kill' })).rejects.toThrow(IssueNotFoundError);
   });
 });

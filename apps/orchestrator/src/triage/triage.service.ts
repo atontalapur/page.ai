@@ -50,7 +50,8 @@ export class TriageService {
   }
 
   private async classify(issue: Issue): Promise<Issue> {
-    const verdict = await this.classifier.classify(issue.title);
+    const report = await this.issues.storedReport(issue.id);
+    const verdict = await this.classifier.classify({ title: issue.title, report });
     const log = issueLogger(this.logger, { issueId: issue.id });
     if (verdict.fallback !== undefined) {
       log.warn({ fallback: verdict.fallback }, 'triage model failed, rules classified the issue');

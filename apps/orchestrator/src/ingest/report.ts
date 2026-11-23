@@ -281,6 +281,18 @@ function inAppFrames(frames: unknown[]): string[] {
 const COMPILED_NOTE =
   '    (these frames are compiled .next/server chunks; find the source from the error and the request)';
 
+const TITLE_MAX = 500;
+
+/** The issue title: the first exception's type and message. */
+export function titleFrom(body: PosthogWebhook): string {
+  const props = body.event.properties;
+  const parts = [props.$exception_types?.[0], props.$exception_values?.[0]].filter(
+    (part): part is string => !!part && part.trim().length > 0,
+  );
+  const title = parts.join(': ').trim();
+  return (title || 'Exception').slice(0, TITLE_MAX);
+}
+
 /**
  * The report for an error known only by its issue title: an event with no `$exception_list`,
  * or an issue opened without a report (POST /issues, or before migration 004).

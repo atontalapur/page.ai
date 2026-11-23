@@ -2,7 +2,8 @@ import type { CompletionResult, ModelClient } from '@page/model-client';
 import { describe, expect, it } from 'vitest';
 import { buildClassifier, TriageClassifier } from './classify.ts';
 
-const rulesTitle = 'Hydration failed';
+const rulesInput = { title: 'Hydration failed', report: null };
+const titled = (title: string) => ({ title, report: null });
 
 function model(result: CompletionResult): ModelClient {
   return { complete: () => Promise.resolve(result) };
@@ -19,7 +20,7 @@ describe('TriageClassifier', () => {
       model(ok('```json\n{"class":"database","severity":"critical"}\n```')),
       1000,
     );
-    await expect(classifier.classify(rulesTitle)).resolves.toEqual({
+    await expect(classifier.classify(rulesInput)).resolves.toEqual({
       class: 'database',
       severity: 'critical',
       by: 'model',
@@ -28,7 +29,7 @@ describe('TriageClassifier', () => {
 
   it('falls back when the reply is junk, and says why', async () => {
     const classifier = new TriageClassifier(model(ok('not json')), 1000);
-    await expect(classifier.classify(rulesTitle)).resolves.toEqual({
+    await expect(classifier.classify(rulesInput)).resolves.toEqual({
       class: 'frontend',
       severity: 'medium',
       by: 'rules',
@@ -41,7 +42,7 @@ describe('TriageClassifier', () => {
       model({ ok: false, error: { kind: 'aborted', status: null, message: 'timeout' } }),
       1000,
     );
-    await expect(classifier.classify(rulesTitle)).resolves.toEqual({
+    await expect(classifier.classify(rulesInput)).resolves.toEqual({
       class: 'frontend',
       severity: 'medium',
       by: 'rules',
@@ -55,7 +56,7 @@ describe('TriageClassifier', () => {
       model({ ok: false, error: { kind: 'credits', status: 402, message } }),
       1000,
     );
-    const triage = await classifier.classify(rulesTitle);
+    const triage = await classifier.classify(rulesInput);
     expect(triage).toMatchObject({ by: 'rules', class: 'frontend' });
     expect(triage.fallback).toMatch(/^credits 402: Insufficient credits\./);
     expect(triage.fallback?.length).toBe(200);
@@ -63,17 +64,17 @@ describe('TriageClassifier', () => {
 
   it('classifies from the title when there is no model', async () => {
     const classifier = new TriageClassifier(null, 1000);
-    await expect(classifier.classify('relation "orders" does not exist')).resolves.toEqual({
+    await expect(classifier.classify(titled('relation "orders" does not exist'))).resolves.toEqual({
       class: 'database',
       severity: 'critical',
       by: 'rules',
     });
-    await expect(classifier.classify('ECONNREFUSED 127.0.0.1:5432')).resolves.toEqual({
+    await expect(classifier.classify(titled('ECONNREFUSED 127.0.0.1:5432'))).resolves.toEqual({
       class: 'infra-config',
       severity: 'low',
       by: 'rules',
     });
-    await expect(classifier.classify('TypeError in /api/cart')).resolves.toEqual({
+    await expect(classifier.classify(titled('TypeError in /api/cart'))).resolves.toEqual({
       class: 'backend-api',
       severity: 'high',
       by: 'rules',
@@ -99,7 +100,9 @@ describe('TriageClassifier', () => {
       dashboardUrl: 'http://localhost:3000',
     };
     const rules = buildClassifier({ ...base, openRouterApiKey: undefined });
-    await expect(rules.classify('Hydration failed')).resolves.toMatchObject({ class: 'frontend' });
+    await expect(rules.classify(titled('Hydration failed'))).resolves.toMatchObject({
+      class: 'frontend',
+    });
     const live = buildClassifier({ ...base, openRouterApiKey: 'sk-test' });
     expect(live).toBeInstanceOf(TriageClassifier);
   });

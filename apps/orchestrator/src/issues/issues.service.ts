@@ -144,6 +144,17 @@ export class IssuesService {
     return toIssue(row);
   }
 
+  /** The sanitized report ingest stored, or null for an issue opened without one. */
+  async storedReport(id: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom('issues')
+      .select('report')
+      .where('id', '=', id)
+      .executeTakeFirst();
+    if (!row) throw new IssueNotFoundError(id);
+    return row.report;
+  }
+
   async events(id: string): Promise<IssueEventRecord[]> {
     await this.get(id);
     const rows = await this.db

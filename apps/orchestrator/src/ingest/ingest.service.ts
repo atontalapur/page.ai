@@ -3,19 +3,9 @@ import type { Issue, PosthogWebhook } from '@page/contracts';
 import { IssuesService } from '../issues/issues.service.ts';
 import type { JobQueues } from '../queue/queues.ts';
 import { JOB_QUEUES } from '../tokens.ts';
-import { reportFrom } from './report.ts';
+import { reportFrom, titleFrom } from './report.ts';
 
-const TITLE_MAX = 500;
 const FINGERPRINT_MAX = 512;
-
-function titleFrom(body: PosthogWebhook): string {
-  const props = body.event.properties;
-  const parts = [props.$exception_types?.[0], props.$exception_values?.[0]].filter(
-    (part): part is string => !!part && part.trim().length > 0,
-  );
-  const title = parts.join(': ').trim();
-  return (title || 'Exception').slice(0, TITLE_MAX);
-}
 
 @Injectable()
 export class IngestService {

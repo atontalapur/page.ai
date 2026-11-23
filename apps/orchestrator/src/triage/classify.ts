@@ -1,20 +1,15 @@
-import {
-  bugClassSchema,
-  clip,
-  severitySchema,
-  type BugClass,
-  type Severity,
-} from '@page/contracts';
+import { bugClassSchema, clip, severitySchema } from '@page/contracts';
 import { OpenRouterClient, type ModelClient, type ModelError } from '@page/model-client';
 import { z } from 'zod';
 import type { Config } from '../config.ts';
+import { classifyByRules, type TriageInput, type Verdict } from './rules.ts';
 
-const verdictSchema = z.object({
+export type { TriageInput, Verdict } from './rules.ts';
+
+const verdictSchema: z.ZodType<Verdict> = z.object({
   class: bugClassSchema,
   severity: severitySchema,
 });
-
-export type Verdict = z.infer<typeof verdictSchema>;
 
 /** A verdict and the path that reached it, for the triage log line. */
 export interface Triage extends Verdict {
@@ -36,21 +31,6 @@ const SYSTEM = [
   'class is where the bug lives. severity is how badly it pages someone.',
 ].join(' ');
 
-function classifyByRules(title: string): Verdict {
-  const text = title.toLowerCase();
-  let klass: BugClass = 'backend-api';
-  if (/relation|postgres|sql|column|constraint|duplicate key/.test(text)) klass = 'database';
-  else if (/econnrefused|eaddrinuse|enoent|config|environment variable|missing env/.test(text)) {
-    klass = 'infra-config';
-  } else if (/react|hydration|window is not defined|tsx|next\/image/.test(text)) klass = 'frontend';
-
-  let severity: Severity = 'high';
-  if (klass === 'database' || /fatal|payment|checkout/.test(text)) severity = 'critical';
-  else if (klass === 'frontend') severity = 'medium';
-  else if (klass === 'infra-config') severity = 'low';
-  return { class: klass, severity };
-}
-
 function parseVerdict(content: string): Verdict | undefined {
   const trimmed = content
     .trim()
@@ -66,7 +46,7 @@ function parseVerdict(content: string): Verdict | undefined {
 
 /**
  * Class and severity from a cheap model. A missing model, a failed call, a timeout or a
- * reply that is not the JSON contract falls back to rules over the exception title.
+ * reply that is not the JSON contract falls back to rules over the title and report.
  */
 export class TriageClassifier {
   constructor(
@@ -74,22 +54,22 @@ export class TriageClassifier {
     private readonly timeoutMs: number,
   ) {}
 
-  async classify(title: string): Promise<Triage> {
-    if (!this.model) return { ...classifyByRules(title), by: 'rules' };
+  async classify(input: TriageInput): Promise<Triage> {
+    if (!this.model) return { ...classifyByRules(input), by: 'rules' };
     const result = await this.model.complete(
       [
         { role: 'system', content: SYSTEM },
-        { role: 'user', content: title },
+        { role: 'user', content: input.title },
       ],
       { timeoutMs: this.timeoutMs },
     );
     if (!result.ok) {
-      return { ...classifyByRules(title), by: 'rules', fallback: modelFailure(result.error) };
+      return { ...classifyByRules(input), by: 'rules', fallback: modelFailure(result.error) };
     }
     const verdict = parseVerdict(result.completion.content);
     if (verdict) return { ...verdict, by: 'model' };
     const reply = clip(result.completion.content, FALLBACK_MAX);
-    return { ...classifyByRules(title), by: 'rules', fallback: `reply is not a verdict: ${reply}` };
+    return { ...classifyByRules(input), by: 'rules', fallback: `reply is not a verdict: ${reply}` };
   }
 }
 

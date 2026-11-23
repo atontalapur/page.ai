@@ -38,6 +38,16 @@ describe('TriageService', () => {
     expect(jobs[0]?.singletonKey).toBe('hydrate:+15550000001');
   });
 
+  it('classifies from the stored report, not only the title', async () => {
+    const { issue } = await issues.report(
+      { fingerprint: 'from-report', title: 'TypeError: x is undefined' },
+      'GET /cart (route /cart, render)\n\nTypeError: x is undefined',
+    );
+    await triage.handle({ v: 1, issueId: issue.id });
+    // The title alone reads as backend-api; the request line says a page broke.
+    expect(await issues.get(issue.id)).toMatchObject({ class: 'frontend', severity: 'medium' });
+  });
+
   it('logs which path classified the issue, and why the model fell back', async () => {
     const lines: unknown[] = [];
     const logger = createLogger('info', { write: (line: string) => lines.push(JSON.parse(line)) });
@@ -115,7 +125,8 @@ describe('TriageService', () => {
     await auto.handle({ v: 1, issueId: issue.id });
 
     const fixing = await issues.get(issue.id);
-    expect(fixing).toMatchObject({ status: 'fixing', currentTier: 1, class: 'backend-api' });
+    // `GET /` is a page, so the rules file scenario 001's error as frontend, as it says.
+    expect(fixing).toMatchObject({ status: 'fixing', currentTier: 1, class: 'frontend' });
     const jobs = await deps.boss.findJobs<FixJob>(FIX_QUEUE, { data: { issueId: issue.id } });
     expect(jobs.map((job) => job.data)).toEqual([
       expect.objectContaining({
