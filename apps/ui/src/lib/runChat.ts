@@ -19,7 +19,8 @@ const CLOSE_TEXT: Record<ChatCloseReason, string> = {
 
 /** Why a message didn't go out, under the box it was typed in. */
 export const ASK_FAILURE_TEXT: Record<AskFailure, string> = {
-  no_name: 'Give your name first, so the message is recorded under it.',
+  no_name:
+    'This tab has no name to record the message under. Give your name, or connect with your personal token.',
   rate_limited: 'Too many messages from this tab in the last minute. Wait a moment and send again.',
   not_in_progress: 'This run is no longer in progress, so the agent will not read it.',
   no_daemon: 'No agent daemon holds this run right now, so nothing would read it.',

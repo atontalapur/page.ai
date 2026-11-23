@@ -11,6 +11,7 @@ import {
   renderWithIssues,
   testSource,
   type TestSource,
+  withSession,
 } from '../../test-utils';
 
 beforeEach(() => {
@@ -233,6 +234,42 @@ describe('the box to ask the agent', () => {
     expect(await screen.findByText('Tier 2')).toBeTruthy();
     expect(((await box()) as HTMLTextAreaElement).value).toBe('');
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('sends as the person a personal token names, with no name to give or change', async () => {
+    localStorage.clear();
+    const source = withSession(testSource([fixing], 'live', [holder()]), {
+      token: 'personal',
+      name: 'Daniyal',
+    });
+    render([run()], { source });
+    fireEvent.change(await box(), { target: { value: 'Why git diff?' } });
+    const section = screen.getByRole('region', { name: 'Ask the agent' });
+    expect(await within(section).findByText('Daniyal')).toBeTruthy();
+    expect(within(section).queryByLabelText('Your name')).toBeNull();
+    expect(within(section).queryByRole('button', { name: 'Change' })).toBeNull();
+    await act(async () => {
+      fireEvent.click(sendButton());
+      await Promise.resolve();
+    });
+    expect(source.asks).toEqual([{ runId, message: 'Why git diff?' }]);
+  });
+
+  it('is shut for the shared token once personal tokens exist, and offers the switch', async () => {
+    const source = withSession(testSource([fixing], 'live', [holder()]), {
+      token: 'shared',
+      canDecide: false,
+    });
+    render([run()], { source });
+    expect(
+      await screen.findByText(
+        "This tab connected with the shared API token, which can't send the agent messages.",
+      ),
+    ).toBeTruthy();
+    expect(((await box()) as HTMLTextAreaElement).disabled).toBe(true);
+    expect(screen.queryByLabelText('Your name')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect with your personal token' }));
+    expect(await screen.findByLabelText('Personal or API token')).toBeTruthy();
   });
 
   it('asks for a name first, and sends nothing until there is one', async () => {

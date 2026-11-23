@@ -263,8 +263,10 @@ through `execute()`, the policy and approvals.
 
 - **Ask.** A tab sends `run.chat` with the run and the message (1 to 1,000 characters after
   trimming, `MAX_CHAT_CHARS`; a longer one breaks the contract and is dropped). `UiGateway`
-  checks the tab connected with a name (identity, under Tier 3 approvals) and is within its
-  chat limit, then `RunChats` checks the run is its issue's run in progress, a connected
+  checks the tab has an identity to record it under, the same one a Tier 3 decision gets (a
+  personal token's person, or the tab's name label only while no personal token is
+  configured; the shared token can't send once one is), and that it is within its chat
+  limit. Then `RunChats` checks the run is its issue's run in progress, a connected
   daemon holds it (`Nodes`), and it has had fewer than 10 messages (`MAX_CHATS_PER_RUN`).
   A message that fails any check is stored nowhere, and only that tab gets
   `run.chat.refused` with the reason: `no_name`, `rate_limited`, `not_in_progress`,
@@ -284,7 +286,7 @@ through `execute()`, the policy and approvals.
 
 `run_chats.run_id` is the fix job's id with no foreign key, as for `steps` and `approvals`,
 and `issue_id` references the issue, so an issue with messages can't be deleted
-(`010_run_chats.sql`). The CHECKs copy `CHAT_STATUSES`, `CHAT_CLOSE_REASONS` and the length
+(`013_run_chats.sql`). The CHECKs copy `CHAT_STATUSES`, `CHAT_CLOSE_REASONS` and the length
 caps from the contracts. The 10-message cap is checked before the insert, so two messages at
 the same moment can pass it by one.
 

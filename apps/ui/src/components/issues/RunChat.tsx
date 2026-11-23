@@ -55,11 +55,14 @@ export function ChatItem({ chat }: { chat: RunChat }) {
  * A box to send the agent a message on a run in progress: a question about what it is doing,
  * or a pointer. The agent reads it before its next step and answers in that step, and every
  * open tab shows both. It is shut, with the reason, while the run has ended, no daemon holds
- * it, or this tab is not connected. The message is recorded under the person's name, which
- * it asks for first, as approvals do.
+ * it, or this tab is not connected.
+ *
+ * The message is recorded under the identity a Tier 3 decision gets (ApprovalRequests): a
+ * personal token's person; nobody for the shared token once personal tokens are configured,
+ * so the box is shut for it; and otherwise a name the tab gives, which it asks for first.
  */
 export function AskAgent({ run }: { run: Pick<IssueRun, 'id' | 'status'> }) {
-  const { askAgent, approverName, setApproverName, status } = useIssues();
+  const { askAgent, approverName, setApproverName, status, session, signOut } = useIssues();
   const { nodes } = useAgents();
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -67,14 +70,19 @@ export function AskAgent({ run }: { run: Pick<IssueRun, 'id' | 'status'> }) {
   const [renaming, setRenaming] = useState(false);
   const id = useId();
 
+  const signedIn = session?.token === 'personal' ? session.name : undefined;
+  const sharedOnly = session?.token === 'shared' && !session.canDecide;
   const shut = isFinished(run)
     ? 'This run has ended, so it takes no more messages.'
     : status !== 'live'
       ? 'Not connected to the orchestrator, so no message can go out from this tab until it is back.'
       : !heldByDaemon(nodes, run.id)
         ? 'No agent daemon holds this run right now. You can send a message once one takes it.'
-        : undefined;
-  const naming = approverName === null || renaming;
+        : sharedOnly
+          ? "This tab connected with the shared API token, which can't send the agent messages."
+          : undefined;
+  const naming = signedIn === undefined && !sharedOnly && (approverName === null || renaming);
+  const sender = signedIn ?? approverName;
   const message = text.trim();
   const canSend = shut === undefined && !naming && !sending && message !== '';
 
@@ -115,17 +123,33 @@ export function AskAgent({ run }: { run: Pick<IssueRun, 'id' | 'status'> }) {
       <form onSubmit={submit} className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <Label htmlFor={id}>Ask the agent</Label>
-          {approverName !== null && !renaming && (
-            <p className="text-xs text-muted-foreground">
-              As <span className="font-medium text-foreground">{approverName}</span>.{' '}
-              <button
-                type="button"
-                className="font-medium text-primary hover:underline"
-                onClick={() => setRenaming(true)}
-              >
-                Change
-              </button>
-            </p>
+          {sharedOnly ? (
+            <button
+              type="button"
+              className="text-xs font-medium text-primary hover:underline"
+              onClick={signOut}
+            >
+              Connect with your personal token
+            </button>
+          ) : (
+            sender !== null &&
+            !naming && (
+              <p className="text-xs text-muted-foreground">
+                As <span className="font-medium text-foreground">{sender}</span>.
+                {signedIn === undefined && (
+                  <>
+                    {' '}
+                    <button
+                      type="button"
+                      className="font-medium text-primary hover:underline"
+                      onClick={() => setRenaming(true)}
+                    >
+                      Change
+                    </button>
+                  </>
+                )}
+              </p>
+            )
           )}
         </div>
         <Textarea

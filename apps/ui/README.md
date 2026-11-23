@@ -54,8 +54,11 @@ It is guidance only: the run's tier, policy and approvals still decide what it m
 - **Shut.** The box is disabled, with the reason, while the run has ended, no connected daemon
   holds it (from the live agents list), or the tab is not connected. An ended run keeps the box
   only if someone talked to it, and each run's box starts empty.
-- **Name.** Messages are recorded under the name approvals use (`ui:<name>`), so the box asks
-  for it first, the same way.
+- **Who sends it.** A message is recorded under the identity a Tier 3 decision gets: a
+  personal token sends as the person it names ("As Arjun", nothing to change); the shared
+  token, once the orchestrator has personal tokens, can't send, and the box is shut with
+  "Connect with your personal token"; with no personal tokens configured, the box asks for the
+  tab's name first, as the approval bar does.
 - **The conversation.** Each message shows in the run's steps after the step that started
   before it was asked, with its answer once the agent gives it, or why it has none: not read
   because too many were waiting or the agent had already submitted, not answered because the
