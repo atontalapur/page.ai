@@ -51,7 +51,7 @@ function fakeApp(
     }
     const key = url.pathname.split('/').pop()!;
     if (method === 'PUT') {
-      overrides[key] = (JSON.parse(String(init.body)) as { value: string }).value;
+      overrides[key] = (JSON.parse(init.body as string) as { value: string }).value;
       return json({});
     }
     if (method === 'DELETE') {
@@ -107,7 +107,7 @@ describe('DebugService', () => {
     const app = fakeApp();
     expect(await service().create('synthetic')).toMatchObject({ ok: true });
     const [, init] = app.fetchMock.mock.calls[0]!;
-    const body = JSON.parse(String(init?.body)) as { api_key: string; event: string };
+    const body = JSON.parse(init?.body as string) as { api_key: string; event: string };
     expect(body).toMatchObject({ api_key: 'phc_test', event: '$exception' });
     expect(await service({ ...debug, posthog: undefined }).create('synthetic')).toMatchObject({
       ok: false,
