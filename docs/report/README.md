@@ -12,7 +12,7 @@ they're wrong.
 | Problem and background                                     | Advaith  | drafted, not reviewed        | [problem-and-background.md](problem-and-background.md)       |
 | System: ingest, triage, paging and the issue state machine | Nidheesh | not started                  |                                                              |
 | System: agent loop and escalation thresholds               | Arjun    | not started                  |                                                              |
-| System: node daemon, sandbox, tiered toolkit and demo app  | Advaith  | not started                  |                                                              |
+| System: node daemon, sandbox, tiered toolkit and demo app  | Advaith  | drafted, not reviewed        | [system-node.md](system-node.md)                             |
 | System: dashboard                                          | Daniyal  | not started                  |                                                              |
 | Evaluation method                                          | Advaith  | reviewed (#17)               | [evaluation-method.md](evaluation-method.md)                 |
 | Results (dev, held-out and ops)                            | Advaith  | reviewed (#17)               | [evaluation-method.md#results](evaluation-method.md#results) |
