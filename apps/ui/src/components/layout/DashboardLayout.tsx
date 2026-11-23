@@ -1,13 +1,7 @@
 import { type ReactNode } from 'react';
-import {
-  LayoutDashboard,
-  AlertTriangle,
-  Bot,
-  Activity,
-  Settings,
-  Bell,
-  Sparkles,
-} from 'lucide-react';
+import { NavLink, useLocation } from 'react-router-dom';
+
+import { LayoutDashboard, AlertTriangle, Bot, Bell, Sparkles } from 'lucide-react';
 
 import {
   SidebarProvider,
@@ -34,70 +28,91 @@ interface DashboardLayoutProps {
 }
 
 const navigation = [
-  { title: 'Dashboard', icon: LayoutDashboard },
-  { title: 'Incidents', icon: AlertTriangle },
-  { title: 'Agents', icon: Bot },
-  { title: 'Activity', icon: Activity },
-  { title: 'Settings', icon: Settings },
+  { title: 'Dashboard', icon: LayoutDashboard, path: '/' },
+  { title: 'Incidents', icon: AlertTriangle, path: '/incidents' },
+  { title: 'Agents', icon: Bot, path: '/agents' },
 ] as const;
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
-  const activePage = 'Dashboard';
+  const { pathname } = useLocation();
+
+  const isActivePath = (path: string) =>
+    pathname === path || (path !== '/' && pathname.startsWith(`${path}/`));
+
+  const activePage = navigation.find((item) => isActivePath(item.path))?.title ?? 'Page.AI';
 
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon">
+        {/* Logo */}
         <SidebarHeader className="p-4">
           <div className="flex items-center gap-3">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <Sparkles className="size-5" />
             </div>
+
             <span className="truncate text-xl font-bold group-data-[collapsible=icon]:hidden">
               Page.AI
             </span>
           </div>
         </SidebarHeader>
 
+        {/* Navigation */}
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+          <SidebarGroup className="px-3 py-4">
+            <SidebarGroupLabel className="mb-2 px-3 text-xs font-medium">
+              Workspace
+            </SidebarGroupLabel>
+
             <SidebarGroupContent>
-              <SidebarMenu>
-                {navigation.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      tooltip={item.title}
-                      isActive={item.title === 'Dashboard'}
-                      disabled={item.title !== 'Dashboard'}
-                    >
-                      <item.icon className="size-4" />
-                      <span>{item.title}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+              <SidebarMenu className="gap-1">
+                {navigation.map((item) => {
+                  const isActive = isActivePath(item.path);
+
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        tooltip={item.title}
+                        isActive={isActive}
+                        render={<NavLink to={item.path} />}
+                        className="h-10 rounded-lg"
+                      >
+                        <item.icon />
+
+                        <span className="text-sm font-medium">{item.title}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
 
+        {/* User Profile */}
         <SidebarFooter className="p-4">
           <div className="flex items-center gap-3">
-            <Avatar className="size-9">
+            <Avatar className="size-9 shrink-0">
               <AvatarFallback>JD</AvatarFallback>
             </Avatar>
+
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
               <p className="truncate text-sm font-medium">Demo User</p>
+
               <p className="text-xs text-muted-foreground">Workspace</p>
             </div>
           </div>
         </SidebarFooter>
       </Sidebar>
 
+      {/* Main Content */}
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center justify-between border-b px-4 md:px-6">
           <div className="flex items-center gap-3">
             <SidebarTrigger />
+
             <Separator orientation="vertical" className="h-5" />
+
             <h1 className="text-lg font-semibold">{activePage}</h1>
           </div>
 
@@ -105,6 +120,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <Button variant="ghost" size="icon" aria-label="Notifications" disabled>
               <Bell className="size-5" />
             </Button>
+
             <Avatar className="size-8">
               <AvatarFallback>JD</AvatarFallback>
             </Avatar>

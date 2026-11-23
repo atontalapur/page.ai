@@ -32,6 +32,7 @@
     "@page/design-system": "workspace:*",
     "lucide-react": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "react-router-dom": "^7.18.6"
   }
 }

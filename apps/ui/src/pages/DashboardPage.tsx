@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 import { Card, CardHeader, CardTitle, CardContent } from '@page/design-system/components/ui/card';
 
 import {
@@ -10,94 +12,68 @@ import {
 } from '@page/design-system/components/ui/table';
 
 import { Badge } from '@page/design-system/components/ui/badge';
+
 import AgentOverview, { type Agent } from '../components/agents/AgentOverview';
 
-const recentIncidents = [
-  {
-    id: 'INC-001',
-    title: 'Database connection timeout',
-    severity: 'Critical',
-    status: 'Investigating',
-  },
-  {
-    id: 'INC-002',
-    title: 'API response latency',
-    severity: 'Medium',
-    status: 'Open',
-  },
-];
-
-const agents: Agent[] = [
-  {
-    id: 'AG-001',
-    name: 'Diagnostic Agent',
-    status: 'Running',
-    task: 'Analyzing database timeout',
-  },
-  {
-    id: 'AG-002',
-    name: 'Fix Agent',
-    status: 'Running',
-    task: 'Generating patch for API failure',
-  },
-  {
-    id: 'AG-003',
-    name: 'Review Agent',
-    status: 'Idle',
-    task: 'Waiting for approval',
-  },
-  {
-    id: 'AG-004',
-    name: 'Monitoring Agent',
-    status: 'Failed',
-    task: 'Connection lost',
-  },
-];
-
-const runningAgents = agents.filter((agent) => agent.status === 'Running').length;
-
-const metrics = [
-  {
-    id: 'total-incidents',
-    title: 'Total Incidents',
-    value: 24,
-    description: '+3 today',
-  },
-  {
-    id: 'active-incidents',
-    title: 'Active Incidents',
-    value: 8,
-    description: 'Needs attention',
-  },
-  {
-    id: 'active-agents',
-    title: 'Active Agents',
-    value: agents.length,
-    description: `${runningAgents} tasks running`,
-  },
-  {
-    id: 'resolved-today',
-    title: 'Resolved Today',
-    value: 12,
-    description: 'Resolved in the last 24 hours',
-  },
-];
-
-const severityColors: Record<string, string> = {
-  Critical: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
-  High: 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300',
-  Medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300',
-  Low: 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300',
-};
-
-const incidentStatusColors: Record<string, string> = {
-  Investigating:
-    'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950 dark:text-purple-300',
-  Open: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300',
-  Resolved: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-300',
-};
+import { mockIncidents } from '../data/mockIncidents';
+import { mockAgents } from '../data/mockAgents';
+import { getActiveTask, getAgentStatus } from '../data/mockTasks';
+import { useTasks } from '../context/TaskContext';
+import { incidentStatusStyles, severityStyles } from '../lib/statusStyles';
 
 export default function DashboardPage() {
+  const { tasks } = useTasks();
+
+  const totalIncidents = mockIncidents.length;
+
+  const activeIncidents = mockIncidents.filter((incident) => incident.status !== 'Resolved').length;
+
+  const runningAgents = mockAgents.filter(
+    (agent) => getAgentStatus(agent, tasks) === 'Running',
+  ).length;
+
+  const queuedTasks = tasks.filter((task) => task.status === 'Queued').length;
+
+  const runningTasks = tasks.filter((task) => task.status === 'Running').length;
+
+  const metrics = [
+    {
+      id: 'total-incidents',
+      title: 'Total Incidents',
+      value: totalIncidents,
+      description: 'Total reported incidents',
+    },
+    {
+      id: 'active-incidents',
+      title: 'Active Incidents',
+      value: activeIncidents,
+      description: 'Needs attention',
+    },
+    {
+      id: 'running-agents',
+      title: 'Running Agents',
+      value: runningAgents,
+      description: `${runningTasks} ${runningTasks === 1 ? 'task' : 'tasks'} running`,
+    },
+    {
+      id: 'queued-tasks',
+      title: 'Queued Tasks',
+      value: queuedTasks,
+      description: `${tasks.length} total ${tasks.length === 1 ? 'task' : 'tasks'}`,
+    },
+  ];
+
+  const recentIncidents = [...mockIncidents]
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+    .slice(0, 5);
+
+  const agents: Agent[] = mockAgents.map((agent) => ({
+    id: agent.id,
+    name: agent.name,
+    status: getAgentStatus(agent, tasks),
+    task: getActiveTask(tasks, agent.id)?.title ?? 'No active task',
+  }));
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -114,11 +90,13 @@ export default function DashboardPage() {
           </Card>
         ))}
       </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Recent Incidents</CardTitle>
         </CardHeader>
-        <CardContent>
+
+        <CardContent className="overflow-x-auto">
           <Table className="min-w-[600px]">
             <TableHeader>
               <TableRow>
@@ -130,18 +108,28 @@ export default function DashboardPage() {
             </TableHeader>
 
             <TableBody>
-              {recentIncidents.map((Incident) => (
-                <TableRow key={Incident.id}>
-                  <TableCell>{Incident.id}</TableCell>
-                  <TableCell>{Incident.title}</TableCell>
+              {recentIncidents.map((incident) => (
+                <TableRow key={incident.id}>
                   <TableCell>
-                    <Badge variant="outline" className={severityColors[Incident.severity]}>
-                      {Incident.severity}
+                    <Link
+                      to={`/incidents/${incident.id}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {incident.id}
+                    </Link>
+                  </TableCell>
+
+                  <TableCell>{incident.title}</TableCell>
+
+                  <TableCell>
+                    <Badge variant="outline" className={severityStyles[incident.severity]}>
+                      {incident.severity}
                     </Badge>
                   </TableCell>
+
                   <TableCell>
-                    <Badge variant="outline" className={incidentStatusColors[Incident.status]}>
-                      {Incident.status}
+                    <Badge variant="outline" className={incidentStatusStyles[incident.status]}>
+                      {incident.status}
                     </Badge>
                   </TableCell>
                 </TableRow>
@@ -150,6 +138,7 @@ export default function DashboardPage() {
           </Table>
         </CardContent>
       </Card>
+
       <AgentOverview agents={agents} />
     </div>
   );
