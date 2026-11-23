@@ -215,7 +215,9 @@ test saw the outcome, and it can't tell a PR from a patch any more.
 for an ops fix that resolved the issue. The default is `pr` for a Tier 2 code scenario,
 `resolved` for an ops scenario and `approval` otherwise, since Tier 1 can't push and an ops
 fix is live once Tier 3 makes it. Pass `--expect approval` for a Tier 3 run that should stop
-on a pending approval request. With `--expect pr`, an issue that ends `awaiting_approval` at
+on a pending approval request; under any other expectation a pending request is part of the
+fix, and the test approves it or waits for a person (Tier 3 approvals, below). With
+`--expect pr`, an issue that ends `awaiting_approval` at
 Tier 1 fails `outcome` at once instead of waiting out its limit. So does an ops fix under
 `pr` or `approval`, and a patch left for review under `resolved`. The checks after the
 outcome: the issue's status, its class and severity set, the run it ended on, at least one
@@ -281,10 +283,8 @@ daemon can be the Railway ones or local ones.
   `DEMO_APP_URL`, which is staging's, and refuses a URL whose host isn't `localhost`,
   `127.0.0.1` or `::1`, so a local run can't break a deployed app. The daemon's ops tools go
   to its own `OPS_APP_URL`, so for a local run leave it unset or point it at the compose
-  app, never at staging. Its Tier 3 run waits for a person to approve each change to the
-  app: approve on the incident page, or start the daemon with `AUTO_APPROVE_OPS=true`, which
-  it takes only for an `OPS_APP_URL` on this machine. Otherwise each request times out after
-  3 minutes as rejected, and the run escalates or fails instead of resolving.
+  app, never at staging. Its Tier 3 run asks for approval before each change to the app,
+  and the test approves its own requests (Tier 3 approvals, below).
 
 `--target staging` runs against the deployed app at `DEMO_APP_URL`. The test never deploys,
 so a code scenario's bug must already be live there: staging serves the seeded demo baseline
@@ -329,6 +329,47 @@ section).
 On both targets, the daemon has to run `SANDBOX_IMAGE=page-sandbox:demo` built for the same
 scenario, and page-demo `main` has to hold the same tree (`demo-sync.sh <id>`), or the PR's
 diff carries more than the fix.
+
+### Tier 3 approvals
+
+A Tier 3 run asks a person before each `ops.setConfig`, `ops.deleteConfig`, `ops.restart`
+and `ops.rollback` (apps/orchestrator README, Tier 3 approvals). For an ops scenario, or any
+scenario whose expected tier is 3, the test takes part through the real approval path
+instead of going around it (`src/e2e-approvals.ts`):
+
+- **`--approve auto`** (the default). Before seeding, the test asks `GET /me` who its token
+  names, then connects to the orchestrator's `/ui` socket as itself, the way a tab does. It
+  approves the requests of the runs it is following, and no others, as they arrive, so the
+  orchestrator records each decision under the test's name and the daemon goes on as it
+  would after a person's click. A request sent before the test saw its run is approved once
+  it does, and each new run and each reconnect also loads the run's requests with
+  `GET /approvals?runId=`. It stops approving before the reset kills the issue, so nothing is
+  approved after the kill.
+- **`--approve manual`** leaves the requests to a person on the incident page. The `fix`
+  step waits through them, and prints once per run that it is waiting and on which issue.
+  It is the default with `--expect approval`, whose outcome is the pending request itself;
+  `--approve auto` with `--expect approval` is refused.
+
+Who the test decides as:
+
+| The orchestrator has                          | The test connects with                                                               | `decidedBy` |
+| --------------------------------------------- | ------------------------------------------------------------------------------------ | ----------- |
+| no `DASHBOARD_TOKENS`, or no `/me`            | the API token, and the name label `e2e`                                              | `ui:e2e`    |
+| `DASHBOARD_TOKENS` with an `e2e` entry        | `E2E_DASHBOARD_TOKEN`, a token made for it                                           | `ui:e2e`    |
+| `DASHBOARD_TOKENS`, and no token for the test | refused before seeding (exit 2), naming `E2E_DASHBOARD_TOKEN` and `--approve manual` |             |
+
+Make the test's token with `pnpm --filter @page/orchestrator dashboard-token e2e`, add the
+entry it prints to the orchestrator's `DASHBOARD_TOKENS`, and set the token as
+`E2E_DASHBOARD_TOKEN` where the test runs. The run's header names how it approves, such as
+`approve      auto, as ui:e2e (personal token)`. Each run in `--out` has `approve` (`auto`,
+`manual`, or null for a scenario that can't reach Tier 3) and `approvals`: each request the
+test approved, with the run, the tool, when it sent the decision, and the decision that
+stood with who made it. That is `approved` by `ui:e2e`, or what stood instead, such as
+`rejected` by `system:timed_out` for a request that expired first. The summary lists them.
+
+The daemon's `AUTO_APPROVE_OPS=true` still approves every gated call on the daemon itself,
+for a local app only; with it on, no request reaches the orchestrator and the test has
+nothing to approve.
 
 ### Triage classes (#159)
 
@@ -391,18 +432,19 @@ reports in view, so the counts overstate how either does on a new bug.
 
 ### Environment
 
-| Variable                                                    | For                                                                      |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `E2E_DATABASE_URL`, else `DATABASE_URL`                     | The orchestrator's database, read only. Railway's public URL for staging |
-| `E2E_ORCHESTRATOR_URL`, else `ORCHESTRATOR_URL`             | The orchestrator API, for the reset's kill                               |
-| `E2E_ORCHESTRATOR_API_TOKEN`, else `ORCHESTRATOR_API_TOKEN` | The orchestrator's API token, which the kill needs. Required             |
-| `GITHUB_TOKEN`, `GITHUB_REPO`                               | Finding and closing the PR. Needed for `--expect pr`                     |
-| `DEMO_APP_URL`                                              | Staging's app, for `--target staging` only                               |
-| `E2E_LOCAL_APP_URL`                                         | Local ops scenarios' compose app (default localhost on `DEMO_APP_PORT`)  |
-| `OPS_SECRET`                                                | Ops scenarios                                                            |
-| `PGBOSS_SCHEMA`                                             | The orchestrator's pg-boss schema (default `pgboss`)                     |
-| `POSTHOG_KEY`, `POSTHOG_HOST`                               | Local code scenarios: passed to the demo app container. Key required     |
-| `E2E_DEMO_APP_PORT`, `E2E_DEMO_DATABASE_URL`                | Local code scenarios (defaults 3100 and the compose Postgres's `demo`)   |
+| Variable                                                    | For                                                                                          |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `E2E_DATABASE_URL`, else `DATABASE_URL`                     | The orchestrator's database, read only. Railway's public URL for staging                     |
+| `E2E_ORCHESTRATOR_URL`, else `ORCHESTRATOR_URL`             | The orchestrator API, for the reset's kill                                                   |
+| `E2E_ORCHESTRATOR_API_TOKEN`, else `ORCHESTRATOR_API_TOKEN` | The orchestrator's API token, which the kill needs. Required                                 |
+| `E2E_DASHBOARD_TOKEN`                                       | The test's personal token, for `--approve auto` once the orchestrator has `DASHBOARD_TOKENS` |
+| `GITHUB_TOKEN`, `GITHUB_REPO`                               | Finding and closing the PR. Needed for `--expect pr`                                         |
+| `DEMO_APP_URL`                                              | Staging's app, for `--target staging` only                                                   |
+| `E2E_LOCAL_APP_URL`                                         | Local ops scenarios' compose app (default localhost on `DEMO_APP_PORT`)                      |
+| `OPS_SECRET`                                                | Ops scenarios                                                                                |
+| `PGBOSS_SCHEMA`                                             | The orchestrator's pg-boss schema (default `pgboss`)                                         |
+| `POSTHOG_KEY`, `POSTHOG_HOST`                               | Local code scenarios: passed to the demo app container. Key required                         |
+| `E2E_DEMO_APP_PORT`, `E2E_DEMO_DATABASE_URL`                | Local code scenarios (defaults 3100 and the compose Postgres's `demo`)                       |
 
 The run's header names the app URL the scenario's scripts run against, and the database's
 host, never its URL. If Railway's Postgres wants TLS, add `?sslmode=require` to the URL.

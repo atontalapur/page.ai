@@ -572,6 +572,9 @@ importers:
       pg:
         specifier: 'catalog:'
         version: 8.23.1
+      socket.io-client:
+        specifier: 'catalog:'
+        version: 4.8.4(supports-color@7.2.0)
       zod:
         specifier: 'catalog:'
         version: 4.6.7
