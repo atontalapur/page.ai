@@ -194,7 +194,7 @@ export function RunReview({ run, ask = false }: { run: IssueRun; ask?: boolean }
   const chatsAfter = chatsAfterSteps(run.steps, run.chats);
   return (
     <div className="space-y-4">
-      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-4">
         <Figure
           label={running ? 'Running for' : 'Time to finish'}
           value={figures.durationMs === null ? '—' : formatDuration(figures.durationMs)}
@@ -326,7 +326,7 @@ export default function RunsPanel({ issue }: { issue: Issue }) {
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-muted-foreground">Earlier runs</h3>
           {earlier.map((run) => (
-            <details key={run.id} className="rounded-lg border p-3">
+            <details key={run.id} className="rounded-md border p-3">
               <summary className="cursor-pointer">
                 <RunHeading run={run} />
               </summary>

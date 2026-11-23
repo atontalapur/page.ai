@@ -7,7 +7,7 @@ import {
   MagnifierIcon,
   PulseIcon,
   SleepingIcon,
-} from '@solar-icons/react/linear';
+} from '@solar-icons/react/line-duotone';
 import type { NodeSummary } from '@page/contracts';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
@@ -36,7 +36,7 @@ function AgentCard({ agent }: { agent: NodeSummary }) {
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-md bg-primary/10">
               <BotIcon className="size-5 text-primary" />
             </div>
             <div className="min-w-0">
@@ -50,13 +50,13 @@ function AgentCard({ agent }: { agent: NodeSummary }) {
 
       <CardContent className="flex flex-1 flex-col gap-4">
         {agent.current.length === 0 ? (
-          <div className="rounded-lg bg-muted/50 p-3">
+          <div className="rounded-md bg-muted/50 p-3">
             <p className="text-sm font-medium">No run in progress</p>
             <p className="mt-1 text-xs text-muted-foreground">{lastRunLine(agent)}</p>
           </div>
         ) : (
           agent.current.map((run) => (
-            <div key={run.id} className="space-y-2 rounded-lg bg-muted/50 p-3">
+            <div key={run.id} className="space-y-2 rounded-md bg-muted/50 p-3">
               <Link
                 to={`/incidents/${run.issueId}`}
                 title={run.issueTitle}
@@ -178,7 +178,7 @@ export default function AgentsPage() {
         ))}
 
         {shown.length === 0 && (
-          <div className="col-span-full rounded-lg border p-10 text-center text-sm text-muted-foreground">
+          <div className="col-span-full rounded-md border p-10 text-center text-sm text-muted-foreground">
             {!loaded
               ? feed === 'needs_token'
                 ? 'Connect to the orchestrator to see its agents.'

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { KeyMinimalisticIcon } from '@solar-icons/react/linear';
+import { KeyMinimalisticIcon } from '@solar-icons/react/line-duotone';
 
 import { Button } from '@page/design-system/components/ui/button';
 import {

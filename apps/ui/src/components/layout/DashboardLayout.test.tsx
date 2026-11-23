@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
+import { ThemeProvider } from '@page/design-system/components/theme-provider';
+
 import DashboardLayout from './DashboardLayout';
 
 // jsdom has no matchMedia; the sidebar's useIsMobile hook subscribes to it.
@@ -25,11 +27,13 @@ afterEach(() => {
 
 function renderLayout(path: string) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <DashboardLayout>
-        <p>content</p>
-      </DashboardLayout>
-    </MemoryRouter>,
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <DashboardLayout>
+          <p>content</p>
+        </DashboardLayout>
+      </MemoryRouter>
+    </ThemeProvider>,
   );
 }
 
@@ -55,12 +59,12 @@ describe('DashboardLayout', () => {
 
     expect(screen.getByRole('link', { name: 'Incidents' }).hasAttribute('data-active')).toBe(true);
     expect(screen.getByRole('link', { name: 'Agents' }).hasAttribute('data-active')).toBe(false);
-    expect(screen.getByRole('heading', { level: 1, name: 'Incidents' })).toBeTruthy();
   });
 
-  it('uses a neutral header title on unknown routes', () => {
+  it('puts the logo, linking home, and the theme switch in the top bar on any route', () => {
     renderLayout('/does-not-exist');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Page.AI' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Page.AI home' }).getAttribute('href')).toBe('/');
+    expect(screen.getByRole('group', { name: 'Theme' })).toBeTruthy();
   });
 });

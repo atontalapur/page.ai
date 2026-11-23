@@ -57,7 +57,7 @@ describe('IncidentsPage', () => {
     expect(rows().map((row) => row.getAttribute('data-issue-id'))).toEqual(
       [...issues].reverse().map((i) => i.id),
     );
-    expect(screen.getByText('4 incidents found')).toBeTruthy();
+    expect(screen.getByLabelText('4 incidents')).toBeTruthy();
   });
 
   it("shows each issue's status, class, severity, occurrences and tier", () => {
@@ -122,7 +122,7 @@ describe('IncidentsPage', () => {
     expect(rows()).toHaveLength(1);
     fireEvent.change(status, { target: { value: 'killed' } });
     expect(screen.getByText('No incidents match your filters.')).toBeTruthy();
-    expect(screen.getByText('0 incidents found')).toBeTruthy();
+    expect(screen.getByLabelText('0 incidents')).toBeTruthy();
   });
 
   it('says so when there are no incidents yet', () => {
@@ -163,7 +163,7 @@ describe('IncidentsPage', () => {
     source.send({ v: 1, issue: fresh });
 
     expect(rows()[0]!.getAttribute('data-issue-id')).toBe(fresh.id);
-    expect(screen.getByText('5 incidents found')).toBeTruthy();
+    expect(screen.getByLabelText('5 incidents')).toBeTruthy();
   });
 
   it('keeps the newer copy when an older event arrives late', () => {

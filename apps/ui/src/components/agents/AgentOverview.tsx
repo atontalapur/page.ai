@@ -16,14 +16,14 @@ const tiles: { status: AgentStatus; label: string; className: string; text: stri
   {
     status: 'running',
     label: 'Running',
-    className: 'rounded-xl bg-violet-a2',
+    className: 'rounded-md bg-violet-a2',
     text: 'text-violet-11',
   },
-  { status: 'idle', label: 'Idle', className: 'rounded-lg border bg-muted/50', text: '' },
+  { status: 'idle', label: 'Idle', className: 'rounded-md bg-slate-a2', text: '' },
   {
     status: 'offline',
     label: 'Offline',
-    className: 'rounded-xl bg-amber-a2',
+    className: 'rounded-md bg-amber-a2',
     text: 'text-amber-11',
   },
 ];

@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router-dom';
-import { AltArrowLeftIcon, BotIcon, HistoryIcon, PulseIcon } from '@solar-icons/react/linear';
+import { AltArrowLeftIcon, BotIcon, HistoryIcon, PulseIcon } from '@solar-icons/react/line-duotone';
 import type { NodeRun, NodeSummary } from '@page/contracts';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
@@ -162,7 +162,7 @@ export default function AgentWorkspacePage() {
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-primary/10">
             <BotIcon className="size-6 text-primary" />
           </div>
           <div className="min-w-0">

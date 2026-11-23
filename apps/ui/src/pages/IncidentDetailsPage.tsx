@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AltArrowLeftIcon, BotIcon } from '@solar-icons/react/linear';
+import { AltArrowLeftIcon, BotIcon } from '@solar-icons/react/line-duotone';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
 import { buttonVariants } from '@page/design-system/components/ui/button';

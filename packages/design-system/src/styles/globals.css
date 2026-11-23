@@ -298,8 +298,6 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-
-  --shadow-soft: var(--soft-shadow);
 }
 
 /*
@@ -307,18 +305,20 @@
  * (normal, hover, pressed), 6-8 borders, 9-10 solid fills, 11-12 text.
  */
 :root {
-  --radius: 0.75rem;
+  /* Tight corners: rounded-md (radius × 0.8) is the default for every surface. */
+  --radius: 0.5rem;
 
-  /* The page sits on slate-2 and cards on slate-1, so surfaces separate by tone and a
-     soft shadow instead of hard lines. */
-  --background: var(--slate-2);
+  /* One white surface for the page, the sidebar and cards. Hairline alpha borders and a
+     faint shadow separate them, never heavy lines or tone blocks. */
+  --background: var(--slate-1);
   --foreground: var(--slate-12);
   --card: var(--slate-1);
   --card-foreground: var(--slate-12);
   --popover: var(--slate-1);
   --popover-foreground: var(--slate-12);
-  --primary: var(--indigo-9);
-  --primary-foreground: var(--color-white);
+  /* The one solid action is ink-coloured: slate-12, which flips to near-white in dark. */
+  --primary: var(--slate-12);
+  --primary-foreground: var(--slate-1);
   --secondary: var(--slate-a3);
   --secondary-foreground: var(--slate-12);
   --muted: var(--slate-a3);
@@ -329,9 +329,7 @@
   /* Alpha borders recede into whatever surface they sit on. */
   --border: var(--slate-a4);
   --input: var(--slate-a6);
-  --ring: var(--indigo-a7);
-  --soft-shadow:
-    0 0 0 1px var(--slate-a3), 0 1px 2px var(--slate-a2), 0 4px 12px -2px var(--slate-a3);
+  --ring: var(--slate-a8);
 
   --chart-1: var(--indigo-6);
   --chart-2: var(--indigo-8);
@@ -339,15 +337,15 @@
   --chart-4: var(--indigo-10);
   --chart-5: var(--indigo-11);
 
-  /* The sidebar shares the page's tone; the active item lifts out as a card. */
-  --sidebar: var(--slate-2);
+  /* The sidebar is the page's white behind a hairline; the active item is a grey pill. */
+  --sidebar: var(--slate-1);
   --sidebar-foreground: var(--slate-11);
-  --sidebar-primary: var(--indigo-9);
-  --sidebar-primary-foreground: var(--color-white);
+  --sidebar-primary: var(--slate-12);
+  --sidebar-primary-foreground: var(--slate-1);
   --sidebar-accent: var(--slate-a3);
   --sidebar-accent-foreground: var(--slate-12);
-  --sidebar-border: transparent;
-  --sidebar-ring: var(--indigo-a7);
+  --sidebar-border: var(--slate-a4);
+  --sidebar-ring: var(--slate-a8);
 }
 
 /* Dark scales already flip. Surfaces rise a step as they come forward, and borders turn
@@ -357,9 +355,9 @@
   --card: var(--slate-2);
   --popover: var(--slate-3);
   --sidebar: var(--slate-1);
+  --sidebar-border: var(--slate-4);
   --border: var(--slate-4);
   --input: var(--slate-6);
-  --soft-shadow: 0 0 0 1px var(--slate-4), 0 4px 12px -2px var(--black-a6);
 }
 
 @layer base {
