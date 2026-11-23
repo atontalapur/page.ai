@@ -345,6 +345,7 @@ describe('serverSource', () => {
       confidence: null,
       diff: null,
       steps: [],
+      chats: [],
     };
 
     fetchMock.mockResolvedValueOnce(json([run]));

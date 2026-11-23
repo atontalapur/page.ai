@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ApprovalsModule } from '../approvals/approvals.module.ts';
+import { ChatsModule } from '../chats/chats.module.ts';
 import { RunsModule } from '../runs/runs.module.ts';
 import { ApprovalRelay } from './approval-relay.ts';
+import { ChatRelay } from './chat-relay.ts';
 import { NodeGateway } from './node.gateway.ts';
 import { NodeSummaries } from './node-summaries.ts';
 import { Nodes } from './nodes.ts';
 import { NodesController } from './nodes.controller.ts';
+import { RunChats } from './run-chats.ts';
 import { RunKills } from './run-kills.ts';
 import { UiGateway } from './ui.gateway.ts';
 
@@ -13,11 +16,21 @@ import { UiGateway } from './ui.gateway.ts';
 // NODE_SHARED_SECRET), on the HTTP port. Nodes knows which daemon holds each run, and
 // RunKills sends a cancelled run's daemon `run.kill`. GET /nodes lists the daemons for the
 // agents page, and `node.updated` tells the tabs when one changes. ApprovalRelay sends each
-// approval change to the tabs and the daemon that asked.
+// approval change to the tabs and the daemon that asked. RunChats sends a tab's message to
+// the daemon holding the run, and ChatRelay sends each message and answer to the tabs.
 @Module({
-  imports: [RunsModule, ApprovalsModule],
+  imports: [RunsModule, ApprovalsModule, ChatsModule],
   controllers: [NodesController],
-  providers: [UiGateway, NodeGateway, Nodes, NodeSummaries, RunKills, ApprovalRelay],
+  providers: [
+    UiGateway,
+    NodeGateway,
+    Nodes,
+    NodeSummaries,
+    RunKills,
+    ApprovalRelay,
+    RunChats,
+    ChatRelay,
+  ],
   exports: [UiGateway, Nodes, RunKills],
 })
 export class GatewayModule {}

@@ -14,6 +14,7 @@ const issueRun = (fields: Partial<IssueRun> = {}): IssueRun => ({
   ...runFixture,
   diff: null,
   steps: [],
+  chats: [],
   ...fields,
 });
 const step = (seq: number, fields: Partial<Step> = {}): Step => ({
@@ -80,7 +81,7 @@ describe('applyToIssueRuns', () => {
     expect(applyToIssueRuns([], started(other), issueId)).toEqual([]);
     expect(applyToIssueRuns([], stepped(step(0)), issueId)).toEqual([]);
     expect(applyToIssueRuns([], started(runFixture), issueId)).toEqual([
-      { ...runFixture, diff: null, steps: [] },
+      { ...runFixture, diff: null, steps: [], chats: [] },
     ]);
   });
 });

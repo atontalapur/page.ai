@@ -48,6 +48,7 @@ function run(
     confidence: null,
     diff: null,
     steps: [],
+    chats: [],
     ...fields,
   };
 }

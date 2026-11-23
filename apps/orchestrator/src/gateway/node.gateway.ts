@@ -16,6 +16,7 @@ import {
 } from '@page/contracts';
 import type { Namespace } from 'socket.io';
 import { ApprovalsService } from '../approvals/approvals.service.ts';
+import { ChatsService } from '../chats/chats.service.ts';
 import type { Config } from '../config.ts';
 import type { Logger } from '../logger.ts';
 import { RateLimiter } from '../rate-limit.ts';
@@ -74,8 +75,10 @@ const runIdOf = (payload: NodePayload<NodeEvent>) =>
  * no daemon held the run, or moved on. Steps, diffs and results go to the UI as `run.step`,
  * `run.diff` and `run.finished`, and a run's first step (seq 0) also sends `run.started`.
  * None of this is a record: the daemon writes each step to the `steps` table itself, and the
- * `run_finished` job is the run's record. A Tier 3 run's `node.approval.request` is the
- * exception: ApprovalsService stores it, and closes the run's open ones when it finishes.
+ * `run_finished` job is the run's record. Two exceptions: a Tier 3 run's
+ * `node.approval.request`, which ApprovalsService stores, and `node.chat.reply`, the agent's
+ * answer to a person's message, which ChatsService stores. Both close what the run left open
+ * when it finishes.
  *
  * A daemon sends its name as `auth.name`. The gateway records which daemon worked each run
  * (NodeRuns) on the daemon's first event for it, and sends the tabs `node.updated` whenever a
@@ -103,6 +106,11 @@ export class NodeGateway
     'node.approval.request': async (_socket, request) => {
       await this.approvals.request(request);
     },
+    // The agent's answer to a tab's message, or why it has none: stored, then sent to the
+    // tabs (ChatRelay).
+    'node.chat.reply': async (_socket, reply) => {
+      await this.chats.reply(reply);
+    },
   };
 
   constructor(
@@ -115,6 +123,7 @@ export class NodeGateway
     private readonly nodeRuns: NodeRuns,
     private readonly summaries: NodeSummaries,
     private readonly approvals: ApprovalsService,
+    private readonly chats: ChatsService,
   ) {
     this.guard = {
       name: 'node',
@@ -259,8 +268,10 @@ export class NodeGateway
   ): Promise<void> {
     const { runId } = result;
     this.links.get(socket.id)?.owners.delete(runId);
-    // A finished run waits on no answer, so its open requests leave every tab.
+    // A finished run waits on no answer and reads no more messages, so its open requests
+    // and its unanswered messages leave every tab.
     await this.approvals.closeRun(runId);
+    await this.chats.closeRun(runId);
     // Looked up again for the first step's time, which the run had no row for before.
     const owner = await this.runs.owner(runId);
     if (!owner) {

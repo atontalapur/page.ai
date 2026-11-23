@@ -13,7 +13,7 @@ afterEach(() => {
   cleanup();
 });
 
-const issueRun: IssueRun = { ...runFixture, diff: null, steps: [stepFixture] };
+const issueRun: IssueRun = { ...runFixture, diff: null, steps: [stepFixture], chats: [] };
 
 function wrapper(source: TestSource) {
   return ({ children }: { children: ReactNode }) => (

@@ -115,14 +115,92 @@ export type Step = z.infer<typeof stepSchema>;
 /** The most of a step's thought that is kept. */
 export const MAX_THOUGHT_CHARS = 4_000;
 
+/** The longest message a person can send a run in progress from the dashboard. */
+export const MAX_CHAT_CHARS = 1_000;
+
+/** The most of the agent's answer to a message that is kept. */
+export const MAX_CHAT_ANSWER_CHARS = 4_000;
+
+export const CHAT_STATUSES = ['pending', 'answered', 'unanswered'] as const;
+
+/**
+ * Why a message got no answer:
+ * - `queue_full`: too many messages were already waiting for the agent's next step.
+ * - `submitted`: the agent had submitted its fix, so it takes no more steps.
+ * - `run_ended`: the run ended (killed, out of budget, failed) before the agent answered.
+ * - `no_answer`: the agent read it, and its next reply held no answer.
+ * - `no_daemon`: no daemon held the run when the server sent it on.
+ */
+export const CHAT_CLOSE_REASONS = [
+  'queue_full',
+  'submitted',
+  'run_ended',
+  'no_answer',
+  'no_daemon',
+] as const;
+
+const chatBase = {
+  id: idSchema,
+  // The fix job's id, as for approvals: a run in progress has no `runs` row to reference.
+  runId: idSchema,
+  issueId: idSchema,
+  // Set by the server from the asking tab's identity (`ui:<name>`), never from its payload.
+  askedBy: z.string().min(1),
+  message: z.string().min(1).max(MAX_CHAT_CHARS),
+  askedAt: timestampSchema,
+};
+
+export const pendingChatSchema = z.strictObject({
+  ...chatBase,
+  status: z.literal('pending'),
+  answer: z.null(),
+  reason: z.null(),
+  closedAt: z.null(),
+});
+
+export const closedChatSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    ...chatBase,
+    status: z.literal('answered'),
+    answer: z.string().min(1).max(MAX_CHAT_ANSWER_CHARS),
+    reason: z.null(),
+    // When the server heard the answer.
+    closedAt: timestampSchema,
+  }),
+  z.strictObject({
+    ...chatBase,
+    status: z.literal('unanswered'),
+    answer: z.null(),
+    reason: z.enum(CHAT_CLOSE_REASONS),
+    closedAt: timestampSchema,
+  }),
+]);
+
+/**
+ * A message a person sent a run in progress, and the agent's answer. The agent reads it at
+ * its next step boundary and answers in the reply that takes its next action. It is
+ * guidance: it changes nothing about what the run may do.
+ */
+export const runChatSchema = z.discriminatedUnion('status', [
+  pendingChatSchema,
+  ...closedChatSchema.options,
+]);
+
+export type RunChat = z.infer<typeof runChatSchema>;
+export type PendingChat = z.infer<typeof pendingChatSchema>;
+export type ClosedChat = z.infer<typeof closedChatSchema>;
+export type ChatCloseReason = (typeof CHAT_CLOSE_REASONS)[number];
+
 /**
  * One run as `GET /issues/:id/runs` serves it: its row, the agent's diff once it submitted,
- * and every step so far. The run in progress has no row until it finishes, so it is
- * `running` (`queued` before its first step) with times from its steps.
+ * every step so far, and the messages people sent it, oldest first. The run in progress has
+ * no row until it finishes, so it is `running` (`queued` before its first step) with times
+ * from its steps.
  */
 export const issueRunSchema = runSchema.extend({
   diff: z.string().nullable(),
   steps: z.array(stepSchema),
+  chats: z.array(runChatSchema),
 });
 
 export type IssueRun = z.infer<typeof issueRunSchema>;

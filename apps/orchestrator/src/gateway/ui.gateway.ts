@@ -6,6 +6,7 @@ import {
   serverToUiEvents,
   UI_NAMESPACE,
   uiToServerEvents,
+  type ChatRefusal,
   type ServerToUiEvents,
   type UiToServerEvents,
 } from '@page/contracts';
@@ -18,6 +19,7 @@ import { IssueUpdates } from '../issues/issue-updates.ts';
 import type { Logger } from '../logger.ts';
 import { RateLimiter } from '../rate-limit.ts';
 import { LOGGER } from '../tokens.ts';
+import { RunChats } from './run-chats.ts';
 import { RunKills } from './run-kills.ts';
 import {
   guardHandshakes,
@@ -52,6 +54,14 @@ export const HANDSHAKES_PER_MINUTE = 30;
 // Kill, chat and approval decisions (#9) are clicks, so 20 in 10s is far above what a person
 // sends, and a socket past it is closed.
 export const MESSAGES_PER_10_SECONDS = 20;
+// A message to a run is cheap to send and dear to answer: it rides along in every model call
+// the run makes after it. A person reading the run and typing sends one every few steps at
+// most, and a step takes a model call and a command, so 5 a minute is plenty. Past it the
+// message is refused with `rate_limited` and the socket stays open.
+export const CHATS_PER_MINUTE = 5;
+
+/** The person's name in a decider, `ui:<name>` (deciderFor), to show the agent. */
+const nameIn = (decider: string) => decider.replace(/^ui:/, '');
 
 /**
  * The Socket.IO namespace for the UI. A handshake needs a token the HTTP API takes (ApiTokens)
@@ -68,21 +78,26 @@ export const MESSAGES_PER_10_SECONDS = 20;
  * - The shared token, with none configured, decides under the name the tab sends as
  *   `auth.name` (approverNameSchema), as `ui:<name>`. That name is what someone typed, not a
  *   login: anyone with the token can connect under any name. Boot warns while this holds.
+ *
+ * A message a tab sends a run (`run.chat`) is recorded the same way, under the tab's
+ * decider, and a tab that can't decide can't send one.
  */
 @WebSocketGateway({ namespace: UI_NAMESPACE, serveClient: false })
 export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnection, OnModuleDestroy {
   private readonly guard: SocketGuard;
+  private readonly chatLimit = new RateLimiter(CHATS_PER_MINUTE, 60_000);
   private namespace: UiNamespace | undefined;
   private unsubscribe: (() => void) | undefined;
 
   /**
    * What each event a tab sends does once it passes its contract. An event with no handler
-   * is logged and dropped, so a new one goes here: `run.chat` once the daemon handles it.
+   * is logged and dropped, so a new one goes here.
    */
   private readonly handlers: { [E in TabEvent]?: Handler<E> } = {
     // Recorded under the tab's decider when it has one, so a name label counts here too.
     'run.kill': (socket, { runId }) =>
       this.kills.kill(runId, socket.data.decider ?? actorOf(socket.data.caller)),
+    'run.chat': (socket, { runId, message }) => this.chat(socket, runId, message),
     'approval.decide': (socket, { approvalId, decision }) =>
       this.decide(socket, approvalId, decision),
   };
@@ -93,6 +108,7 @@ export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnectio
     private readonly updates: IssueUpdates,
     private readonly kills: RunKills,
     private readonly approvals: ApprovalsService,
+    private readonly chats: RunChats,
   ) {
     this.guard = {
       name: 'ui',
@@ -178,6 +194,25 @@ export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnectio
     } else if (outcome.kind === 'already_decided') {
       this.emit(socket, 'approval.updated', { v: 1, approval: outcome.approval });
     }
+  }
+
+  /**
+   * A person's message to a run in progress, recorded as the tab's decider: a personal
+   * token's person, or the tab's name label only while no personal token is configured. On
+   * top of the socket's message limit, each tab may send CHATS_PER_MINUTE. A message that
+   * isn't sent on (no identity, over the limit, or RunChats turned it away) is stored
+   * nowhere, and only this tab hears why, as `run.chat.refused`.
+   */
+  private async chat(socket: UiSocket, runId: string, message: string): Promise<void> {
+    const { decider } = socket.data;
+    let refusal: ChatRefusal | undefined;
+    if (decider === undefined) refusal = 'no_name';
+    else if (!this.chatLimit.hit(socket.id).allowed) refusal = 'rate_limited';
+    else
+      refusal = await this.chats.ask(runId, message, { askedBy: decider, from: nameIn(decider) });
+    if (refusal === undefined) return;
+    this.logger.warn({ runId, reason: refusal, decider }, 'run.chat refused');
+    this.emit(socket, 'run.chat.refused', { v: 1, runId, reason: refusal });
   }
 
   /**

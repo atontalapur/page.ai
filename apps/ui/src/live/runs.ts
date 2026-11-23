@@ -59,7 +59,7 @@ export function applyToIssueRuns(
   const id = runIdOf(event);
   if (!runs.some((run) => run.id === id)) {
     if (event.event !== 'run.started' || event.payload.run.issueId !== issueId) return [...runs];
-    return [...runs, { ...event.payload.run, diff: null, steps: [] }];
+    return [...runs, { ...event.payload.run, diff: null, steps: [], chats: [] }];
   }
   return runs.map((run) => {
     if (run.id !== id) return run;
