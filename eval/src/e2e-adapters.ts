@@ -5,9 +5,12 @@ import {
   RUN_STATUSES,
   SEVERITIES,
   tierSchema,
+  UI_NAMESPACE,
 } from '@page/contracts';
 import type { SqlClient } from '@page/toolkit';
+import { io } from 'socket.io-client';
 import { z } from 'zod';
+import type { ApproverDeps, OrchestratorGet } from './e2e-approvals.ts';
 import {
   JOB_STATES,
   type Clock,
@@ -188,6 +191,34 @@ export class OrchestratorControl implements PipelineControl {
       throw new Error(`POST ${path} answered ${res.status}${body === '' ? '' : `: ${body}`}`);
     }
   }
+}
+
+/**
+ * A GET on the orchestrator's API with `token` as the bearer token, for the approver: the
+ * status and the parsed JSON body (undefined for a body that isn't JSON).
+ */
+export function orchestratorGet(
+  baseUrl: string,
+  token: string,
+  doFetch: typeof fetch = fetch,
+): OrchestratorGet {
+  const base = baseUrl.replace(/\/+$/, '');
+  return async (path) => {
+    const res = await doFetch(`${base}${path}`, {
+      headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    return { status: res.status, body: await res.json().catch(() => undefined) };
+  };
+}
+
+/**
+ * Opens the orchestrator's /ui socket over WebSocket, as a tab does. socket.io-client
+ * connects again on its own after a drop, and the approver loads what it missed.
+ */
+export function uiSocket(baseUrl: string): ApproverDeps['connect'] {
+  const base = baseUrl.replace(/\/+$/, '');
+  return (auth) => io(`${base}${UI_NAMESPACE}`, { auth, transports: ['websocket'] });
 }
 
 /** Wall-clock time. */

@@ -195,18 +195,59 @@ export interface Clock {
   sleep(ms: number, signal?: AbortSignal): Promise<void>;
 }
 
+/** `--approve`: the harness approves its own runs' Tier 3 requests, or a person does. */
+export type ApproveMode = 'auto' | 'manual';
+
+/** One Tier 3 approval the harness made, as the result file keeps it. */
+export interface E2EApproval {
+  approvalId: string;
+  runId: string;
+  /** The gated tool, such as `ops.restart`. */
+  action: string;
+  /** When the harness sent its decision. */
+  sentAt: string;
+  /**
+   * The decision that stands, once the orchestrator says: `approved` under the harness's
+   * name, or what stood instead, such as `rejected` by `system:timed_out`. Null if it never
+   * said.
+   */
+  decision: 'approved' | 'rejected' | null;
+  decidedBy: string | null;
+}
+
+/**
+ * Approves the Tier 3 requests of the test's own runs, as a person would on the incident
+ * page (src/e2e-approvals.ts). Only with `--approve auto`.
+ */
+export interface RunApprover {
+  /** Approves `runId`'s requests from now on, those already waiting included. */
+  watch(runId: string): void;
+  /** Stops approving, before the reset kills the issue. */
+  release(): void;
+  /** The approvals it made for `runIds`, in the order it made them. */
+  approvals(runIds: readonly string[]): E2EApproval[];
+}
+
 export interface E2EDeps {
   target: Target;
   reader: PipelineReader;
   control: PipelineControl;
   /** Needed for `expect: 'pr'`. Without it the reset can't close PRs. */
   github?: GitHubReader;
+  /** With `--approve auto`: approves each Tier 3 request of the runs the test follows. */
+  approver?: RunApprover;
   clock: Clock;
   log?: (line: string) => void;
 }
 
 export interface E2EOptions {
   expect?: Expectation;
+  /**
+   * How the scenario's Tier 3 requests get decided, for the result: `auto` with an approver
+   * in the deps, `manual` for a person on the page. Left out for a scenario that can't reach
+   * Tier 3.
+   */
+  approve?: ApproveMode;
   timeouts?: Partial<Timeouts>;
   /** Between database reads while waiting (default 3 s). */
   pollMs?: number;
@@ -278,6 +319,10 @@ export interface E2EResult {
   reset: ResetAction[];
   /** The target's logs when the seed failed, read before the reset (Target.logs). */
   seedLogs: string | null;
+  /** How Tier 3 requests were decided (`--approve`), or null for a scenario without them. */
+  approve: ApproveMode | null;
+  /** Each Tier 3 approval the harness made, in order. Empty with `--approve manual`. */
+  approvals: E2EApproval[];
 }
 
 /** The target's one-time preparation before the runs (Target.prepare). */
@@ -360,6 +405,10 @@ export function summarize(r: E2EResult): string {
   }
   for (const c of r.checks.filter((c) => !c.ok)) {
     lines.push(`  ${c.level} ${c.name}: ${c.detail}`);
+  }
+  for (const a of r.approvals) {
+    const outcome = a.decision === null ? 'no answer' : `${a.decision} by ${a.decidedBy}`;
+    lines.push(`  approved ${a.action} on run ${a.runId}: ${outcome}`);
   }
   for (const a of r.reset.filter((a) => !a.ok)) {
     lines.push(`  reset ${a.action} failed: ${a.detail}`);
@@ -585,7 +634,10 @@ export async function runE2E(
     checks: [],
     reset: [],
     seedLogs: null,
+    approve: options.approve ?? null,
+    approvals: [],
   };
+  const { approver } = deps;
 
   /** Runs one step, records its time, and passes its detail on to the log. */
   async function step<T>(
@@ -728,8 +780,11 @@ export async function runE2E(
       const run = { runId: row.currentRunId, tier: row.currentTier };
       result.runs.push(run);
       log(`[fix] run ${run.runId} at tier ${run.tier ?? '-'}`);
+      approver?.watch(run.runId);
       return run;
     };
+    // Runs already told that a person has to approve on the page (`--approve manual`).
+    const toldToApprove = new Set<string>();
     // `resolved` too, unless `ops_fixed` got it there: otherwise only a human's approve does
     // (issues/transitions.ts), so the test can no longer see the outcome it waits for, nor
     // tell a PR from a patch. An ops fix is an outcome, which `outcome` checks.
@@ -770,8 +825,9 @@ export async function runE2E(
       return { value: undefined, detail: `run ${claimed.runId} at tier ${claimed.tier ?? '-'}` };
     });
 
-    // Done when the issue waits on a human (a patch or PR, or a Tier 3 approval request), or
-    // a Tier 3 ops fix resolved it.
+    // Done when the issue waits on a human (a patch or PR), a Tier 3 ops fix resolved it, or
+    // with `--expect approval` a Tier 3 run asks for approval. Otherwise a pending request is
+    // part of the fix: the approver grants it, or a person does on the page.
     let finishedAt: number | null = null;
     let finishedRun = '';
     await step('fix', async () => {
@@ -789,7 +845,17 @@ export async function runE2E(
           }
           if (run === undefined) return undefined;
           progress = observe(await reader.run(run.runId));
-          if (progress.pendingApprovals > 0) return row;
+          if (progress.pendingApprovals > 0) {
+            if (expect === 'approval') return row;
+            if (approver === undefined && !toldToApprove.has(run.runId)) {
+              toldToApprove.add(run.runId);
+              log(
+                `[fix] run ${run.runId} is waiting for approval: approve or reject it on the ` +
+                  `incident page for issue ${issueId}`,
+              );
+            }
+            return undefined;
+          }
           if (!runFinished(progress)) return undefined;
           // The run is over; the orchestrator should move the issue on any moment.
           if (finishedRun !== run.runId) {
@@ -894,6 +960,10 @@ export async function runE2E(
     result.error = failure.message;
   }
 
+  // Nothing is approved from here on: the reset kills the issue, and a call approved after
+  // that could still change the app.
+  approver?.release();
+
   if (options.keep) {
     result.steps.push({
       step: 'reset',
@@ -938,6 +1008,7 @@ export async function runE2E(
     }
   }
 
+  result.approvals = approver?.approvals(result.runs.map((r) => r.runId)) ?? [];
   result.passed = result.failedStep === null;
   return result;
 }

@@ -22,20 +22,36 @@ import {
   type E2EResult,
   type Target,
 } from '../src/e2e.ts';
-import { OrchestratorControl, PgPipelineReader, realClock } from '../src/e2e-adapters.ts';
+import {
+  OrchestratorControl,
+  orchestratorGet,
+  PgPipelineReader,
+  realClock,
+  uiSocket,
+} from '../src/e2e-adapters.ts';
+import {
+  approveMode,
+  approverIdentity,
+  E2EApprover,
+  type ApproverIdentity,
+} from '../src/e2e-approvals.ts';
 import { localAppUrl } from '../src/e2e-app.ts';
 import { loadScenario, ScenarioError, type Scenario } from '../src/scenario.ts';
 import { loadSplit } from '../src/split.ts';
 import { localTarget, stagingTarget } from './e2e-targets.ts';
 
 const USAGE = `usage: pnpm e2e <scenario-id> [--target local|staging]
-  [--expect pr|approval|resolved] [--timeout <step>=<duration>]... [--budget <duration>]
-  [--poll <duration>] [--drain <duration>] [--runs <n>] [--keep] [--no-build]
-  [--out <file.json>]
+  [--expect pr|approval|resolved] [--approve auto|manual] [--timeout <step>=<duration>]...
+  [--budget <duration>] [--poll <duration>] [--drain <duration>] [--runs <n>] [--keep]
+  [--no-build] [--out <file.json>]
 
   --target   local (default): a demo app on this machine, staging: the app at DEMO_APP_URL
   --expect   what the run ends on (default: pr for a Tier 2 code scenario, resolved for an
              ops scenario, else approval)
+  --approve  a Tier 3 scenario's approval requests: auto (default) approves the test's own
+             runs' requests over the orchestrator's /ui socket, as a person would; manual
+             leaves them to a person on the incident page (the default with --expect
+             approval)
   --timeout  a step's limit, e.g. --timeout fix=20m (steps: seed trigger issue triage
              claim fix outcome reset)
   --budget   most time from the trigger to the PR or approval request (default: the
@@ -50,7 +66,8 @@ const USAGE = `usage: pnpm e2e <scenario-id> [--target local|staging]
   --out      write the results as JSON: { prepare, runs }
 
 Env: E2E_DATABASE_URL (or DATABASE_URL), E2E_ORCHESTRATOR_URL (or ORCHESTRATOR_URL),
-E2E_ORCHESTRATOR_API_TOKEN (or ORCHESTRATOR_API_TOKEN), GITHUB_TOKEN and GITHUB_REPO, DEMO_APP_URL (staging only), E2E_LOCAL_APP_URL (local ops
+E2E_ORCHESTRATOR_API_TOKEN (or ORCHESTRATOR_API_TOKEN), E2E_DASHBOARD_TOKEN (--approve auto
+on an orchestrator with personal tokens), GITHUB_TOKEN and GITHUB_REPO, DEMO_APP_URL (staging only), E2E_LOCAL_APP_URL (local ops
 scenarios, default http://localhost:\${DEMO_APP_PORT:-3000}), OPS_SECRET (ops scenarios),
 PGBOSS_SCHEMA, and for local code scenarios POSTHOG_KEY, POSTHOG_HOST, E2E_DEMO_APP_PORT,
 E2E_DEMO_DATABASE_URL.`;
@@ -60,6 +77,7 @@ const { values, positionals } = parseArgs({
   options: {
     target: { type: 'string', default: 'local' },
     expect: { type: 'string' },
+    approve: { type: 'string' },
     timeout: { type: 'string', multiple: true, default: [] },
     budget: { type: 'string' },
     poll: { type: 'string' },
@@ -73,6 +91,12 @@ const { values, positionals } = parseArgs({
 
 function fail(message: string): never {
   console.error(`${message}\n\n${USAGE}`);
+  process.exit(2);
+}
+
+/** A setup problem found before seeding, which the usage wouldn't explain. Exits 2. */
+function refuse(message: string): never {
+  console.error(message);
   process.exit(2);
 }
 
@@ -149,8 +173,37 @@ const token = env('GITHUB_TOKEN');
 const repo = env('GITHUB_REPO');
 const github =
   token && repo ? parsed('GITHUB_REPO', () => new RestGitHub({ token, repo })) : undefined;
-if (github === undefined && (options.expect ?? defaultExpectation(scenario)) === 'pr') {
+const expectation = options.expect ?? defaultExpectation(scenario);
+if (github === undefined && expectation === 'pr') {
   fail(`expecting a PR from ${id} needs GITHUB_TOKEN and GITHUB_REPO`);
+}
+
+// Only a Tier 3 run asks for approval, and an ops scenario is fixed at Tier 3. Checked
+// before seeding, so a harness that couldn't approve touches nothing.
+const approveFlag = parsed('--approve', () => approveMode(values.approve, expectation));
+let approver: E2EApprover | undefined;
+let approveLine = '';
+if (scenario.kind === 'ops' || scenario.meta.expectedTier === 3) {
+  options.approve = approveFlag;
+  approveLine = 'manual: approve on the incident page';
+  if (approveFlag === 'auto') {
+    const approverToken = env('E2E_DASHBOARD_TOKEN') ?? apiToken;
+    const get = orchestratorGet(orchestratorUrl, approverToken);
+    let identity: ApproverIdentity;
+    try {
+      identity = await approverIdentity(get);
+    } catch (error) {
+      refuse(`--approve auto: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (identity.kind === 'none') refuse(`--approve auto: ${identity.reason}`);
+    approver = new E2EApprover(
+      { connect: uiSocket(orchestratorUrl), get, now: () => Date.now(), log: console.log },
+      identity,
+      approverToken,
+    );
+    const how = identity.kind === 'person' ? 'personal token' : 'name label';
+    approveLine = `auto, as ${approver.decider} (${how})`;
+  }
 }
 
 const opsSecret = env('OPS_SECRET');
@@ -202,6 +255,7 @@ console.log(
     `database     ${dbHost}`,
     `orchestrator ${orchestratorUrl}`,
     `github       ${github === undefined ? 'none (no PR lookup or close)' : repo}`,
+    ...(approveLine === '' ? [] : [`approve      ${approveLine}`]),
   ].join('\n'),
 );
 
@@ -235,6 +289,7 @@ const prepared = await prepareTarget(scenario, target, {
 });
 
 const results: E2EResult[] = [];
+approver?.start();
 try {
   for (let n = 1; prepared?.ok !== false && n <= runs; n += 1) {
     if (runs > 1) console.log(`\nrun ${n} of ${runs}`);
@@ -245,6 +300,7 @@ try {
         reader,
         control,
         ...(github === undefined ? {} : { github }),
+        ...(approver === undefined ? {} : { approver }),
         clock: realClock,
         log: (line) => console.log(line),
       },
@@ -255,6 +311,7 @@ try {
     if (!result.passed) break;
   }
 } finally {
+  approver?.close();
   await pool.end();
 }
 

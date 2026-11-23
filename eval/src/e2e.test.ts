@@ -17,12 +17,14 @@ import {
   stepTimeouts,
   summarize,
   type Clock,
+  type E2EApproval,
   type E2EOptions,
   type E2EResult,
   type GitHubReader,
   type IssueRow,
   type PipelineControl,
   type PipelineReader,
+  type RunApprover,
   type RunProgress,
   type Target,
   type TimedStep,
@@ -472,6 +474,83 @@ describe('runE2E', () => {
       'unseed',
     ]);
     expect(h.lines.some((l) => l.includes('WARNING'))).toBe(false);
+  });
+
+  describe('a Tier 3 run that asks for approval on the way to its ops fix', () => {
+    /** The run asks at 2m, someone approves 10 s later, and the fix resolves the issue. */
+    const askedThenFixed = (): Change[] => [
+      ...opsFix().slice(0, 4),
+      progress(2 * MIN, R3, { steps: 4, pendingApprovals: 1 }),
+      progress(2 * MIN + 10 * S, R3, { steps: 5, pendingApprovals: 0 }),
+      ...opsFix().slice(4),
+    ];
+    const approval: E2EApproval = {
+      approvalId: '00000000-0000-4000-8000-0000000000e5',
+      runId: R3,
+      action: 'ops.restart',
+      sentAt: '2026-11-23T12:02:00.000Z',
+      decision: 'approved',
+      decidedBy: 'ui:e2e',
+    };
+
+    it('lets the approver approve it, stops it before the reset, and records what it made', async () => {
+      const h = harness(askedThenFixed());
+      const asked: string[][] = [];
+      const approver: RunApprover = {
+        watch: (runId) => h.calls.push(`watch ${runId}`),
+        release: () => h.calls.push('release'),
+        approvals: (runIds) => {
+          asked.push([...runIds]);
+          return [approval];
+        },
+      };
+      const r = await runE2E(
+        scenario(3, 'ops'),
+        {
+          target: h.target,
+          reader: h.world.reader,
+          control: h.world.control,
+          github: h.world.github,
+          approver,
+          clock: h.clock,
+          log: (line) => h.lines.push(line),
+        },
+        { approve: 'auto' },
+      );
+
+      expect(r.error).toBeNull();
+      expect(r.passed).toBe(true);
+      expect(stepOf(r, 'outcome')?.detail).toBe('issue resolved by an ops fix');
+      // Watched as soon as the test saw the run, released before the reset touched anything.
+      expect(h.calls).toEqual(['seed', 'trigger', `watch ${R3}`, 'release', 'unseed']);
+      expect(r.approve).toBe('auto');
+      expect(r.approvals).toEqual([approval]);
+      expect(asked).toEqual([[R3]]);
+      expect(h.lines.some((l) => l.includes('is waiting for approval'))).toBe(false);
+      expect(summarize(r)).toContain(`  approved ops.restart on run ${R3}: approved by ui:e2e`);
+    });
+
+    it('waits through it for a person with --approve manual, saying where to approve', async () => {
+      const h = harness(askedThenFixed());
+      const r = await play(h, scenario(3, 'ops'), { approve: 'manual' });
+
+      expect(r.error).toBeNull();
+      expect(r.passed).toBe(true);
+      expect(r.approve).toBe('manual');
+      expect(r.approvals).toEqual([]);
+      const told = h.lines.filter((l) => l.includes('is waiting for approval'));
+      expect(told).toEqual([
+        `[fix] run ${R3} is waiting for approval: approve or reject it on the incident page ` +
+          `for issue ${ISSUE}`,
+      ]);
+    });
+
+    it('records no approval mode for a scenario that never reaches Tier 3', async () => {
+      const r = await play(harness(tier1Fix()), scenario(1));
+      expect(r.approve).toBeNull();
+      expect(r.approvals).toEqual([]);
+      expect(summarize(r)).not.toContain('approved ');
+    });
   });
 
   it('passes a Tier 3 ops fix that resolved the issue on its own', async () => {

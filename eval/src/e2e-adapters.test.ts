@@ -1,6 +1,17 @@
 import type { SqlClient } from '@page/toolkit';
-import { describe, expect, it } from 'vitest';
-import { OrchestratorControl, PgPipelineReader, realClock } from './e2e-adapters.ts';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  OrchestratorControl,
+  orchestratorGet,
+  PgPipelineReader,
+  realClock,
+  uiSocket,
+} from './e2e-adapters.ts';
+
+const io = vi.hoisted(() =>
+  vi.fn<(url: string, options: unknown) => { opened: boolean }>(() => ({ opened: true })),
+);
+vi.mock('socket.io-client', () => ({ io }));
 
 const RUN = '00000000-0000-4000-8000-0000000000a1';
 const at = new Date('2026-11-15T10:00:00Z');
@@ -163,6 +174,41 @@ describe('OrchestratorControl', () => {
     await expect(
       new OrchestratorControl('http://o', 'tok', empty).killIssue('abc'),
     ).rejects.toThrow(/answered 500$/);
+  });
+});
+
+describe('orchestratorGet', () => {
+  it('gets with the token and answers the status and the JSON body', async () => {
+    const calls: { url: string; init: RequestInit | undefined }[] = [];
+    const fetchFake: typeof fetch = (url, init) => {
+      calls.push({ url: url instanceof Request ? url.url : url.toString(), init });
+      return Promise.resolve(Response.json({ token: 'personal', name: 'e2e' }));
+    };
+    const get = orchestratorGet('https://orch.example/', 'tok', fetchFake);
+    expect(await get('/me')).toEqual({ status: 200, body: { token: 'personal', name: 'e2e' } });
+    expect(calls[0]!.url).toBe('https://orch.example/me');
+    expect(calls[0]!.init).toMatchObject({
+      headers: { authorization: 'Bearer tok', accept: 'application/json' },
+    });
+  });
+
+  it('answers no body for one that is not JSON', async () => {
+    const fetchFake: typeof fetch = () => Promise.resolve(new Response('<html>', { status: 404 }));
+    expect(await orchestratorGet('http://o', 'tok', fetchFake)('/me')).toEqual({
+      status: 404,
+      body: undefined,
+    });
+  });
+});
+
+describe('uiSocket', () => {
+  it("opens the orchestrator's /ui namespace over WebSocket with the handshake", () => {
+    const socket = uiSocket('https://orch.example/')({ token: 'tok', name: 'e2e' });
+    expect(socket).toEqual({ opened: true });
+    expect(io).toHaveBeenCalledWith('https://orch.example/ui', {
+      auth: { token: 'tok', name: 'e2e' },
+      transports: ['websocket'],
+    });
   });
 });
 

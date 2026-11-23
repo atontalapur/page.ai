@@ -16,6 +16,7 @@
     "@page/model-client": "workspace:*",
     "@page/toolkit": "workspace:*",
     "pg": "catalog:",
+    "socket.io-client": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
