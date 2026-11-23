@@ -49,6 +49,9 @@ const schema = envSchema(
     // Bearer token for every route but /health and /ingest. Blank is unset: those routes
     // then return 401, and the service still boots so the deploy health check passes.
     ORCHESTRATOR_API_TOKEN: z.string().min(1).optional(),
+    // The node daemons' socket secret, sent as `auth.token` on the /node namespace. Blank is
+    // unset: every daemon is then refused, and the service still boots.
+    NODE_SHARED_SECRET: z.string().min(1).optional(),
     // Blank is unset. The webhook then rejects every request.
     POSTHOG_WEBHOOK_SECRET: z.string().min(1).optional(),
     OPENROUTER_API_KEY: z.string().min(1).optional(),
@@ -89,6 +92,8 @@ export interface Config {
   useFakeAdapters: boolean;
   logLevel: LogLevel;
   apiToken: string | undefined;
+  /** What a node daemon's handshake must carry. Unset refuses every daemon. */
+  nodeSharedSecret: string | undefined;
   posthogWebhookSecret: string | undefined;
   openRouterApiKey: string | undefined;
   triageModel: string;
@@ -169,6 +174,7 @@ export function loadConfig(env: Env = process.env): Config {
     useFakeAdapters: config.USE_FAKE_ADAPTERS,
     logLevel: config.LOG_LEVEL,
     apiToken: config.ORCHESTRATOR_API_TOKEN,
+    nodeSharedSecret: config.NODE_SHARED_SECRET,
     posthogWebhookSecret: config.POSTHOG_WEBHOOK_SECRET,
     openRouterApiKey: config.OPENROUTER_API_KEY,
     triageModel: config.TRIAGE_MODEL,

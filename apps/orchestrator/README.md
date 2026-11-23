@@ -17,7 +17,7 @@ between tiers is part of the issue state machine (`src/issues/transitions.ts`), 
 | `RunsModule`      | `run_finished` jobs from the node daemon: runs row, issue event, next tier |
 | `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions. Stub.        |
 | `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone   |
-| `GatewayModule`   | Socket.IO for the UI: `issue.updated` on every issue change (#34)          |
+| `GatewayModule`   | Socket.IO for the UI and the node daemons: live events, kills (#34)        |
 
 ## Issue lifecycle
 
@@ -151,22 +151,58 @@ contract before it goes out. IssuesService publishes the issue after the transac
 (`report`, and `afterCommit` for every status change), so a rolled-back change is never sent.
 Events go only to tabs on the instance that made the change, which is fine with one instance.
 
+Node daemons connect to the `/node` namespace (`NODE_NAMESPACE`) with `NODE_SHARED_SECRET` as
+`auth.token`, and are refused with `unauthorized` without it (`NodeGateway`). Each event a
+daemon or a tab sends is checked against its contract (`nodeToServerEvents`,
+`uiToServerEvents`), and one that fails is logged and dropped.
+
+- **Relay.** `node.step` goes to every tab as `run.step`, `node.diff` as `run.diff` and
+  `node.run.finished` as `run.finished`, in the order the daemon sent them. The first step of
+  the issue's run in progress (seq 0) also sends `run.started`: from that step on,
+  `GET /issues/:id/runs` calls the run `running`. None of it is stored here: the daemon writes
+  the `steps` table itself, and the `run_finished` job stays the record of a run. A tab doesn't
+  get what was sent while it was disconnected, so it should load the runs again on reconnect.
+- **Which daemon holds a run.** The claim is the pg-boss `fix` job, which doesn't say which
+  daemon took it. `Nodes` keeps, in memory, the socket whose events last named each run: from
+  its first event for the run until its `node.run.finished` or its disconnect. After a
+  restart a daemon holds its runs again from its next event.
+- **Kill.** Every committed change that cancels a run's fix job sends `run.kill` to the daemon
+  holding that run, and to no other (`RunKills`). That covers the issue `kill` event, the UI's
+  `run.kill` (which kills the issue whose run is in progress, as the event does), and a run
+  failed after its job expired. A kill for a run no daemon holds still kills the issue and
+  cancels the job. On a daemon's first event for a run that is no longer its issue's run in
+  progress and has no recorded result, such as one killed before its first step or while the
+  daemon was away, the gateway sends that daemon `run.kill`. The daemon stops the run and
+  reports it `killed`.
+
+Each gateway has a handler map, and an event with no handler is logged and dropped. Tier 3
+approvals add `node.approval.request` to `NodeGateway` and `approval.decide` to `UiGateway`,
+and answer the daemon with `Nodes.send(runId, 'approval.decided', ...)`. `run.chat` waits for a
+daemon that handles it.
+
 ## Rate limits
 
-The routes and the socket added for the UI are limited per client, in memory
-(`src/rate-limit.ts`), so each instance counts its own and a restart starts over:
+The routes and the sockets added for the UI and the node daemons are limited per client, in
+memory (`src/rate-limit.ts`), so each instance counts its own and a restart starts over:
 
-| What                           | Limit        | Past it                                     |
-| ------------------------------ | ------------ | ------------------------------------------- |
-| UI files, per address          | 300 a minute | 429 with `Retry-After`                      |
-| Socket handshakes, per address | 30 a minute  | Refused with `connect_error` `rate_limited` |
-| Socket messages, per socket    | 20 every 10s | The socket is closed                        |
+| What                                | Limit         | Past it                                     |
+| ----------------------------------- | ------------- | ------------------------------------------- |
+| UI files, per address               | 300 a minute  | 429 with `Retry-After`                      |
+| UI socket handshakes, per address   | 30 a minute   | Refused with `connect_error` `rate_limited` |
+| UI socket messages, per socket      | 20 every 10s  | The socket is closed                        |
+| Node socket handshakes, per address | 30 a minute   | Refused with `connect_error` `rate_limited` |
+| Node socket messages, per socket    | 300 every 10s | The socket is closed                        |
 
 A page load is index.html and about ten hashed files, so 300 a minute is about 30 full reloads.
 A tab handshakes once and socket.io-client retries a lost connection at most every 5s, under
 12 a minute, so 30 leaves room for a few tabs behind one address. The handshake limit runs
-before the token check, so it also holds a token guesser to 30 tries a minute. The UI sends no
-messages yet; kill, chat and approval decisions will be clicks, far under 20 in 10s. API
+before the token check, so it also holds a token guesser to 30 tries a minute. Kill, chat and
+approval decisions are clicks, far under 20 in 10s. A daemon handshakes once, and after a
+refusal it waits a minute, so 30 leaves room for several daemons behind one address and holds
+a secret guesser to 30 tries. A run sends a step per command, each after a model call, so
+well under one a second; 300 in 10s leaves room for the events a daemon buffered while it was
+disconnected, which it sends at once. A daemon whose socket is closed connects again 5s later,
+and its steps are in the `steps` table either way. API
 routes don't count toward the UI's limit. The address is the last `X-Forwarded-For` entry,
 which Railway's proxy adds, or the socket's own address. Without a proxy in front a client can
 set that header itself, so the limits slow a misbehaving client; the token is what keeps
@@ -200,6 +236,7 @@ so the app is compiled with `tsc` to `dist/` rather than run from source.
 | `PGBOSS_SCHEMA`               | `pgboss`                | Must match the node daemon's                                                  |
 | `USE_FAKE_ADAPTERS`           | `false`                 | `true`/`1`/`yes`/`on` or `false`/`0`/`no`/`off`                               |
 | `LOG_LEVEL`                   | `info`                  | `fatal`, `error`, `warn`, `info`, `debug`, `trace`                            |
+| `NODE_SHARED_SECRET`          |                         | What a node daemon sends as `auth.token` on `/node`. Unset refuses every one  |
 | `POSTHOG_WEBHOOK_SECRET`      |                         | Bearer secret for `POST /ingest/posthog`. Unset rejects every webhook         |
 | `OPENROUTER_API_KEY`          |                         | Unset, or `USE_FAKE_ADAPTERS`, uses the rule fallback                         |
 | `TRIAGE_MODEL`                | `openai/gpt-4o-mini`    | Cheap model for triage                                                        |

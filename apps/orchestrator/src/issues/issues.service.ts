@@ -203,15 +203,16 @@ export class IssuesService {
   }
 
   /**
-   * Logs `issue moved` for a change and publishes the issue to IssueUpdates. Every status
-   * change passes through here once the transaction that made it has committed.
+   * Logs `issue moved` for a change and publishes the issue to IssueUpdates, with the run it
+   * cancelled. Every status change passes through here once the transaction that made it
+   * has committed.
    */
   afterCommit({ event, issue, from, runId, cancelledRunId }: Moved): void {
     issueLogger(this.logger, { issueId: issue.id, runId, tier: issue.currentTier }).info(
       { event: event.type, from, to: issue.status, cancelledRunId },
       'issue moved',
     );
-    this.updates.publish(issue);
+    this.updates.publish(issue, cancelledRunId === undefined ? {} : { cancelledRunId });
   }
 
   /**

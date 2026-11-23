@@ -6,6 +6,7 @@ import {
   type IssueRun,
   type JobPayload,
   type Step,
+  type Tier,
 } from '@page/contracts';
 import type { Insertable, Selectable, Transaction } from 'kysely';
 import type { Database, Db, RunsTable, StepsTable } from '../db/database.ts';
@@ -58,6 +59,18 @@ export type RecordOutcome =
   | { kind: 'result_pending' }
   | { kind: 'no_issue' };
 
+/** The issue a run belongs to, for the gateway to relay the run's events. */
+export interface RunOwner {
+  issueId: string;
+  tier: Tier;
+  /** The issue is fixing with this as its current run: the run a daemon should be on. */
+  current: boolean;
+  /** The run has its `runs` row: its result was recorded, or it was failed without one. */
+  recorded: boolean;
+  /** As `forIssue` gives it: the row's, or the first step's while the run has no row. */
+  startedAt: string | null;
+}
+
 /** What a transaction did, and the issue change to log once it commits. */
 interface Recorded {
   outcome: RecordOutcome;
@@ -83,7 +96,7 @@ export function failureMessage(output: unknown): string {
 
 /**
  * Records what the node daemon reports for each fix run (#8, #136). The `run_finished` job
- * is the record; the gateway (#34) will relay the same result to the UI later.
+ * is the record; NodeGateway relays the same result to the UI from the daemon's socket.
  */
 @Injectable()
 export class RunsService {
@@ -160,6 +173,44 @@ export class RunsService {
       });
     }
     return runs;
+  }
+
+  /**
+   * Whose run `runId` is: the issue waiting on it, or the issue on its `runs` row once it
+   * has one. Undefined for a run neither knows, such as one a new tier replaced before it
+   * reported.
+   */
+  async owner(runId: string): Promise<RunOwner | undefined> {
+    const issue = await this.db
+      .selectFrom('issues')
+      .select(['id', 'status', 'current_tier'])
+      .where('current_run_id', '=', runId)
+      .executeTakeFirst();
+    const current = issue?.status === 'fixing';
+    const row = await this.db
+      .selectFrom('runs')
+      .select(['issue_id', 'tier', 'started_at'])
+      .where('id', '=', runId)
+      .executeTakeFirst();
+    if (row) {
+      const startedAt = row.started_at?.toISOString() ?? null;
+      return { issueId: row.issue_id, tier: row.tier, current, recorded: true, startedAt };
+    }
+    if (!issue || issue.current_tier === null) return undefined;
+    const first = await this.db
+      .selectFrom('steps')
+      .select('created_at')
+      .where('run_id', '=', runId)
+      .orderBy('seq')
+      .limit(1)
+      .executeTakeFirst();
+    return {
+      issueId: issue.id,
+      tier: issue.current_tier,
+      current,
+      recorded: false,
+      startedAt: first?.created_at.toISOString() ?? null,
+    };
   }
 
   /**

@@ -60,6 +60,9 @@ try {
   if (!config.apiToken) {
     logger.warn('ORCHESTRATOR_API_TOKEN is unset; every route but /health and /ingest returns 401');
   }
+  if (!config.nodeSharedSecret) {
+    logger.warn('NODE_SHARED_SECRET is unset; every node daemon is refused');
+  }
   logger.info(
     config.autoStartFix
       ? `AUTO_START_FIX is on; triage starts a Tier 1 fix, at most ${config.autoStartFixMaxPerHour} an hour`
