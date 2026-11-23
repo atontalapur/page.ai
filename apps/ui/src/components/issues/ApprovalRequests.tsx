@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
-import { ClockCircleIcon, ShieldWarningIcon } from '@solar-icons/react/linear';
+import { ClockCircleIcon, ShieldWarningIcon } from '@solar-icons/react/line-duotone';
 import { approverNameSchema, type Approval, type Issue } from '@page/contracts';
 import { Button } from '@page/design-system/components/ui/button';
 import { Input } from '@page/design-system/components/ui/input';
@@ -101,7 +101,7 @@ function Request({
   }
 
   return (
-    <li className="space-y-3 rounded-lg border bg-background p-3">
+    <li className="space-y-3 rounded-md border bg-background p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-medium">{title}</p>
         <p className="flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
@@ -166,7 +166,7 @@ export default function ApprovalRequests({ issue }: { issue: Issue }) {
   return (
     <section
       aria-label="Live app actions waiting for approval"
-      className="space-y-3 rounded-xl border border-violet-a6 bg-violet-a2 p-4"
+      className="space-y-3 rounded-md border border-violet-a6 bg-violet-a2 p-4"
     >
       <div className="space-y-1">
         <h3 className="flex items-center gap-2 font-semibold">

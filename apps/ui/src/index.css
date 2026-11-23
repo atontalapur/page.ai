@@ -1,5 +1,6 @@
+/* globals.css imports Tailwind itself. A second import here would run its base reset again
+   after the design system's, putting every border back to currentColor (black). */
 @import '@page/design-system/globals.css';
-@import 'tailwindcss';
 
 /* @pierre/diffs views (components/issues/CodeDiff.tsx). They render in a shadow root and
    colour with light-dark(), so the theme toggle reaches them through color-scheme, and the

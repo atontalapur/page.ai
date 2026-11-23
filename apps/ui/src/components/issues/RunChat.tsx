@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { BotIcon, ChatRoundLineIcon } from '@solar-icons/react/linear';
+import { BotIcon, ChatRoundLineIcon } from '@solar-icons/react/line-duotone';
 import { MAX_CHAT_CHARS, type IssueRun, type RunChat } from '@page/contracts';
 import { Button } from '@page/design-system/components/ui/button';
 import { Label } from '@page/design-system/components/ui/label';
@@ -26,7 +26,7 @@ export function ChatItem({ chat }: { chat: RunChat }) {
       <span className="flex justify-end pt-2 text-blue-11">
         <ChatRoundLineIcon className="size-4" />
       </span>
-      <div className="min-w-0 space-y-2 rounded-lg border border-blue-a5 bg-blue-a2 px-3 py-2">
+      <div className="min-w-0 space-y-2 rounded-md border border-blue-a5 bg-blue-a2 px-3 py-2">
         <p className="text-xs text-muted-foreground">
           <span className="font-medium text-foreground">{who}</span> asked the agent at{' '}
           {clockTime(chat.askedAt)}

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { DangerTriangleIcon, MagnifierIcon } from '@solar-icons/react/linear';
+import { DangerTriangleIcon, MagnifierIcon } from '@solar-icons/react/line-duotone';
 import { ISSUE_STATUSES, SEVERITIES } from '@page/contracts';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
@@ -99,26 +99,28 @@ export default function IncidentsPage() {
         ))}
       </div>
 
-      <Card>
-        <CardHeader className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <CardTitle>All Incidents</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {filteredIssues.length} incidents found
-              </p>
-            </div>
-            <DangerTriangleIcon className="size-5 text-muted-foreground" />
-          </div>
+      {/* Like a Notion database view: a title row, the filters, then the table on the page. */}
+      <section aria-labelledby="all-incidents" className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 id="all-incidents" className="flex items-center gap-2 text-sm font-semibold">
+            <DangerTriangleIcon className="size-4 text-muted-foreground" />
+            All incidents
+            <span
+              aria-label={`${filteredIssues.length} incidents`}
+              className="font-normal text-muted-foreground tabular-nums"
+            >
+              {filteredIssues.length}
+            </span>
+          </h3>
 
-          <div className="flex flex-col gap-3 md:flex-row">
+          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
             <div className="relative min-w-0 flex-1">
               <MagnifierIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search incidents..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                className="pl-9"
+                className="pl-9 md:w-64"
               />
             </div>
 
@@ -126,7 +128,7 @@ export default function IncidentsPage() {
               aria-label="Filter by status"
               value={status}
               onChange={(event) => setStatus(event.target.value)}
-              className="h-9 rounded-md border bg-background px-3 text-sm"
+              className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-muted-foreground"
             >
               <option value={ALL}>All Statuses</option>
               {ISSUE_STATUSES.map((value) => (
@@ -140,7 +142,7 @@ export default function IncidentsPage() {
               aria-label="Filter by severity"
               value={severity}
               onChange={(event) => setSeverity(event.target.value)}
-              className="h-9 rounded-md border bg-background px-3 text-sm"
+              className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-muted-foreground"
             >
               <option value={ALL}>All Severities</option>
               {SEVERITIES.map((value) => (
@@ -151,74 +153,65 @@ export default function IncidentsPage() {
               <option value={UNTRIAGED}>{UNTRIAGED}</option>
             </select>
           </div>
-        </CardHeader>
+        </div>
 
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Incident</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Class</TableHead>
-                  <TableHead>Severity</TableHead>
-                  <TableHead>Occurrences</TableHead>
-                  <TableHead>Tier</TableHead>
-                  <TableHead>Updated</TableHead>
-                </TableRow>
-              </TableHeader>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Incident</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Class</TableHead>
+              <TableHead>Severity</TableHead>
+              <TableHead>Occurrences</TableHead>
+              <TableHead>Tier</TableHead>
+              <TableHead>Updated</TableHead>
+            </TableRow>
+          </TableHeader>
 
-              <TableBody>
-                {filteredIssues.map((issue) => (
-                  <TableRow key={issue.id} data-issue-id={issue.id}>
-                    <TableCell>
-                      <Link
-                        to={`/incidents/${issue.id}`}
-                        className="block max-w-64 hover:underline"
-                      >
-                        <span className="block truncate font-medium" title={issue.title}>
-                          {issue.title}
-                        </span>
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {shortId(issue.id)}
-                        </span>
-                      </Link>
-                    </TableCell>
+          <TableBody>
+            {filteredIssues.map((issue) => (
+              <TableRow key={issue.id} data-issue-id={issue.id}>
+                <TableCell>
+                  <Link to={`/incidents/${issue.id}`} className="block max-w-64 hover:underline">
+                    <span className="block truncate font-medium" title={issue.title}>
+                      {issue.title}
+                    </span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {shortId(issue.id)}
+                    </span>
+                  </Link>
+                </TableCell>
 
-                    <TableCell>
-                      <StatusBadge status={issue.status} />
-                    </TableCell>
+                <TableCell>
+                  <StatusBadge status={issue.status} />
+                </TableCell>
 
-                    <TableCell className="whitespace-nowrap">{classLabel(issue.class)}</TableCell>
+                <TableCell className="whitespace-nowrap">{classLabel(issue.class)}</TableCell>
 
-                    <TableCell>
-                      <SeverityBadge severity={issue.severity} />
-                    </TableCell>
+                <TableCell>
+                  <SeverityBadge severity={issue.severity} />
+                </TableCell>
 
-                    <TableCell>{issue.occurrences}</TableCell>
+                <TableCell>{issue.occurrences}</TableCell>
 
-                    <TableCell className="whitespace-nowrap">
-                      {tierLabel(issue.currentTier)}
-                    </TableCell>
+                <TableCell className="whitespace-nowrap">{tierLabel(issue.currentTier)}</TableCell>
 
-                    <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                      {new Date(issue.updatedAt).toLocaleString()}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                  {new Date(issue.updatedAt).toLocaleString()}
+                </TableCell>
+              </TableRow>
+            ))}
 
-                {filteredIssues.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                      {emptyMessage}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+            {filteredIssues.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                  {emptyMessage}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </section>
     </div>
   );
 }
