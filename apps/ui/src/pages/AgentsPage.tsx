@@ -59,10 +59,11 @@ function AgentCard({ agent }: { agent: NodeSummary }) {
             <div key={run.id} className="space-y-2 rounded-lg bg-muted/50 p-3">
               <Link
                 to={`/incidents/${run.issueId}`}
+                title={run.issueTitle}
                 className="block min-w-0 text-sm font-semibold text-primary hover:underline"
               >
-                <span className="font-mono">{shortId(run.issueId)}</span>{' '}
-                <span className="truncate">{run.issueTitle}</span>
+                <span className="block font-mono">{shortId(run.issueId)}</span>
+                <span className="block truncate">{run.issueTitle}</span>
               </Link>
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="font-semibold">Tier {run.tier}</span>
