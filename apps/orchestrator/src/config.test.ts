@@ -14,6 +14,7 @@ describe('loadConfig', () => {
       useFakeAdapters: false,
       logLevel: 'info',
       apiToken: undefined,
+      nodeSharedSecret: undefined,
       posthogWebhookSecret: undefined,
       openRouterApiKey: undefined,
       triageModel: 'openai/gpt-4o-mini',
@@ -36,6 +37,9 @@ describe('loadConfig', () => {
     expect(
       loadConfig({ DATABASE_URL, PORT: '8080', HOST: '127.0.0.1', PGBOSS_SCHEMA: 'jobs' }),
     ).toMatchObject({ port: 8080, host: '127.0.0.1', pgbossSchema: 'jobs' });
+    expect(loadConfig({ DATABASE_URL, NODE_SHARED_SECRET: 'node-secret' }).nodeSharedSecret).toBe(
+      'node-secret',
+    );
   });
 
   it('reads AUTO_START_FIX', () => {
@@ -111,12 +115,14 @@ describe('loadConfig', () => {
       loadConfig({
         DATABASE_URL,
         ORCHESTRATOR_API_TOKEN: ' ',
+        NODE_SHARED_SECRET: ' ',
         POSTHOG_WEBHOOK_SECRET: ' ',
         OPENROUTER_API_KEY: '',
         NOTIFY_TO_NUMBERS: ' +15550000001, +15550000002 ',
       }),
     ).toMatchObject({
       apiToken: undefined,
+      nodeSharedSecret: undefined,
       posthogWebhookSecret: undefined,
       openRouterApiKey: undefined,
       notifyTo: ['+15550000001', '+15550000002'],

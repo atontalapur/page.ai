@@ -5,17 +5,16 @@ import {
   UI_NAMESPACE,
   type Issue,
   type ServerToUiEvents,
-  type SocketRefusal,
   type UiToServerEvents,
 } from '@page/contracts';
 import type { Namespace, Socket } from 'socket.io';
 import { z } from 'zod';
-import { tokenAuthorized } from '../auth/bearer.ts';
 import type { Config } from '../config.ts';
 import { IssueUpdates } from '../issues/issue-updates.ts';
 import type { Logger } from '../logger.ts';
-import { clientAddress, RateLimiter } from '../rate-limit.ts';
+import { RateLimiter } from '../rate-limit.ts';
 import { CONFIG, LOGGER } from '../tokens.ts';
+import { guardHandshakes, limitMessages, type SocketGuard } from './socket-guard.ts';
 
 type UiNamespace = Namespace<UiToServerEvents, ServerToUiEvents>;
 type UiSocket = Socket<UiToServerEvents, ServerToUiEvents>;
@@ -35,51 +34,34 @@ export const MESSAGES_PER_10_SECONDS = 20;
  */
 @WebSocketGateway({ namespace: UI_NAMESPACE, serveClient: false })
 export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnection, OnModuleDestroy {
-  private readonly handshakes = new RateLimiter(HANDSHAKES_PER_MINUTE, 60_000);
-  private readonly messages = new RateLimiter(MESSAGES_PER_10_SECONDS, 10_000);
+  private readonly guard: SocketGuard;
   private unsubscribe: (() => void) | undefined;
 
   constructor(
-    @Inject(CONFIG) private readonly config: Config,
+    @Inject(CONFIG) config: Config,
     @Inject(LOGGER) private readonly logger: Logger,
     private readonly updates: IssueUpdates,
-  ) {}
+  ) {
+    this.guard = {
+      name: 'ui',
+      secret: config.apiToken,
+      handshakes: new RateLimiter(HANDSHAKES_PER_MINUTE, 60_000),
+      messages: new RateLimiter(MESSAGES_PER_10_SECONDS, 10_000),
+      logger,
+    };
+  }
 
   afterInit(namespace: UiNamespace): void {
-    // Middleware runs before the socket joins, so a refused one never receives an event.
-    namespace.use((socket, next) => {
-      const refusal = this.refusal(socket);
-      if (refusal) return next(new Error(refusal satisfies SocketRefusal));
-      next();
-    });
+    guardHandshakes(namespace, this.guard);
     this.unsubscribe = this.updates.subscribe((issue) => this.sendIssue(namespace, issue));
   }
 
   handleConnection(socket: UiSocket): void {
-    socket.use((_packet, next) => {
-      if (this.messages.hit(socket.id).allowed) return next();
-      this.logger.warn({ address: this.address(socket) }, 'ui socket sent too many messages');
-      socket.disconnect(true);
-    });
+    limitMessages(socket, this.guard);
   }
 
   onModuleDestroy(): void {
     this.unsubscribe?.();
-  }
-
-  private refusal(socket: UiSocket): SocketRefusal | undefined {
-    const address = this.address(socket);
-    if (!this.handshakes.hit(address).allowed) {
-      this.logger.warn({ address }, 'ui socket handshake rate limited');
-      return 'rate_limited';
-    }
-    const { token } = socket.handshake.auth as { token?: unknown };
-    if (!tokenAuthorized(token, this.config.apiToken)) return 'unauthorized';
-    return undefined;
-  }
-
-  private address(socket: UiSocket): string {
-    return clientAddress(socket.handshake.address, socket.handshake.headers['x-forwarded-for']);
   }
 
   /** Checks the payload against its contract, so a tab never gets one it would reject. */

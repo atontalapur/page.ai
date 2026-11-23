@@ -1,4 +1,4 @@
-import type { NodeToServerEvents, ServerToNodeEvents } from '@page/contracts';
+import { NODE_NAMESPACE, type NodeToServerEvents, type ServerToNodeEvents } from '@page/contracts';
 import type { Logger } from 'pino';
 import { io, type Socket } from 'socket.io-client';
 import {
@@ -10,9 +10,6 @@ import {
   type ServerEvent,
   type ServerHandler,
 } from './link.ts';
-
-/** The Socket.IO namespace the orchestrator serves node daemons on. */
-export const NODE_NAMESPACE = '/node';
 
 export interface SocketIoLinkOptions {
   /** The orchestrator's base URL, e.g. https://orchestrator.example.com. */

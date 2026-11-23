@@ -22,6 +22,7 @@ export const testConfig: Config = {
   useFakeAdapters: true,
   logLevel: 'info',
   apiToken: 'test-api-token',
+  nodeSharedSecret: 'test-node-secret',
   posthogWebhookSecret: 'test-webhook-secret',
   openRouterApiKey: undefined,
   triageModel: 'openai/gpt-4o-mini',

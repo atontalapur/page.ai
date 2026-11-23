@@ -1,6 +1,7 @@
 import { once } from 'node:events';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { NODE_NAMESPACE } from '@page/contracts';
 import {
   nodeToServerEventFixtures,
   serverToNodeEventFixtures,
@@ -10,7 +11,7 @@ import { pino } from 'pino';
 import { Server } from 'socket.io';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FakeLink } from './fake-link.ts';
-import { NODE_NAMESPACE, SocketIoLink } from './socket-io-link.ts';
+import { SocketIoLink } from './socket-io-link.ts';
 
 const logger = pino({ enabled: false });
 const step = nodeToServerEventFixtures['node.step'];

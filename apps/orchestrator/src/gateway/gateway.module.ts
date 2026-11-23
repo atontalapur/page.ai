@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
+import { NodeGateway } from './node.gateway.ts';
 import { UiGateway } from './ui.gateway.ts';
 
-// The node daemons' namespace (`/node`, NODE_SHARED_SECRET) joins this module with the run
-// events it carries.
+// The UI's namespace (`/ui`, ORCHESTRATOR_API_TOKEN) and the node daemons' (`/node`,
+// NODE_SHARED_SECRET), on the HTTP port.
 @Module({
-  providers: [UiGateway],
+  providers: [UiGateway, NodeGateway],
 })
 export class GatewayModule {}

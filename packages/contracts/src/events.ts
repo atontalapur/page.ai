@@ -21,6 +21,9 @@ const v = z.literal(1);
 /** The Socket.IO namespace the orchestrator serves the UI on. */
 export const UI_NAMESPACE = '/ui';
 
+/** The Socket.IO namespace the orchestrator serves node daemons on. */
+export const NODE_NAMESPACE = '/node';
+
 /**
  * The `connect_error` messages a namespace sends when it turns a handshake away: a missing or
  * wrong token, or too many handshakes from one address. Socket.IO doesn't retry either, so
@@ -98,8 +101,9 @@ export const uiToServerEvents = {
 };
 
 /**
- * The node daemon streams over its outbound socket (#8). The server stores each step and
- * relays it to the UI as `run.step`.
+ * The node daemon streams over its outbound socket (#8). The daemon writes each step to the
+ * `steps` table before it sends it, so the server relays it to the UI as `run.step` and
+ * doesn't store it again.
  */
 export const nodeToServerEvents = {
   'node.step': z.strictObject({ v, step: stepSchema }),

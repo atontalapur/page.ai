@@ -165,6 +165,7 @@ describe('TriageClassifier', () => {
       useFakeAdapters: false,
       logLevel: 'info' as const,
       apiToken: undefined,
+      nodeSharedSecret: undefined,
       posthogWebhookSecret: undefined,
       triageModel: 'openai/gpt-4o-mini',
       triageTimeoutMs: 1000,

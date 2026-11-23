@@ -1,11 +1,12 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { serverToUiEvents, UI_NAMESPACE, type Issue } from '@page/contracts';
 import { posthogWebhookFixture } from '@page/contracts/fixtures';
-import { io, type Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { createTestDeps, testConfig } from '../db/test-utils.ts';
 import { TriageService } from '../triage/triage.service.ts';
+import { outcome, TestSockets } from './test-utils.ts';
 import { HANDSHAKES_PER_MINUTE, MESSAGES_PER_10_SECONDS } from './ui.gateway.ts';
 
 const deps = await createTestDeps();
@@ -19,35 +20,9 @@ afterAll(async () => {
 
 const token = testConfig.apiToken ?? '';
 const api = { authorization: `Bearer ${token}` };
-const sockets: Socket[] = [];
-afterEach(() => {
-  for (const socket of sockets.splice(0)) socket.close();
-});
-
-let addresses = 0;
-/**
- * A socket that doesn't retry. Each gets its own forwarded address, so the handshake limit
- * counts every test apart.
- */
-function connect(auth: Record<string, unknown>, address = `203.0.113.${++addresses}`): Socket {
-  const socket = io(url, {
-    auth,
-    transports: ['websocket'],
-    reconnection: false,
-    forceNew: true,
-    extraHeaders: { 'x-forwarded-for': address },
-  });
-  sockets.push(socket);
-  return socket;
-}
-
-/** Resolves with the `connect_error` message, or `connected`. */
-function outcome(socket: Socket): Promise<string> {
-  return new Promise((resolve) => {
-    socket.once('connect', () => resolve('connected'));
-    socket.once('connect_error', (err) => resolve(err.message));
-  });
-}
+const sockets = new TestSockets(url, '203.0.113');
+afterEach(() => sockets.closeAll());
+const connect = sockets.connect.bind(sockets);
 
 /** The next `issue.updated` payloads, checked against the contract as the UI checks them. */
 function updates(socket: Socket, count: number): Promise<Issue[]> {
