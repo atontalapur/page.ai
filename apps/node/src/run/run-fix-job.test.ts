@@ -1,7 +1,13 @@
 import { MAX_RUN_DIFF_CHARS } from '@page/contracts';
 import { jobFixtures } from '@page/contracts/fixtures';
-import type { CompleteOptions, CompletionResult, ModelClient } from '@page/model-client';
+import type {
+  ChatMessage,
+  CompleteOptions,
+  CompletionResult,
+  ModelClient,
+} from '@page/model-client';
 import {
+  FakeDeployer,
   FakeGitHub,
   FakeOps,
   FakeRunner,
@@ -759,6 +765,116 @@ describe('runFixJob', () => {
           { allowed: true, exitCode: 1, outputTrimmed: refusal },
           { allowed: true, exitCode: 1, outputTrimmed: refusal },
         ]);
+      });
+    });
+
+    describe('rollback', () => {
+      const planReply = '```page_ops_rollback_plan\n```';
+      const rollbackReply = (id: string) => `\`\`\`page_ops_rollback\n${id}\n\`\`\``;
+      // A bad deploy is live, and the one before it served traffic.
+      const deploys = () =>
+        new FakeDeployer([
+          {
+            id: 'bad',
+            status: 'SUCCESS',
+            createdAt: '2026-11-20T10:00:00.000Z',
+            commitSha: 'b1',
+            canRollback: true,
+          },
+          {
+            id: 'good',
+            status: 'REMOVED',
+            createdAt: '2026-11-19T10:00:00.000Z',
+            commitSha: 'g1',
+            canRollback: true,
+          },
+        ]);
+      /** A ScriptedModel that keeps the system prompt of its first call. */
+      class PromptedModel extends ScriptedModel {
+        system: string | undefined;
+        override complete(messages?: readonly ChatMessage[]) {
+          this.system ??= messages?.[0]?.content;
+          return super.complete();
+        }
+      }
+
+      it('rolls the live app back, and reports it as a fix made only through ops', async () => {
+        const deployer = deploys();
+        const model = new PromptedModel([planReply, rollbackReply('good'), submitReply()]);
+        const { deps, sink, results } = setup([], undefined, {
+          ops: new FakeOps(),
+          deployer,
+          model,
+        });
+        const finished = await runFixJob(atTier(3), deps);
+
+        expect(model.system).toContain('page_ops_rollback_plan');
+        expect(deployer.rollbacks).toEqual(['good']);
+        expect(sink.steps).toMatchObject([
+          { input: '{"tool":"ops.planRollback"}', allowed: true, exitCode: 0 },
+          { input: '{"tool":"ops.rollback","to":"good"}', allowed: true, exitCode: 0 },
+        ]);
+        expect(finished).toMatchObject({ status: 'succeeded', prUrl: null, opsOnly: true });
+        expect(results.sent).toMatchObject([{ diff: '', result: { opsOnly: true } }]);
+      });
+
+      it('is neither offered nor run on a node without a deployer', async () => {
+        const model = new PromptedModel([planReply, submitReply()]);
+        const { deps, sink } = setup([], undefined, { ops: new FakeOps(), model });
+        await runFixJob(atTier(3), deps);
+
+        expect(model.system).toContain('page_ops_restart');
+        expect(model.system).not.toContain('page_ops_rollback');
+        expect(sink.steps).toMatchObject([
+          { allowed: false, outputTrimmed: 'refused: ops.planRollback is not set up on this node' },
+        ]);
+      });
+
+      it.each([1, 2] as const)('never reaches the deployer at Tier %i', async (tier) => {
+        const deployer = deploys();
+        const model = new PromptedModel([planReply, rollbackReply('good'), submitReply()]);
+        const { deps, sink } = setup([], undefined, { ops: new FakeOps(), deployer, model });
+        await runFixJob(atTier(tier), deps);
+
+        expect(model.system).not.toContain('page_ops_rollback');
+        expect(deployer.rollbacks).toEqual([]);
+        expect(sink.steps).toMatchObject([
+          { outputTrimmed: `refused: ops.planRollback needs Tier 3; this run is Tier ${tier}` },
+          { outputTrimmed: `refused: ops.rollback needs Tier 3; this run is Tier ${tier}` },
+        ]);
+      });
+
+      it('keeps the rollback of a run that did not succeed, and puts back its overrides', async () => {
+        const lines: { level: number; msg: string }[] = [];
+        const logger = pino(
+          {},
+          { write: (line: string) => void lines.push(JSON.parse(line) as (typeof lines)[number]) },
+        );
+        const deployer = deploys();
+        const ops = new FakeOps({ SHIPPING_FLAT_CENTS: '2500000000' });
+        const { deps } = setup([unsetReply, planReply, rollbackReply('good')], undefined, {
+          ops,
+          deployer,
+          logger,
+          agentConfig: { stepLimit: 3 },
+        });
+        const finished = await runFixJob(atTier(3), deps);
+
+        expect(finished).toMatchObject({ status: 'failed' });
+        expect(ops.calls).toEqual([
+          'deleteConfig SHIPPING_FLAT_CENTS',
+          'setConfig SHIPPING_FLAT_CENTS=2500000000',
+        ]);
+        // No roll forward: the build the run brought back is still the live one.
+        expect(deployer.rollbacks).toEqual(['good']);
+        expect(deployer.deployments[0]).toMatchObject({ status: 'SUCCESS', commitSha: 'g1' });
+        expect(lines).toContainEqual(
+          expect.objectContaining({
+            level: 40,
+            msg: "kept the rollback of a run that did not succeed; rolling forward is a person's call",
+            rollback: { from: 'bad', to: 'good', accepted: true },
+          }),
+        );
       });
     });
 

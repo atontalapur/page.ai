@@ -1,10 +1,26 @@
 import { jobFixtures, nodeEnvFixture } from '@page/contracts/fixtures';
-import { FakeGitHub, FakeOps, FakeRunner, HttpOps, InMemoryAuditSink } from '@page/toolkit';
+import {
+  FakeDeployer,
+  FakeGitHub,
+  FakeOps,
+  FakeRunner,
+  HttpOps,
+  InMemoryAuditSink,
+  RailwayDeployer,
+  rollback,
+} from '@page/toolkit';
 import type pg from 'pg';
 import { pino } from 'pino';
 import { describe, expect, it, vi } from 'vitest';
 import { loadConfig } from './config.ts';
-import { createDaemon, opsFor, opsLockFor, sandboxesFor, type Adapters } from './daemon.ts';
+import {
+  createDaemon,
+  deployerFor,
+  opsFor,
+  opsLockFor,
+  sandboxesFor,
+  type Adapters,
+} from './daemon.ts';
 import { FakeJobSource } from './jobs/fake-job-source.ts';
 import { FakeLink } from './link/fake-link.ts';
 import { bashReply, ScriptedModel, submitReply } from './model/scripted-model.ts';
@@ -160,6 +176,39 @@ describe('createDaemon', () => {
     await a.jobs.deliver({ ...jobFixtures.fix, tier: 3 });
     expect(ops.calls).toEqual(['getConfig']);
   });
+
+  it('gives a Tier 3 job the deployer for a rollback', async () => {
+    const deployer = new FakeDeployer([
+      {
+        id: 'bad',
+        status: 'SUCCESS',
+        createdAt: '2026-11-20T00:00:00Z',
+        commitSha: null,
+        canRollback: true,
+      },
+      {
+        id: 'good',
+        status: 'REMOVED',
+        createdAt: '2026-11-19T00:00:00Z',
+        commitSha: null,
+        canRollback: true,
+      },
+    ]);
+    const a = {
+      ...adapters(),
+      ops: new FakeOps(),
+      deployer,
+      model: new ScriptedModel([
+        '```page_ops_rollback_plan\n```',
+        '```page_ops_rollback\ngood\n```',
+        submitReply(),
+      ]),
+    };
+    const daemon = createDaemon(a, pino({ enabled: false }));
+    await daemon.start();
+    await a.jobs.deliver({ ...jobFixtures.fix, tier: 3 });
+    expect(deployer.rollbacks).toEqual(['good']);
+  });
 });
 
 describe('sandboxesFor', () => {
@@ -212,6 +261,57 @@ describe('opsFor', () => {
   it('uses an in-memory ops API with fakes on', () => {
     const { logger } = capture();
     expect(opsFor(config({ USE_FAKE_ADAPTERS: 'true' }), logger)).toBeInstanceOf(FakeOps);
+  });
+});
+
+describe('deployerFor', () => {
+  const capture = () => {
+    const lines: { level: number; msg: string }[] = [];
+    const logger = pino(
+      {},
+      { write: (line: string) => void lines.push(JSON.parse(line) as (typeof lines)[number]) },
+    );
+    return { logger, lines };
+  };
+  const config = (env: Record<string, string>) => {
+    const result = loadConfig({ ...nodeEnvFixture, ...env });
+    if (!result.ok) throw new Error(result.error);
+    return result.value;
+  };
+  const app = { OPS_APP_URL: 'https://demo.example.com', OPS_SECRET: 'a'.repeat(32) };
+  const railway = {
+    OPS_RAILWAY_TOKEN: 'project-token',
+    OPS_RAILWAY_PROJECT_ID: '6f9619ff-8b86-4d11-b42d-00c04fc964ff',
+    OPS_RAILWAY_ENVIRONMENT_ID: '0b4a3a5e-9a3c-4c8e-8f0e-1f2d3c4b5a69',
+    OPS_RAILWAY_SERVICE_ID: 'c56a4180-65aa-42ec-a945-5fd21dec0538',
+  };
+
+  it("rolls back the ops app's Railway service when it is set", () => {
+    const { logger, lines } = capture();
+    expect(deployerFor(config({ ...app, ...railway }), logger)).toBeInstanceOf(RailwayDeployer);
+    expect(lines).toEqual([]);
+  });
+
+  it('gives no deployer without it, and says so once on a node with ops tools', () => {
+    const withOps = capture();
+    expect(deployerFor(config(app), withOps.logger)).toBeUndefined();
+    expect(withOps.lines).toMatchObject([
+      { level: 40, msg: 'OPS_RAILWAY_* is unset: Tier 3 runs get no rollback tool' },
+    ]);
+    // Without OPS_APP_URL, opsFor has said Tier 3 runs get no ops tools at all.
+    const without = capture();
+    expect(deployerFor(config({}), without.logger)).toBeUndefined();
+    expect(without.lines).toEqual([]);
+  });
+
+  it('uses an in-memory deployer with fakes on, with something to roll back to', async () => {
+    const { logger } = capture();
+    const fake = deployerFor(config({ ...railway, USE_FAKE_ADAPTERS: 'true' }), logger);
+    expect(fake).toBeInstanceOf(FakeDeployer);
+    expect(await rollback(fake!, { dryRun: true })).toMatchObject({
+      ok: true,
+      value: { plan: { from: { id: 'fake-live' }, to: { id: 'fake-before' } } },
+    });
   });
 });
 

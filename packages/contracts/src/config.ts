@@ -109,6 +109,47 @@ function opsSecretForApp() {
   return [check, { when: () => true }] as const;
 }
 
+// The demo app's Railway service, for the Tier 3 rollback tool. Set all of them or none.
+const OPS_RAILWAY_KEYS = [
+  'OPS_RAILWAY_TOKEN',
+  'OPS_RAILWAY_PROJECT_ID',
+  'OPS_RAILWAY_ENVIRONMENT_ID',
+  'OPS_RAILWAY_SERVICE_ID',
+] as const;
+
+/** A Railway project, environment or service id, which are UUIDs. */
+const railwayId = z.guid('must be a Railway id, which is a UUID');
+
+/**
+ * The OPS_RAILWAY_* vars come as a set, and with OPS_APP_URL: a rollback changes that app,
+ * and a Tier 3 run claims the app by its URL. Skipped with fakes on, which deploy nothing.
+ * Runs even when other fields fail.
+ */
+function railwayForApp() {
+  const check = (config: Record<string, unknown> | undefined, ctx: z.RefinementCtx) => {
+    if (config?.USE_FAKE_ADAPTERS === true) return;
+    const set = OPS_RAILWAY_KEYS.filter((key) => config?.[key] !== undefined);
+    if (set.length === 0) return;
+    for (const key of OPS_RAILWAY_KEYS) {
+      if (!set.includes(key)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: `${key} is required with ${set.join(', ')}`,
+        });
+      }
+    }
+    if (config?.OPS_APP_URL === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['OPS_APP_URL'],
+        message: 'OPS_APP_URL is required with OPS_RAILWAY_*: a rollback changes that app',
+      });
+    }
+  };
+  return [check, { when: () => true }] as const;
+}
+
 export const orchestratorConfigSchema = envSchema(
   baseConfigSchema
     .extend({
@@ -174,6 +215,15 @@ export const nodeConfigSchema = envSchema(
       // That app's OPS_SECRET. Also docker compose's, so it may be set without OPS_APP_URL.
       // Trimmed as the eval trims it, so a pasted space doesn't end up in the bearer token.
       OPS_SECRET: z.string().trim().min(1).optional(),
+      // The Railway service that serves OPS_APP_URL, which Tier 3 runs may roll back. Unset,
+      // they get no rollback tool. A project token, sent as Project-Access-Token, scoped to
+      // one environment. Not RAILWAY_TOKEN or RAILWAY_*_ID: Railway sets those on every
+      // service it runs, so on Railway the daemon would read its own service and roll itself
+      // back, and the Railway CLI reads RAILWAY_TOKEN.
+      OPS_RAILWAY_TOKEN: z.string().trim().min(1).optional(),
+      OPS_RAILWAY_PROJECT_ID: railwayId.optional(),
+      OPS_RAILWAY_ENVIRONMENT_ID: railwayId.optional(),
+      OPS_RAILWAY_SERVICE_ID: railwayId.optional(),
     })
     .superRefine(
       ...requireUnlessFake([
@@ -183,7 +233,8 @@ export const nodeConfigSchema = envSchema(
         'GITHUB_REPO',
       ]),
     )
-    .superRefine(...opsSecretForApp()),
+    .superRefine(...opsSecretForApp())
+    .superRefine(...railwayForApp()),
 );
 
 export type NodeConfig = z.infer<typeof nodeConfigSchema>;
