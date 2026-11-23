@@ -43,6 +43,27 @@ const completionBodySchema = z.object({
   usage: z.object({ cost: z.number().optional() }).optional(),
 });
 
+// One server-sent event of a streamed completion: a piece of a choice, the usage at the end,
+// or an error.
+const streamEventSchema = z.object({
+  model: z.string().optional(),
+  choices: z
+    .array(
+      z.object({
+        delta: z
+          .object({
+            content: z.string().nullable().optional(),
+            reasoning: z.string().nullable().optional(),
+          })
+          .optional(),
+        finish_reason: z.string().nullable().optional(),
+      }),
+    )
+    .optional(),
+  usage: z.object({ cost: z.number().optional() }).optional(),
+  error: z.object({ code: z.number().optional(), message: z.string() }).optional(),
+});
+
 const KIND_BY_STATUS: Record<number, ModelErrorKind> = {
   401: 'auth',
   402: 'credits',
@@ -90,6 +111,7 @@ export class OpenRouterClient implements ModelClient {
   ): Promise<CompletionResult> {
     const { apiKey, model, baseUrl, extraBody, fetch } = this.options;
     const timeoutMs = Math.min(this.options.timeoutMs, options.timeoutMs ?? Infinity);
+    if (options.onDelta) return this.stream(messages, options, timeoutMs, options.onDelta);
 
     let response: Response;
     let text: string;
@@ -136,6 +158,107 @@ export class OpenRouterClient implements ModelClient {
         model: parsed.data.model,
         costUsd,
         ...(choice.message.reasoning ? { reasoning: choice.message.reasoning } : {}),
+      },
+    };
+  }
+
+  /** complete() over OpenRouter's server-sent events, handing each piece to `onDelta`. */
+  private async stream(
+    messages: readonly ChatMessage[],
+    options: CompleteOptions,
+    timeoutMs: number,
+    onDelta: NonNullable<CompleteOptions['onDelta']>,
+  ): Promise<CompletionResult> {
+    const { apiKey, model, baseUrl, extraBody, fetch } = this.options;
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          ...extraBody,
+          model,
+          messages,
+          usage: { include: true },
+          stream: true,
+        }),
+        signal: signalFor(timeoutMs, options.signal),
+      });
+    } catch (e) {
+      if (options.signal?.aborted) return failure('aborted', null, 'the call was cancelled');
+      return failure('network', null, e instanceof Error ? e.message : String(e));
+    }
+    if (!response.ok || !response.body) {
+      const text = await response.text().catch(() => '');
+      const errorBody = errorBodySchema.safeParse(parseJson(text));
+      const status = errorBody.data?.error.code ?? response.status;
+      return failure(
+        KIND_BY_STATUS[status] ?? 'http',
+        status,
+        errorBody.data?.error.message ?? text,
+      );
+    }
+
+    let content = '';
+    let reasoning = '';
+    let finishReason: string | null = null;
+    let answeredBy = model;
+    let costUsd: number | undefined;
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+        buffer += decoder.decode(chunk, { stream: true });
+        let newline: number;
+        while ((newline = buffer.indexOf('\n')) !== -1) {
+          const line = buffer.slice(0, newline).trim();
+          buffer = buffer.slice(newline + 1);
+          if (!line.startsWith('data:')) continue;
+          const data = line.slice('data:'.length).trim();
+          if (data === '[DONE]') continue;
+          const event = streamEventSchema.safeParse(parseJson(data));
+          if (!event.success) continue;
+          if (event.data.error) {
+            const status = event.data.error.code ?? response.status;
+            return failure(KIND_BY_STATUS[status] ?? 'http', status, event.data.error.message);
+          }
+          if (event.data.model) answeredBy = event.data.model;
+          if (event.data.usage?.cost !== undefined) costUsd = event.data.usage.cost;
+          const choice = event.data.choices?.[0];
+          if (!choice) continue;
+          if (choice.finish_reason) finishReason = choice.finish_reason;
+          const piece = choice.delta?.content;
+          if (piece) {
+            content += piece;
+            onDelta({ text: piece, kind: 'content' });
+          }
+          const thought = choice.delta?.reasoning;
+          if (thought) {
+            reasoning += thought;
+            onDelta({ text: thought, kind: 'reasoning' });
+          }
+        }
+      }
+    } catch (e) {
+      if (options.signal?.aborted) return failure('aborted', null, 'the call was cancelled');
+      return failure('network', null, e instanceof Error ? e.message : String(e));
+    }
+    // Without a cost the agent's cost limit can't fire, so a run could spend unchecked.
+    if (costUsd === undefined) {
+      return failure(
+        'bad_response',
+        response.status,
+        'the stream had no usage.cost, so the cost limit cannot be enforced',
+      );
+    }
+    return {
+      ok: true,
+      completion: {
+        content,
+        finishReason,
+        model: answeredBy,
+        costUsd,
+        ...(reasoning ? { reasoning } : {}),
       },
     };
   }

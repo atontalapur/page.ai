@@ -229,7 +229,11 @@ function outcomeOf(result: RunOutcome): StepOutcome {
 
 async function runExec(call: ExecCall, ctx: ExecContext, base: StepBase): Promise<RunOutcome> {
   const timeoutMs = ctx.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const result = await ctx.runner.run({ command: call.command, timeoutMs });
+  const result = await ctx.runner.run({
+    command: call.command,
+    timeoutMs,
+    ...(ctx.onOutput === undefined ? {} : { onOutput: ctx.onOutput }),
+  });
   const output = trimOutput(
     combineOutput(result.stdout, result.stderr),
     ctx.outputBudget ?? DEFAULT_OUTPUT_BUDGET,

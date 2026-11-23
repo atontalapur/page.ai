@@ -101,6 +101,8 @@ export class NodeGateway
   private readonly handlers: { [E in NodeEvent]?: Handler<E> } = {
     'node.step': (socket, { step }) => this.relayStep(socket, step),
     'node.diff': (_socket, diff) => this.ui.send('run.diff', diff),
+    // The run as it happens: relayed to the tabs and not kept.
+    'node.live': (_socket, live) => this.ui.send('run.live', live),
     'node.run.finished': (socket, result) => this.relayFinished(socket, result),
     // Stored, then sent to the tabs (ApprovalRelay). The answer comes back the same way.
     'node.approval.request': async (_socket, request) => {

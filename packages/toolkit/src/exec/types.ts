@@ -192,6 +192,8 @@ export interface ExecContext {
   outputBudget?: number;
   /** What the model said before asking for this call. Stored with its step; never run. */
   thought?: string;
+  /** Called with a command's output as it is written, for a live view. Not stored. */
+  onOutput?: (chunk: string) => void;
 }
 
 export interface StepBase {

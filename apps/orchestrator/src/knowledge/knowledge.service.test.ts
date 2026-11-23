@@ -3,6 +3,7 @@ import { HashEmbedder } from '@page/model-client';
 import { sql } from 'kysely';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createTestDeps } from '../db/test-utils.ts';
+import { IssuesService } from '../issues/issues.service.ts';
 import type { GitHubApi } from '../github/github-api.ts';
 import { KgRefusedError, KnowledgeService, runBranch } from './knowledge.service.ts';
 import { describeFile, seedMain } from './seed.ts';
@@ -148,6 +149,51 @@ describe('KnowledgeService', () => {
     const { node, versions } = await kg.node('main', 'file:merged.ts');
     expect(node.branch).toBe('main');
     expect(versions[0]).toMatchObject({ commitSha: MERGE, author: 'github:reviewer', runId });
+  });
+});
+
+describe("knowledge across an issue's tiers", () => {
+  it("lets a later tier read what the tier below wrote, but not another issue's runs", async () => {
+    const issues = new IssuesService(deps.db, deps.fixJobs, deps.logger);
+    const { issue } = await issues.report(
+      { fingerprint: `kg-tiers-${randomUUID()}`, title: 'Boom' },
+      'Error',
+    );
+    await issues.apply(issue.id, { type: 'triage', class: 'backend-api', severity: 'high' });
+    await issues.apply(issue.id, { type: 'start_fix' });
+    const current = await deps.db
+      .selectFrom('issues')
+      .select('current_run_id')
+      .where('id', '=', issue.id)
+      .executeTakeFirstOrThrow();
+    // The Tier 1 run before it, recorded when it escalated.
+    const tier1 = randomUUID();
+    await deps.db
+      .insertInto('runs')
+      .values({
+        id: tier1,
+        issue_id: issue.id,
+        tier: 1,
+        status: 'escalated',
+        started_at: new Date(Date.now() - 60_000),
+        finished_at: new Date(),
+      })
+      .execute();
+    await kg.writeNode(
+      runBranch(tier1),
+      { ...cart, key: 'file:found-at-tier1.ts', body: 'the setting has no upper bound' },
+      agent(tier1),
+    );
+
+    const later = runBranch(current.current_run_id!);
+    expect(await kg.chain(later)).toEqual([later, runBranch(tier1), 'main']);
+    expect((await kg.node(later, 'file:found-at-tier1.ts')).node.body).toBe(
+      'the setting has no upper bound',
+    );
+    const stranger = runBranch(randomUUID());
+    expect((await kg.graph(stranger)).nodes.some((n) => n.key === 'file:found-at-tier1.ts')).toBe(
+      false,
+    );
   });
 });
 

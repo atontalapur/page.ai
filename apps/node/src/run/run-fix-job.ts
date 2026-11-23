@@ -42,6 +42,7 @@ import {
   type RunFinished,
 } from './outcome.ts';
 import type { RunResults } from './results.ts';
+import { LiveStream } from './live.ts';
 import { StreamingAuditSink } from './streaming-sink.ts';
 
 // The PR the daemon opens for a Tier 1 fix: its title, the report lines in its body, and
@@ -181,6 +182,8 @@ export async function runFixJob(
     return await finish(stoppedEnd() ?? { kind: 'sandbox_failed', message: String(error) });
   }
   logger.info({ container: sandbox.name }, 'sandbox started');
+  // What the model writes and what commands print, sent as they happen for the live view.
+  const live = new LiveStream(deps.link, runId, () => taken.length);
 
   // Removing the container ends a running command; the signal ends the model call. The
   // removal is kept so cleanup below waits on it rather than racing a second `docker rm`.
@@ -207,6 +210,8 @@ export async function runFixJob(
         inner: deps.sink,
         logger,
         onStep: (step) => {
+          // The live text that led to this step goes out first; the step then replaces it.
+          live.flush();
           tried.push(step.input);
           taken.push(step);
           deps.link.send('node.step', { v: 1, step });
@@ -279,6 +284,7 @@ export async function runFixJob(
         ...(hostTools === undefined ? {} : { hostTools }),
         ...(approve === undefined ? {} : { approve }),
         ...(thought === undefined ? {} : { thought }),
+        onOutput: (chunk) => live.push('output', chunk),
       });
 
     // runAgent applies the tier's escalation threshold. The container's wall clock started
@@ -303,12 +309,16 @@ export async function runFixJob(
           knowledge: knowledgeTools !== undefined,
           // Below Tier 3 the agent may hand the fix up instead of spending its steps.
           canHandOff: true,
+          // What the run before found, or a reviewer said, so this one builds on it.
+          ...(job.escalationNote === undefined ? {} : { handedOn: job.escalationNote }),
         },
         {
           model: deps.model,
           execute: run,
           now,
           signal: stopped,
+          onThinking: ({ text, kind }) =>
+            live.push(kind === 'content' ? 'thinking' : 'reasoning', text),
           ...(inbox === undefined ? {} : { inbox }),
         },
         config,
@@ -348,6 +358,7 @@ export async function runFixJob(
     // Awaited here, so the result is queued before the sandbox goes in `finally`.
     return await finish(final);
   } finally {
+    live.stop();
     stopped.removeEventListener('abort', onAbort);
     try {
       // Try again if the removal on abort failed, so cleanup still runs on every path.

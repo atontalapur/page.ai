@@ -22,6 +22,8 @@ import {
 } from '../../lib/runSteps';
 import { runStatusStyles } from '../../lib/statusStyles';
 import AgentText from './AgentText';
+import LiveTail from './LiveTail';
+import { Terminal, ToolCallCard } from './ToolCall';
 import { EditView, PatchView, type DiffStyle } from './CodeDiff';
 import { AskAgent, ChatItem } from './RunChat';
 
@@ -36,7 +38,12 @@ const toneText: Record<StepTone | 'muted', string> = {
   muted: 'text-muted-foreground',
 };
 
-function Thought({ text }: { text: string }) {
+// What a model copied from the format-error prompt's example, in thoughts stored before the
+// agent learned to drop it.
+const EXAMPLE_TAGS = /<\/?response_example>\s*(?:THOUGHT:\s*)?/gi;
+
+function Thought({ text: raw }: { text: string }) {
+  const text = raw.replace(EXAMPLE_TAGS, '').trim();
   const [open, setOpen] = useState(false);
   const long = text.length > LONG_THOUGHT_CHARS;
   const clamped = long && !open;
@@ -83,34 +90,21 @@ function StepItem({ step, running }: { step: Step; running: boolean }) {
             </div>
             <EditView {...edit} />
           </div>
+        ) : step.kind === 'host_tool' ? (
+          <ToolCallCard step={step} label={label} toneClass={toneText[tone]} />
         ) : (
-          <div className="flex min-w-0 items-center gap-3 rounded-md border bg-muted/30 px-3 py-1">
-            <code className="min-w-0 flex-1 truncate font-mono text-xs" title={step.input}>
-              {named ? (
-                <>
-                  <span className="font-medium text-primary">{named.verb}</span>{' '}
-                  <span className="text-muted-foreground">{named.target}</span>
-                </>
-              ) : (
-                <span className="text-muted-foreground">$ {step.input}</span>
-              )}
-            </code>
-            <span className={`shrink-0 text-xs font-medium ${toneText[tone]}`}>{label}</span>
-          </div>
+          <Terminal
+            command={named ? `${named.verb} ${named.target}` : step.input}
+            output={step.allowed ? step.outputTrimmed : ''}
+            label={label}
+            toneClass={toneText[tone]}
+          />
         )}
         {outputNotes(step).map((note) => (
           <p key={note.text} className={`text-xs ${toneText[note.tone]}`}>
             {note.text}
           </p>
         ))}
-        {!edit && step.allowed && step.outputTrimmed !== '' && (
-          <details>
-            <summary className="w-fit cursor-pointer text-xs text-muted-foreground">Output</summary>
-            <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 text-xs">
-              {step.outputTrimmed}
-            </pre>
-          </details>
-        )}
       </div>
     </li>
   );
@@ -265,6 +259,7 @@ export function RunReview({ run, ask = false }: { run: IssueRun; ask?: boolean }
               </section>
             );
           })}
+          {running && <LiveTail runId={run.id} />}
         </CardContent>
         {/* Keyed by run, so a draft or an error never carries over to the next one. */}
         {ask && <AskAgent key={run.id} run={run} />}

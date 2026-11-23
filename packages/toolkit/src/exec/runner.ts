@@ -7,6 +7,8 @@ export interface RunRequest {
   timeoutMs: number;
   /** Written to the command's stdin, then stdin is closed. */
   stdin?: string;
+  /** Called with stdout and stderr as the command writes them, for a live view. */
+  onOutput?: (chunk: string) => void;
 }
 
 export type RunResult =

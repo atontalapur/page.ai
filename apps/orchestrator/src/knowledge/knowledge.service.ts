@@ -22,6 +22,8 @@ import { CONFIG, DB, EMBEDDER, LOGGER } from '../tokens.ts';
 export const runBranch = (runId: string) => `pageagents/${runId}`;
 
 const SEARCH_LIMIT = 5;
+// The earlier runs of an issue a run reads the knowledge of, newest first.
+const MAX_EARLIER_RUNS = 6;
 // Nodes re-embedded per search at most, when the embedding model changed or a write failed.
 const REEMBED_BATCH = 64;
 // Compare-and-swap attempts before a write gives up as conflicting.
@@ -355,39 +357,66 @@ export class KnowledgeService {
     return row?.version ?? 0;
   }
 
-  private async visibleNode(branch: string, key: string): Promise<NodeRow | undefined> {
-    return this.db
-      .selectFrom('kg_nodes')
-      .selectAll()
-      .where('key', '=', key)
-      .where('branch', 'in', [branch, MAIN_BRANCH])
-      .orderBy(sql`branch = ${MAIN_BRANCH}`)
+  /**
+   * The branches `branch` reads, nearest first: itself, then the same issue's earlier runs,
+   * newest first, then main. So a tier builds on what the tiers below it learned, though
+   * none of it reaches main without a merge.
+   */
+  async chain(branch: string): Promise<string[]> {
+    if (branch === MAIN_BRANCH) return [MAIN_BRANCH];
+    const runId = branch.slice('pageagents/'.length);
+    const issue = await this.db
+      .selectFrom('issues')
+      .select('id')
+      .where('current_run_id', '=', runId)
+      .unionAll(this.db.selectFrom('runs').select('issue_id as id').where('id', '=', runId))
       .executeTakeFirst();
+    if (!issue) return [branch, MAIN_BRANCH];
+    const earlier = await this.db
+      .selectFrom('runs')
+      .select('id')
+      .where('issue_id', '=', issue.id)
+      .where('id', '!=', runId)
+      .orderBy('started_at', 'desc')
+      .limit(MAX_EARLIER_RUNS)
+      .execute();
+    return [branch, ...earlier.map((r) => runBranch(r.id)), MAIN_BRANCH];
   }
 
-  private async visibleNodes(branch: string): Promise<NodeRow[]> {
+  private async visibleNode(branch: string, key: string): Promise<NodeRow | undefined> {
+    const chain = await this.chain(branch);
     const rows = await this.db
       .selectFrom('kg_nodes')
       .selectAll()
-      .where('branch', 'in', [branch, MAIN_BRANCH])
+      .where('key', '=', key)
+      .where('branch', 'in', chain)
+      .execute();
+    return nearest(rows, chain)[0];
+  }
+
+  private async visibleNodes(branch: string): Promise<NodeRow[]> {
+    const chain = await this.chain(branch);
+    const rows = await this.db
+      .selectFrom('kg_nodes')
+      .selectAll()
+      .where('branch', 'in', chain)
       .execute();
     const byKey = new Map<string, NodeRow>();
-    for (const row of rows) {
-      if (row.branch === branch || !byKey.has(row.key)) byKey.set(row.key, row);
-    }
+    for (const row of nearest(rows, chain)) if (!byKey.has(row.key)) byKey.set(row.key, row);
     return [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key));
   }
 
   private async visibleEdges(branch: string): Promise<EdgeRow[]> {
+    const chain = await this.chain(branch);
     const rows = await this.db
       .selectFrom('kg_edges')
       .selectAll()
-      .where('branch', 'in', [branch, MAIN_BRANCH])
+      .where('branch', 'in', chain)
       .execute();
     const seen = new Map<string, EdgeRow>();
-    for (const row of rows) {
+    for (const row of nearest(rows, chain)) {
       const id = `${row.from_key}\u0000${row.relation}\u0000${row.to_key}`;
-      if (row.branch === branch || !seen.has(id)) seen.set(id, row);
+      if (!seen.has(id)) seen.set(id, row);
     }
     return [...seen.values()];
   }
@@ -412,6 +441,12 @@ export class KnowledgeService {
     }
     return nodes.map((n) => (fresh.has(n.id) ? { ...n, embedding: fresh.get(n.id)! } : n));
   }
+}
+
+/** `rows` ordered by how near their branch is in `chain`: the nearest copy of each first. */
+function nearest<R extends { branch: string }>(rows: R[], chain: string[]): R[] {
+  const rank = (row: R) => chain.indexOf(row.branch);
+  return [...rows].sort((a, b) => rank(a) - rank(b));
 }
 
 function nodeSnapshot(row: NodeRow): Record<string, unknown> {

@@ -446,3 +446,11 @@ describe('parseAction: knowledge graph blocks', () => {
     }
   });
 });
+
+describe('thoughtOf: copied example tags', () => {
+  it("drops the format-error prompt's example tags a model copies into its reply", () => {
+    const reply =
+      '<response_example>\nTHOUGHT: Now rerun the failing products test.\n</response_example>\n\n```page_bash\npnpm --filter @page/demo-app test\n```';
+    expect(thoughtOf(reply)).toBe('Now rerun the failing products test.');
+  });
+});

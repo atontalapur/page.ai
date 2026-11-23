@@ -103,7 +103,7 @@ export abstract class WrappedExecRunner implements ExecRunner {
   /** Stderr prefixes the client prints when it couldn't run the command at all. */
   protected readonly clientErrors: readonly string[] = [];
 
-  async run({ command, timeoutMs, stdin }: RunRequest): Promise<RunResult> {
+  async run({ command, timeoutMs, stdin, onOutput }: RunRequest): Promise<RunResult> {
     const seconds = Math.max(1, Math.ceil(timeoutMs / 1000));
     const tag = randomUUID();
     const started = Date.now();
@@ -118,6 +118,7 @@ export abstract class WrappedExecRunner implements ExecRunner {
       ]),
       stdin ?? '',
       seconds * 1000 + this.clientGraceMs,
+      onOutput,
     );
     const elapsed = Date.now() - started;
 
@@ -146,6 +147,7 @@ export abstract class WrappedExecRunner implements ExecRunner {
     { file, args, options }: Client,
     stdin: string,
     killAfterMs: number,
+    onOutput?: (chunk: string) => void,
   ): Promise<{ code: number | null; stdout: string; stderr: string; clientKilled: boolean }> {
     return new Promise((resolve, reject) => {
       const child = spawn(file, args, { ...options, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -158,8 +160,22 @@ export abstract class WrappedExecRunner implements ExecRunner {
         child.kill('SIGKILL');
       }, killAfterMs);
 
-      child.stdout?.setEncoding('utf8').on('data', (chunk: string) => stdout.push(chunk));
-      child.stderr?.setEncoding('utf8').on('data', (chunk: string) => stderr.push(chunk));
+      // A live view mustn't break the command, so its listener's errors are dropped.
+      const live = (chunk: string) => {
+        try {
+          onOutput?.(chunk);
+        } catch {
+          // ignored
+        }
+      };
+      child.stdout?.setEncoding('utf8').on('data', (chunk: string) => {
+        stdout.push(chunk);
+        live(chunk);
+      });
+      child.stderr?.setEncoding('utf8').on('data', (chunk: string) => {
+        stderr.push(chunk);
+        live(chunk);
+      });
       // The command may exit without reading stdin; that's not an error.
       child.stdin?.on('error', () => {});
       child.stdin?.end(stdin);

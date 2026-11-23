@@ -102,7 +102,7 @@ const sendButton = () => screen.getByRole('button', { name: 'Send' });
 describe('the conversation on a run', () => {
   it('shows a message after the step it followed, and its answer, as they arrive', async () => {
     const source = render([run()]);
-    expect(await screen.findByText('$ git diff')).toBeTruthy();
+    expect(await screen.findByText('git diff')).toBeTruthy();
     const loads = source.loads.runs;
 
     source.sendRun('run.chat.asked', { v: 1, chat: pending() });
@@ -113,8 +113,8 @@ describe('the conversation on a run', () => {
     const steps = screen.getByRole('list', { name: 'Tier 1 steps' });
     const order = within(steps)
       .getAllByRole('listitem')
-      .map((li) => li.getAttribute('aria-label') ?? li.querySelector('code')?.textContent);
-    expect(order).toEqual(['$ ls -la', 'Message from Dana', '$ git diff']);
+      .map((li) => li.getAttribute('aria-label') ?? li.querySelector('[title]')?.textContent);
+    expect(order).toEqual(['ls -la', 'Message from Dana', 'git diff']);
 
     source.sendRun('run.chat.reply', { v: 1, chat: answered() });
     expect(await within(item).findByText('To see what the last deploy changed.')).toBeTruthy();
@@ -156,7 +156,7 @@ describe('the conversation on a run', () => {
 
   it('ignores a message for another run', async () => {
     const source = render([run()]);
-    expect(await screen.findByText('$ git diff')).toBeTruthy();
+    expect(await screen.findByText('git diff')).toBeTruthy();
     source.sendRun('run.chat.asked', {
       v: 1,
       chat: pending({ runId: '90000000-2222-4222-8222-222222222222' }),
@@ -327,13 +327,13 @@ describe('the box to ask the agent', () => {
     cleanup();
 
     render([run({ status: 'succeeded', finishedAt: at(30) })]);
-    expect(await screen.findByText('$ git diff')).toBeTruthy();
+    expect(await screen.findByText('git diff')).toBeTruthy();
     expect(screen.queryByRole('textbox', { name: 'Ask the agent' })).toBeNull();
   });
 
   it('shows nothing it could not send for a broken run event', async () => {
     const source = render([run()]);
-    expect(await screen.findByText('$ git diff')).toBeTruthy();
+    expect(await screen.findByText('git diff')).toBeTruthy();
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     source.sendRun('run.chat.reply', { v: 1, chat: pending() });
     expect(screen.queryByRole('listitem', { name: 'Message from Dana' })).toBeNull();

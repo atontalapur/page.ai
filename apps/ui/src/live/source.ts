@@ -32,6 +32,8 @@ export const RUN_EVENTS = [
   'run.finished',
   'run.chat.asked',
   'run.chat.reply',
+  // What the agent is writing and a command is printing, before the step that holds it.
+  'run.live',
 ] as const;
 
 export type RunEventName = (typeof RUN_EVENTS)[number];
@@ -164,6 +166,7 @@ export function runIdOf(event: RunEvent): string {
     case 'run.step':
       return event.payload.step.runId;
     case 'run.diff':
+    case 'run.live':
       return event.payload.runId;
     case 'run.chat.asked':
     case 'run.chat.reply':
