@@ -172,6 +172,14 @@ describe('LinkApprovals', () => {
   });
 });
 
+describe('asksPerson', () => {
+  it('is true for the link, which waits for a person, and false for auto-approval', () => {
+    const link = new LinkApprovals({ link: new FakeLink(), logger: pino({ enabled: false }) });
+    expect(link.asksPerson).toBe(true);
+    expect(autoApprovals('AUTO_APPROVE_OPS').asksPerson).toBe(false);
+  });
+});
+
 describe('autoApprovals', () => {
   it('approves every call of every run as who it was given', async () => {
     const approve = autoApprovals('AUTO_APPROVE_OPS').forRun({

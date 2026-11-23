@@ -28,6 +28,11 @@ export const APPROVAL_GRACE_MS = 10_000;
 /** How a run asks a person to approve a gated host tool call (APPROVAL_TOOLS). */
 export interface Approvals {
   /**
+   * Whether a person answers, so a gated call waits for them. False when every call is
+   * approved at once; the agent's prompt then says nothing about approvals.
+   */
+  readonly asksPerson: boolean;
+  /**
    * An Approve for one run. Its waits end when `signal` fires. `args` is what the person
    * sees for a call: its tool and arguments, and for a rollback, what it replaces.
    */
@@ -43,7 +48,7 @@ export interface Approvals {
  * fake adapters, an ops app on this machine (AUTO_APPROVE_OPS), and the eval.
  */
 export function autoApprovals(by: string): Approvals {
-  return { forRun: () => autoApprove(by) };
+  return { asksPerson: false, forRun: () => autoApprove(by) };
 }
 
 export interface LinkApprovalsOptions {
@@ -75,6 +80,7 @@ interface Waiting {
  * that stays down can't hold a run: the wait still ends at its deadline.
  */
 export class LinkApprovals implements Approvals {
+  readonly asksPerson = true;
   private readonly link: OrchestratorLink;
   private readonly logger: Logger;
   private readonly timeoutMs: number;

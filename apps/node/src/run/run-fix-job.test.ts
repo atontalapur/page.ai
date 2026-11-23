@@ -705,6 +705,7 @@ describe('runFixJob', () => {
       const ops = new FakeOps();
       const asked: { runId: string; args: Record<string, unknown> }[] = [];
       const approvals: Approvals = {
+        asksPerson: true,
         forRun:
           ({ runId, args }) =>
           (call) => {
@@ -737,6 +738,70 @@ describe('runFixJob', () => {
           outputTrimmed: 'refused: ops.restart was not approved: arjun rejected it',
         },
       ]);
+    });
+
+    describe('the task prompt on approvals', () => {
+      const APPROVALS = '## Changes a person approves';
+      /** A ScriptedModel that keeps the task prompt of its first call. */
+      class TaskModel extends ScriptedModel {
+        task: string | undefined;
+        override complete(messages?: readonly ChatMessage[]) {
+          this.task ??= messages?.[1]?.content;
+          return super.complete();
+        }
+      }
+      const person: Approvals = {
+        asksPerson: true,
+        forRun: () => () => Promise.resolve({ approved: true, by: 'ui:arjun' }),
+      };
+      const taskPrompt = async (tier: 1 | 2 | 3, extra: Partial<RunDeps>) => {
+        const model = new TaskModel([submitReply()]);
+        const { deps } = setup([], undefined, { model, ...extra });
+        await runFixJob(atTier(tier), deps);
+        return model.task ?? '';
+      };
+
+      it('says a person approves the live app changes when one does', async () => {
+        const prompt = await taskPrompt(3, { ops: new FakeOps(), approvals: person });
+        expect(prompt).toContain(APPROVALS);
+        expect(prompt).not.toContain('page_ops_rollback');
+      });
+
+      it('names the rollback among them on a node with a deployer', async () => {
+        const prompt = await taskPrompt(3, {
+          ops: new FakeOps(),
+          deployer: new FakeDeployer(),
+          approvals: person,
+        });
+        expect(prompt).toContain(
+          'every page_ops_set, page_ops_unset, page_ops_restart and page_ops_rollback block',
+        );
+      });
+
+      it('says nothing of approvals when every call is approved at once', async () => {
+        const auto = await taskPrompt(3, {
+          ops: new FakeOps(),
+          approvals: autoApprovals('AUTO_APPROVE_OPS'),
+        });
+        expect(auto).toContain("## The live app's settings");
+        expect(auto).not.toContain(APPROVALS);
+      });
+
+      it('says nothing of approvals with no ops tool to gate, or below Tier 3', async () => {
+        expect(await taskPrompt(3, { approvals: person })).not.toContain(APPROVALS);
+        expect(await taskPrompt(2, { ops: new FakeOps(), approvals: person })).not.toContain(
+          APPROVALS,
+        );
+      });
+
+      it("says nothing of approvals on a node that can't ask", async () => {
+        const model = new TaskModel([submitReply()]);
+        const { deps } = setup([], undefined, { model, ops: new FakeOps() });
+        delete deps.approvals;
+        await runFixJob(atTier(3), deps);
+        expect(model.task).toBeDefined();
+        expect(model.task).not.toContain(APPROVALS);
+      });
     });
 
     it('refuses the ops tools when the node has no ops API', async () => {
@@ -1046,6 +1111,7 @@ describe('runFixJob', () => {
       it('asks to roll back from the live deployment to the planned one', async () => {
         const asked: Record<string, unknown>[] = [];
         const approvals: Approvals = {
+          asksPerson: true,
           forRun:
             ({ args }) =>
             (call) => {
