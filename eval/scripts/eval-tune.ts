@@ -1,9 +1,10 @@
 // Usage: node eval/scripts/eval-tune.ts <results.json>...
-// Prints per-tier tables for tuning the escalation threshold (#114) as markdown. Refuses,
-// printing nothing, if any file names a scenario outside the dev set in eval/split.json.
+// Prints per-tier tables for tuning the escalation threshold (#114), then the confidence
+// threshold's tables and the pick of Amendment 5's rule, as markdown. Refuses, printing
+// nothing, if any file names a scenario outside the dev set in eval/split.json.
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ESCALATION_THRESHOLD, type TierBudget } from '@page/agent';
+import { CONFIDENCE_THRESHOLD, ESCALATION_THRESHOLD, type TierBudget } from '@page/agent';
 import { loadResultsFile, ReportError } from '../src/report.ts';
 import { sameLimits, type EvalResults } from '../src/results.ts';
 import { loadSplit, splitIds } from '../src/split.ts';
@@ -84,6 +85,17 @@ try {
     console.warn(
       `warning: ${path} (${results.gitSha.slice(0, 7)}) ${why}; the tables compare against ` +
         "today's limits, which those runs may not have used.",
+    );
+  }
+  // The scores don't depend on the threshold, but the pick breaks ties toward today's value,
+  // and the escalation reasons are the ones the runs played at.
+  for (const { path, results } of files) {
+    const played = results.confidenceThreshold;
+    if (played === undefined) continue;
+    if (([1, 2, 3] as const).every((tier) => played[tier] === CONFIDENCE_THRESHOLD[tier])) continue;
+    console.warn(
+      `warning: ${path} played at confidence thresholds ${JSON.stringify(played)}; the pick ` +
+        `compares against today's ${JSON.stringify(CONFIDENCE_THRESHOLD)}.`,
     );
   }
   process.stdout.write(renderTune(files.map((f) => f.results)));

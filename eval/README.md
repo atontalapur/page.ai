@@ -155,6 +155,13 @@ pnpm eval:tune eval/results/<dev-run>-*.json
   none, it compares `threshold.ts` at the file's `gitSha` with the working tree. It
   refuses the same run passed twice (a copy, a symlink, or a checkpoint next to its
   resume), but pools two runs of one config (say a rerun after a provider stop).
+- After the limit tables it prints, per tier, tables for `CONFIDENCE_THRESHOLD`: the scores
+  of the submitted code fixes split by whether `check.sh` passed, how often each part held,
+  what each candidate threshold (0.2 to 1.0) would have escalated, and the pick of the rule
+  in Amendment 5 of `docs/report/eval-prereg.md`. Ops-only fixes, which score 0 or 1, are
+  shown apart, and submits with no score are counted. Tier 2 takes Tier 1's pick, since no
+  single-tier config plays it. It warns when a file played at other confidence thresholds
+  than the checkout's.
 
 ## End-to-end test (#14)
 
