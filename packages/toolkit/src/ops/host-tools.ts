@@ -145,6 +145,18 @@ export class OpsHostTools implements HostTools {
   }
 
   /**
+   * Whether the run has left the live app other than it found it: an override the app says
+   * it changed that the run didn't set back, or a restart after a change, which may serve
+   * one the run later took back. A change that never answered isn't counted, since it may
+   * not have landed. For a run that submitted, this is the fix it made live.
+   */
+  get changedApp(): boolean {
+    if (this.servesChanges) return true;
+    for (const { before, now } of this.changed.values()) if (before !== now) return true;
+    return false;
+  }
+
+  /**
    * Puts back every override this run changed, and restarts the app if the run restarted it
    * after a change, so the app serves what it served before the run. For a run that ends
    * without a fix: the next run starts from the state this one found. Ignores the run's stop
