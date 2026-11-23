@@ -176,6 +176,7 @@ describe('TriageClassifier', () => {
       notifyTo: [],
       dashboardUrl: 'http://localhost:3000',
       uiDistDir: '/nonexistent/ui/dist',
+      debug: undefined,
     };
     const rules = buildClassifier({ ...base, openRouterApiKey: undefined });
     await expect(rules.classify(titled('Hydration failed'))).resolves.toMatchObject({

@@ -22,6 +22,9 @@ const routes = [
   { method: 'GET', url: `/issues/${id}/events` },
   { method: 'GET', url: `/issues/${id}/runs` },
   { method: 'POST', url: `/issues/${id}/events`, payload: { type: 'kill' } },
+  { method: 'GET', url: '/debug' },
+  { method: 'POST', url: '/debug/errors', payload: { kind: 'synthetic' } },
+  { method: 'POST', url: '/debug/reset' },
 ] as const;
 
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });

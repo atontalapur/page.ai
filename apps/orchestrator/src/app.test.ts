@@ -114,6 +114,14 @@ describe('orchestrator HTTP API', () => {
     expect((await http('GET', `/issues/${issue.id}`)).json<Issue>().status).toBe('triaged');
   });
 
+  it('answers 404 on the debugging routes while DEBUG_TOOLS is off', async () => {
+    const state = await http('GET', '/debug');
+    expect(state.statusCode).toBe(404);
+    expect(state.json<{ message: string }>().message).toContain('Debugging tools are off');
+    expect((await http('POST', '/debug/errors', { kind: 'checkout' })).statusCode).toBe(404);
+    expect((await http('POST', '/debug/errors', { kind: 'nope' })).statusCode).toBe(400);
+  });
+
   it('maps missing issues to 404 and disallowed events to 409', async () => {
     const missing = '00000000-0000-4000-8000-000000000000';
     expect((await http('GET', `/issues/${missing}`)).statusCode).toBe(404);

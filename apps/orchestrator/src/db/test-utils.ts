@@ -36,6 +36,7 @@ export const testConfig: Config = {
   dashboardUrl: 'http://localhost:3000',
   // No build here, so tests serve only the API. The static tests pass their own.
   uiDistDir: '/nonexistent/ui/dist',
+  debug: undefined,
 };
 
 export interface TestDeps {

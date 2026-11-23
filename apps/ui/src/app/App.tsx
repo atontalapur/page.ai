@@ -4,6 +4,7 @@ import DashboardLayout from '../components/layout/DashboardLayout';
 import DashboardPage from '../pages/DashboardPage';
 import IncidentsPage from '../pages/IncidentsPage';
 import IncidentDetailsPage from '../pages/IncidentDetailsPage';
+import DebuggingPage from '../pages/DebuggingPage';
 import AgentsPage from '../pages/AgentsPage';
 import AgentWorkspacePage from '../pages/AgentWorkspacePage';
 import { IssuesProvider } from '../context/IssuesContext';
@@ -32,6 +33,8 @@ export default function App() {
             <Route path="/agents" element={<AgentsPage />} />
 
             <Route path="/agents/:id" element={<AgentWorkspacePage />} />
+
+            <Route path="/debug" element={<DebuggingPage />} />
 
             <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />
           </Routes>
