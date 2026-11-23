@@ -30,6 +30,7 @@ import type { ClaimedJob } from '../jobs/job-source.ts';
 import type { OrchestratorLink } from '../link/link.ts';
 import type { Sandbox, Sandboxes } from '../sandbox/sandbox.ts';
 import { approvalArgs, type Approvals } from './approvals.ts';
+import type { RunInbox } from './inbox.ts';
 import type { OpsLock, ReleaseOps } from './ops-lock.ts';
 import {
   finishedEvent,
@@ -100,6 +101,10 @@ export interface RunDeps {
  * Every way out sends the result twice: `node.run.finished` on the link for the UI, and a
  * `run_finished` job the orchestrator records it from.
  *
+ * `inbox` holds the messages people on call send the run. The agent reads them at each step
+ * boundary and answers in its next reply; once the agent loop returns, the inbox is ended,
+ * so a message that comes later gets no answer (`submitted` after a submission).
+ *
  * Resolves for every run outcome, failures included. It rejects only if cleanup or the
  * link breaks, or the result can't be queued. pg-boss then fails the job and dead letters
  * it, and the orchestrator fails the issue unless the result was queued after all.
@@ -108,6 +113,7 @@ export async function runFixJob(
   { job, signal }: ClaimedJob,
   deps: RunDeps,
   kill: AbortSignal = new AbortController().signal,
+  inbox?: RunInbox,
 ): Promise<RunFinished> {
   const { issueId, runId, tier } = job;
   const logger = deps.logger.child({ issueId, runId, tier });
@@ -260,7 +266,13 @@ export async function runFixJob(
     try {
       const agentRun = await runAgent(
         { task: job.report, tier, rollback, personApproves },
-        { model: deps.model, execute: run, now, signal: stopped },
+        {
+          model: deps.model,
+          execute: run,
+          now,
+          signal: stopped,
+          ...(inbox === undefined ? {} : { inbox }),
+        },
         config,
       );
       end = stoppedEnd() ?? { kind: 'agent', run: agentRun };
@@ -268,6 +280,8 @@ export async function runFixJob(
       logger.error({ err: error }, 'run crashed');
       end = stoppedEnd() ?? { kind: 'crashed', message: String(error) };
     }
+    // The agent takes no more steps, so no message from now on gets an answer.
+    inbox?.end(submitted(end) ? 'submitted' : 'run_ended');
 
     if (submitted(end)) {
       diff = await sendDiff(sandbox, runId, deps.link, logger);

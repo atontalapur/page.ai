@@ -24,7 +24,7 @@ import {
 } from './daemon.ts';
 import { FakeJobSource } from './jobs/fake-job-source.ts';
 import { FakeLink } from './link/fake-link.ts';
-import { ScriptedModel, submitReply } from './model/scripted-model.ts';
+import { bashReply, ScriptedModel, submitReply } from './model/scripted-model.ts';
 import { autoApprovals, LinkApprovals } from './run/approvals.ts';
 import { FakeRunResults } from './run/results.ts';
 import { DockerSandboxes } from './sandbox/docker-sandboxes.ts';
@@ -131,13 +131,70 @@ describe('createDaemon', () => {
     expect(a.link.payloads('node.run.finished')).toMatchObject([{ status: 'succeeded' }]);
   });
 
-  it('adds the kill handler once however many times it starts', async () => {
+  it('adds the kill and message handlers once however many times it starts', async () => {
     const a = adapters();
     const on = vi.spyOn(a.link, 'on');
     const daemon = createDaemon(a, pino({ enabled: false }));
     await daemon.start();
     await daemon.start();
-    expect(on).toHaveBeenCalledOnce();
+    expect(on.mock.calls.map(([event]) => event)).toEqual(['run.kill', 'run.chat']);
+  });
+
+  it("hands a message to the run it names, and the agent's answer goes back", async () => {
+    const a = adapters();
+    const { runId } = jobFixtures.fix;
+    const chatId = 'c5e3a9b7-1d2f-4c6e-9a8b-3f7d1e5c2a05';
+    // Sent while the run's first command runs; the agent answers in its next reply.
+    const sandboxes = new FakeSandboxes((request) => {
+      if (request.command.endsWith(' test')) {
+        a.link.deliver('run.chat', { v: 1, chatId, runId, from: 'Arjun', message: 'Green?' });
+      }
+      return fakeWorkspace(request);
+    });
+    const model = new ScriptedModel([
+      bashReply('pnpm --filter @page/demo-app test'),
+      `<oncall_reply>Yes, the tests pass.</oncall_reply>\n\n${submitReply()}`,
+    ]);
+    const daemon = createDaemon({ ...a, sandboxes, model }, pino({ enabled: false }));
+    await daemon.start();
+    await a.jobs.deliver(jobFixtures.fix);
+    expect(a.link.payloads('node.chat.reply')).toEqual([
+      { v: 1, chatId, runId, status: 'answered', answer: 'Yes, the tests pass.' },
+    ]);
+  });
+
+  it('closes a message for a run it is not running as run_ended', async () => {
+    const a = adapters();
+    const daemon = createDaemon(a, pino({ enabled: false }));
+    await daemon.start();
+    const { runId } = jobFixtures.fix;
+    const chatId = 'c5e3a9b7-1d2f-4c6e-9a8b-3f7d1e5c2a05';
+    a.link.deliver('run.chat', { v: 1, chatId, runId, from: 'Arjun', message: 'Hello?' });
+    // A run that finished closes what came in after its agent stopped, too.
+    await a.jobs.deliver(jobFixtures.fix);
+    a.link.deliver('run.chat', { v: 1, chatId, runId, from: 'Arjun', message: 'Late' });
+    expect(a.link.payloads('node.chat.reply')).toEqual([
+      { v: 1, chatId, runId, status: 'unanswered', reason: 'run_ended' },
+      { v: 1, chatId, runId, status: 'unanswered', reason: 'run_ended' },
+    ]);
+  });
+
+  it('closes a message that waits on a run that never reached its agent', async () => {
+    const a = adapters();
+    const { runId } = jobFixtures.fix;
+    const chatId = 'c5e3a9b7-1d2f-4c6e-9a8b-3f7d1e5c2a05';
+    const sandboxes = new FakeSandboxes(fakeWorkspace);
+    // The message lands while the sandbox starts, and the start fails.
+    sandboxes.start = () => {
+      a.link.deliver('run.chat', { v: 1, chatId, runId, from: 'Arjun', message: 'Starting?' });
+      return Promise.reject(new Error('no image'));
+    };
+    const daemon = createDaemon({ ...a, sandboxes }, pino({ enabled: false }));
+    await daemon.start();
+    await a.jobs.deliver(jobFixtures.fix);
+    expect(a.link.payloads('node.chat.reply')).toEqual([
+      { v: 1, chatId, runId, status: 'unanswered', reason: 'run_ended' },
+    ]);
   });
 
   it('keeps a newer attempt killable when an older one of the same run finishes', async () => {

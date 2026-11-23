@@ -24,6 +24,7 @@ import type { OrchestratorLink } from './link/link.ts';
 import { SocketIoLink } from './link/socket-io-link.ts';
 import { ScriptedModel } from './model/scripted-model.ts';
 import { autoApprovals, LinkApprovals, type Approvals } from './run/approvals.ts';
+import { closeChat, RunInbox } from './run/inbox.ts';
 import { liveAppLock, type OpsLock } from './run/ops-lock.ts';
 import { PgBossRunResults, type RunResults } from './run/results.ts';
 import { runFixJob } from './run/run-fix-job.ts';
@@ -65,16 +66,17 @@ export interface Daemon {
 }
 
 /**
- * Wires claimed jobs to runFixJob, and `run.kill` from the orchestrator to the run it
- * names. A kill for a run this daemon isn't holding is logged and ignored: another node
- * may hold it, or it already finished.
+ * Wires claimed jobs to runFixJob, `run.kill` from the orchestrator to the run it names, and
+ * `run.chat` to that run's inbox. A kill for a run this daemon isn't holding is logged and
+ * ignored: another node may hold it, or it already finished. A message for one is closed as
+ * `run_ended`, since the orchestrator only sends it to the daemon it last heard the run from.
  */
 export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
   const { jobs, sandboxes, sink, link, results, model, github, ops, opsLock, deployer, approvals } =
     adapters;
-  // Each run's kill switch, with a logger that carries the run's issueId, runId and tier.
-  const runs = new Map<string, { kill: AbortController; logger: Logger }>();
-  // The link has no `off`, so the kill handler goes on once however often start() runs.
+  // Each run's kill switch and inbox, with a logger that carries its issueId, runId and tier.
+  const runs = new Map<string, { kill: AbortController; inbox: RunInbox; logger: Logger }>();
+  // The link has no `off`, so the handlers go on once however often start() runs.
   let listening = false;
   return {
     async start() {
@@ -95,12 +97,23 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
           run.logger.info('killing run');
           run.kill.abort();
         });
+        link.on('run.chat', (chat) => {
+          const run = runs.get(chat.runId);
+          if (run !== undefined) return run.inbox.deliver(chat);
+          logger.info(
+            { runId: chat.runId, chatId: chat.chatId },
+            'message for a run this daemon is not running; closed',
+          );
+          closeChat(link, chat, 'run_ended', logger);
+        });
       }
       await jobs.start(async (claimed) => {
         const { issueId, runId, tier } = claimed.job;
+        const runLogger = logger.child({ issueId, runId, tier });
         const entry = {
           kill: new AbortController(),
-          logger: logger.child({ issueId, runId, tier }),
+          inbox: new RunInbox({ runId, link, logger: runLogger }),
+          logger: runLogger,
         };
         runs.set(runId, entry);
         try {
@@ -118,8 +131,11 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
               logger,
             },
             entry.kill.signal,
+            entry.inbox,
           );
         } finally {
+          // runFixJob ends it once the agent stops; this covers a run that never got that far.
+          entry.inbox.end('run_ended');
           // A retry of the same runId may have replaced this entry; leave the newer one.
           if (runs.get(runId) === entry) runs.delete(runId);
         }
