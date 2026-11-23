@@ -216,8 +216,8 @@ last part (`sh -c` has no pipefail), so for one of those only Vitest's summary l
 whether the tests passed. Steps that were refused, and test paths that matched no file,
 don't count.
 
-A score under the tier's `CONFIDENCE_THRESHOLD` (`packages/agent/src/threshold.ts`, 0.3 at
-every tier) sends the run on as `escalated` with reason `low_confidence`, or as `failed` at
+A score under the tier's `CONFIDENCE_THRESHOLD` (`packages/agent/src/threshold.ts`, 0.2 at
+every tier, calibrated on dev bugs under Amendment 5 of `docs/report/eval-prereg.md`) sends the run on as `escalated` with reason `low_confidence`, or as `failed` at
 Tier 3. The note says what was missing, the patch stays on the run's record, a PR the run
 opened is closed, and its ops changes are put back, as for any run that doesn't succeed. A
 run the daemon couldn't score, because scoring threw or the daemon predates it, has

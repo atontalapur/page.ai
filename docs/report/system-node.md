@@ -325,10 +325,11 @@ asks no model. It reads the run's steps, as recorded, and the files `git status`
 | `liveAfterChange` | Ops-only fixes: a healthy restart or a live rollback came after the last change |        |
 
 An ops-only fix scores 1 when `liveAfterChange` holds and 0 when it doesn't. A score under the
-tier's `CONFIDENCE_THRESHOLD`, 0.3 at every tier, sends the run on as `low_confidence`, or fails
-it at Tier 3 ([`threshold.ts`](../../packages/agent/src/threshold.ts)). At 0.3, a code fix
-escalates only when no test, typecheck or lint passed after its last edit, or when it changed no
-code. A run whose scoring threw has no score and never escalates for want of one.
+tier's `CONFIDENCE_THRESHOLD`, 0.2 at every tier, sends the run on as `low_confidence`, or fails
+it at Tier 3 ([`threshold.ts`](../../packages/agent/src/threshold.ts)). At 0.2, a code fix
+escalates only when it scores 0: it changed no code, or no test, typecheck or lint passed after
+its last edit and no test failed before its first code edit. The value comes from a dev-only
+calibration (Amendment 5 in [the preregistration](eval-prereg.md)). A run whose scoring threw has no score and never escalates for want of one.
 
 #174 gives the reasons for measured signals over asking a model. The failure the score is after
 is a confident wrong patch, and the model that wrote the patch would most likely give a

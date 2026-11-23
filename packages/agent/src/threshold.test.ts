@@ -53,11 +53,15 @@ describe('ESCALATION_THRESHOLD', () => {
     expect(isLowConfidence(null, tier)).toBe(false);
   });
 
-  it('lets a run that ran nothing after its edit escalate, and one with only a check stay', () => {
-    // The default sits between a reproduction alone and a typecheck or lint alone.
-    expect(CONFIDENCE_WEIGHTS.reproduced).toBeLessThan(CONFIDENCE_THRESHOLD[1]);
-    expect(CONFIDENCE_WEIGHTS.checksPass).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD[1]);
-  });
+  it.each(TIERS)(
+    'at Tier %i, escalates a code fix with no evidence and keeps one that saw the bug fail',
+    (tier) => {
+      // Calibrated under Amendment 5: only a score of 0 escalates. A reproduction alone, the
+      // smallest part, is enough to land.
+      expect(isLowConfidence({ score: 0 }, tier)).toBe(true);
+      expect(isLowConfidence({ score: CONFIDENCE_WEIGHTS.reproduced }, tier)).toBe(false);
+    },
+  );
 
   it('lets an override narrow the tier budget', async () => {
     const model = new ScriptedModel([bash('ls'), bash('ls'), bash('ls')]);

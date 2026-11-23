@@ -87,8 +87,10 @@ describe('finishedEvent', () => {
     ],
     ['a change to tests only', { ...untested, changesCode: false }, /touches no code/],
     [
+      // The scorer gives this fix 0.2, which the calibrated threshold lets land; the score here
+      // stays under every tier's threshold so the note's wording is still checked.
       'a fix that only saw the bug fail',
-      { ...untested, reproduced: true, score: 0.2 },
+      { ...untested, reproduced: true, score: 0.1 },
       /^No test run passed after its last edit; no typecheck or lint passed after its last edit\.$/,
     ],
   ])('says what was missing from %s', (_, confidence, blocker) => {
