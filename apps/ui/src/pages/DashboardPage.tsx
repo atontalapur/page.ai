@@ -17,6 +17,7 @@ import AgentOverview, { type Agent } from '../components/agents/AgentOverview';
 
 import { mockIncidents } from '../data/mockIncidents';
 import { mockAgents } from '../data/mockAgents';
+import { getActiveTask, getAgentStatus } from '../data/mockTasks';
 import { useTasks } from '../context/TaskContext';
 import { incidentStatusStyles, severityStyles } from '../lib/statusStyles';
 
@@ -27,7 +28,9 @@ export default function DashboardPage() {
 
   const activeIncidents = mockIncidents.filter((incident) => incident.status !== 'Resolved').length;
 
-  const runningAgents = mockAgents.filter((agent) => agent.status === 'Running').length;
+  const runningAgents = mockAgents.filter(
+    (agent) => getAgentStatus(agent, tasks) === 'Running',
+  ).length;
 
   const queuedTasks = tasks.filter((task) => task.status === 'Queued').length;
 
@@ -64,22 +67,12 @@ export default function DashboardPage() {
     .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
     .slice(0, 5);
 
-  const agents: Agent[] = mockAgents.map((agent) => {
-    const activeTask = tasks.find(
-      (task) =>
-        task.agentId === agent.id &&
-        (task.status === 'Running' ||
-          task.status === 'Queued' ||
-          task.status === 'Awaiting Approval'),
-    );
-
-    return {
-      id: agent.id,
-      name: agent.name,
-      status: agent.status,
-      task: activeTask?.title ?? 'No active task',
-    };
-  });
+  const agents: Agent[] = mockAgents.map((agent) => ({
+    id: agent.id,
+    name: agent.name,
+    status: getAgentStatus(agent, tasks),
+    task: getActiveTask(tasks, agent.id)?.title ?? 'No active task',
+  }));
 
   return (
     <div className="space-y-6">

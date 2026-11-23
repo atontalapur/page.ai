@@ -1,21 +1,18 @@
 import { Card, CardHeader, CardTitle, CardContent } from '@page/design-system/components/ui/card';
 import { Badge } from '@page/design-system/components/ui/badge';
 
+import type { AgentStatus } from '../../data/mockAgents';
+import { agentStatusStyles } from '../../lib/statusStyles';
+
 export type Agent = {
   id: string;
   name: string;
-  status: 'Running' | 'Idle' | 'Failed';
+  status: AgentStatus;
   task: string;
 };
 
 type AgentOverviewProps = {
   agents: Agent[];
-};
-
-const statusColors: Record<Agent['status'], string> = {
-  Running: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-300',
-  Idle: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300',
-  Failed: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-300',
 };
 
 export default function AgentOverview({ agents }: AgentOverviewProps) {
@@ -75,7 +72,7 @@ export default function AgentOverview({ agents }: AgentOverviewProps) {
                 <p className="text-sm text-muted-foreground">{agent.task}</p>
               </div>
 
-              <Badge variant="outline" className={statusColors[agent.status]}>
+              <Badge variant="outline" className={agentStatusStyles[agent.status]}>
                 {agent.status}
               </Badge>
             </div>

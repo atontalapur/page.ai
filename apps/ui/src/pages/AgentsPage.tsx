@@ -10,15 +10,24 @@ import { Button } from '@page/design-system/components/ui/button';
 import AssignTaskDialog from '../components/agents/AssignTaskDialog';
 
 import { mockAgents } from '../data/mockAgents';
+import { getAgentStatus } from '../data/mockTasks';
+import { useTasks } from '../context/TaskContext';
 import { agentStatusStyles } from '../lib/statusStyles';
 
 export default function AgentsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const { tasks } = useTasks();
+
+  // Status follows the agent's tasks, so an assigned and started task shows up here.
+  const agents = useMemo(
+    () => mockAgents.map((agent) => ({ ...agent, status: getAgentStatus(agent, tasks) })),
+    [tasks],
+  );
 
   const filteredAgents = useMemo(() => {
-    return mockAgents.filter((agent) => {
+    return agents.filter((agent) => {
       const matchesSearch =
         agent.name.toLowerCase().includes(search.toLowerCase()) ||
         agent.id.toLowerCase().includes(search.toLowerCase()) ||
@@ -28,16 +37,16 @@ export default function AgentsPage() {
 
       return matchesSearch && matchesStatus;
     });
-  }, [search, statusFilter]);
+  }, [agents, search, statusFilter]);
 
-  const running = mockAgents.filter((agent) => agent.status === 'Running').length;
+  const running = agents.filter((agent) => agent.status === 'Running').length;
 
-  const idle = mockAgents.filter((agent) => agent.status === 'Idle').length;
+  const idle = agents.filter((agent) => agent.status === 'Idle').length;
 
-  const failed = mockAgents.filter((agent) => agent.status === 'Failed').length;
+  const failed = agents.filter((agent) => agent.status === 'Failed').length;
 
   const metrics = [
-    { label: 'Total Agents', value: mockAgents.length, icon: Bot },
+    { label: 'Total Agents', value: agents.length, icon: Bot },
     { label: 'Running', value: running, icon: Activity },
     { label: 'Idle', value: idle, icon: CheckCircle2 },
     { label: 'Failed', value: failed, icon: CircleAlert },

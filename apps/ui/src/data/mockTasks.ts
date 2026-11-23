@@ -1,3 +1,5 @@
+import type { AgentStatus } from './mockAgents';
+
 export type TaskStatus = 'Queued' | 'Running' | 'Awaiting Approval' | 'Completed' | 'Failed';
 
 export type TaskPriority = 'Critical' | 'High' | 'Medium' | 'Low';
@@ -89,4 +91,20 @@ export function getLatestFinishedTask(tasks: AgentTask[], agentId: string): Agen
         !latest || (task.completedAt ?? '') >= (latest.completedAt ?? '') ? task : latest,
       undefined,
     );
+}
+
+/**
+ * The agent's status as the list views show it. An agent with an active task
+ * (Running, Queued or Awaiting Approval) is Running, one whose tasks are all
+ * finished is Idle, and one with no tasks keeps its static status.
+ */
+export function getAgentStatus(
+  agent: { id: string; status: AgentStatus },
+  tasks: AgentTask[],
+): AgentStatus {
+  if (getActiveTask(tasks, agent.id)) {
+    return 'Running';
+  }
+
+  return getTasksByAgent(tasks, agent.id).length > 0 ? 'Idle' : agent.status;
 }
