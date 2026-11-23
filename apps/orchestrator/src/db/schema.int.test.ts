@@ -130,7 +130,15 @@ describe('orchestrator tables on real Postgres', () => {
     await db
       .insertInto('steps')
       .values([
-        { run_id: runId, seq: 1, kind: 'edit', input: 'src/a.ts', exit_code: 0, allowed: true },
+        {
+          run_id: runId,
+          seq: 1,
+          kind: 'edit',
+          input: 'src/a.ts',
+          exit_code: 0,
+          allowed: true,
+          thought: 'Fix the import.',
+        },
         { run_id: runId, seq: 0, kind: 'exec', input: 'curl x', exit_code: null, allowed: false },
       ])
       .execute();
@@ -150,12 +158,13 @@ describe('orchestrator tables on real Postgres', () => {
         outputTrimmed: row.output_trimmed,
         exitCode: row.exit_code,
         allowed: row.allowed,
+        thought: row.thought,
         createdAt: iso(row.created_at),
       }),
     );
-    expect(steps.map((s) => [s.seq, s.kind, s.allowed, s.outputTrimmed])).toEqual([
-      [0, 'exec', false, ''],
-      [1, 'edit', true, ''],
+    expect(steps.map((s) => [s.seq, s.kind, s.allowed, s.outputTrimmed, s.thought])).toEqual([
+      [0, 'exec', false, '', null],
+      [1, 'edit', true, '', 'Fix the import.'],
     ]);
   });
 

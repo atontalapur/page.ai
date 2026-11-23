@@ -16,11 +16,19 @@ export class PostgresAuditSink implements AuditSink {
   async open(step: NewStep): Promise<number> {
     // Numbered in the same statement as the insert, from what the run already has stored.
     const { rows } = await this.db.query(
-      `insert into steps (run_id, seq, kind, input, output_trimmed, exit_code, allowed)
-       select $1::uuid, coalesce(max(seq) + 1, 0), $2::text, $3::text, $4::text, $5::integer, $6::boolean
+      `insert into steps (run_id, seq, kind, input, output_trimmed, exit_code, allowed, thought)
+       select $1::uuid, coalesce(max(seq) + 1, 0), $2::text, $3::text, $4::text, $5::integer, $6::boolean, $7::text
        from steps where run_id = $1::uuid
        returning seq`,
-      [step.runId, step.kind, step.input, step.outputTrimmed, step.exitCode, step.allowed],
+      [
+        step.runId,
+        step.kind,
+        step.input,
+        step.outputTrimmed,
+        step.exitCode,
+        step.allowed,
+        step.thought,
+      ],
     );
     const seq = (rows[0] as { seq?: unknown } | undefined)?.seq;
     if (typeof seq !== 'number') throw new Error(`step insert for ${step.runId} returned no seq`);

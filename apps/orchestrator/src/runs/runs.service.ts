@@ -357,6 +357,7 @@ function toStep(row: Selectable<StepsTable>): Step {
     outputTrimmed: row.output_trimmed,
     exitCode: row.exit_code,
     allowed: row.allowed,
+    thought: row.thought,
     createdAt: row.created_at.toISOString(),
   };
 }

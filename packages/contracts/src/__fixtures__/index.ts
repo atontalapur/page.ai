@@ -70,6 +70,7 @@ export const stepFixture: Step = {
   outputTrimmed: 'src/cart/total.ts:12:  return items.slice(0, -1).reduce(sum, 0);',
   exitCode: 0,
   allowed: true,
+  thought: 'The total is short by one item, so look at where cart lines are summed.',
   createdAt: at,
 };
 

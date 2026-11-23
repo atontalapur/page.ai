@@ -35,6 +35,9 @@ const isMarker = (line: string, marker: string) => line.trimEnd() === marker;
 interface Block {
   tag: string;
   body: string[];
+  /** The opening and closing fence lines. */
+  start: number;
+  end: number;
 }
 
 /**
@@ -53,7 +56,7 @@ function findBlocks(lines: string[]): Block[] {
 
     const close = tag === ACTION_TAGS.edit ? editClose(lines, i) : fenceAt(lines, i);
     if (close === -1) break; // An unclosed block holds no action.
-    blocks.push({ tag, body: lines.slice(i, close) });
+    blocks.push({ tag, body: lines.slice(i, close), start: i - 1, end: close });
     i = close + 1;
   }
   return blocks;
@@ -77,6 +80,31 @@ function editClose(lines: string[], from: number): number {
 const EDIT_SHAPE =
   `A ${ACTION_TAGS.edit} block is the file path on the first line, then ${SEARCH}, the exact ` +
   `text to find, ${DIVIDER}, the text to put in its place, and ${REPLACE} on the last line.`;
+
+// The prompt asks for a THOUGHT section before the action; its label adds nothing on screen.
+const THOUGHT_LABEL = /^\s*(?:#+\s*)?\**THOUGHT\**:?\**\s*/i;
+
+/**
+ * What the model said around its action: the reply with its action blocks taken out, or
+ * the model's separate reasoning when the reply says nothing else. Undefined when there is
+ * neither. Read the same way as parseAction, so a block it treats as the action is the one
+ * left out.
+ */
+export function thoughtOf(reply: string, reasoning?: string): string | undefined {
+  const lines = reply.replace(/\r\n/g, '\n').split('\n');
+  const inBlock = new Set<number>();
+  for (const { start, end } of findBlocks(lines)) {
+    for (let i = start; i <= end; i++) inBlock.add(i);
+  }
+  const prose = lines
+    .filter((_, i) => !inBlock.has(i))
+    .join('\n')
+    .replace(THOUGHT_LABEL, '')
+    .trim();
+  if (prose !== '') return prose;
+  const own = reasoning?.trim();
+  return own === '' ? undefined : own;
+}
 
 /**
  * Reads the single action out of a model reply. Like upstream mini-swe-agent, a reply must

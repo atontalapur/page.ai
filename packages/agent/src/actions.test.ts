@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseAction } from './actions.ts';
+import { parseAction, thoughtOf } from './actions.ts';
 
 const fence = (tag: string, body: string) => `\`\`\`${tag}\n${body}\n\`\`\``;
 
@@ -326,5 +326,46 @@ describe('parseAction', () => {
 
   it('wants a title in a PR block', () => {
     expect(errorOf(fence('page_open_pr', '\n\n'))).toMatch(/PR title on the first line/);
+  });
+});
+
+describe('thoughtOf', () => {
+  it('keeps what the model wrote around the action, without the THOUGHT label', () => {
+    const reply = `THOUGHT: The query compares text with an integer.\n\n${fence('page_bash', 'cat -n src/shop/products.ts')}`;
+    expect(thoughtOf(reply)).toBe('The query compares text with an integer.');
+    expect(thoughtOf(`**THOUGHT:** Look first.\n${fence('page_bash', 'ls')}\nThen fix it.`)).toBe(
+      'Look first.\nThen fix it.',
+    );
+  });
+
+  it('leaves out an edit block whole, even when its new text holds a fence', () => {
+    const edit = [
+      '```page_edit',
+      'README.md',
+      '<<<<<<< SEARCH',
+      'old',
+      '=======',
+      '```sh',
+      'pnpm test',
+      '```',
+      '>>>>>>> REPLACE',
+      '```',
+    ].join('\n');
+    expect(thoughtOf(`Document the test command.\n${edit}`)).toBe('Document the test command.');
+  });
+
+  it("falls back to the model's separate reasoning when the reply is only the action", () => {
+    const reply = fence('page_bash', 'ls');
+    expect(thoughtOf(reply, '  The route lives under app/api.  ')).toBe(
+      'The route lives under app/api.',
+    );
+    expect(thoughtOf(reply)).toBeUndefined();
+    expect(thoughtOf(reply, '   ')).toBeUndefined();
+  });
+
+  it('prefers what the reply says over the separate reasoning', () => {
+    expect(thoughtOf(`Run the tests.\n${fence('page_bash', 'pnpm test')}`, 'hidden')).toBe(
+      'Run the tests.',
+    );
   });
 });

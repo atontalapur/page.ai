@@ -12,6 +12,11 @@ export interface Completion {
   /** The model that answered, which may differ from the one asked for. */
   model: string;
   costUsd: number;
+  /**
+   * The model's own reasoning, for models that return it apart from `content` (OpenRouter's
+   * `message.reasoning`). Absent when the model gave none, as in older recorded transcripts.
+   */
+  reasoning?: string;
 }
 
 export type ModelErrorKind =

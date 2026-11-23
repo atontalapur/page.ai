@@ -50,6 +50,7 @@ function step(seq: number, input: string, fields: Partial<Step> = {}): Step {
     outputTrimmed: '',
     exitCode: 0,
     allowed: true,
+    thought: null,
     createdAt: '2026-11-22T09:00:00.000Z',
     ...fields,
   };
@@ -122,6 +123,24 @@ describe('IncidentDetailsPage', () => {
       'https://github.com/o/page-demo/pull/7',
     );
     expect(screen.getByText('cat src/shop/products.ts')).toBeTruthy();
+  });
+
+  it("shows the model's thought above the step it asked for, and the start of a long one", async () => {
+    const long = `Read the query first. ${'The id column is an integer. '.repeat(20)}`;
+    const source = testSource([fixing, fresh]);
+    source.runs.set(fixing.id, [
+      run(1, 'running', {
+        steps: [
+          step(0, 'cat -n src/shop/products.ts', { thought: 'Find the lookup that throws.' }),
+          step(1, 'pnpm test', { thought: long }),
+          step(2, 'ls'),
+        ],
+      }),
+    ]);
+    renderDetails(fixing.id, source);
+
+    expect(await screen.findByText('Find the lookup that throws.')).toBeTruthy();
+    expect(screen.getByText(/^Read the query first\..*\.\.\.$/s)).toBeTruthy();
   });
 
   it('says so when no agent has worked on the incident', async () => {

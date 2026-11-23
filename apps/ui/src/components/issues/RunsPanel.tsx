@@ -17,12 +17,29 @@ function stepResult(step: Step): { label: string; failed: boolean } {
   return { label: `Exit ${step.exitCode}`, failed: true };
 }
 
+// A thought longer than this shows its start, with the rest behind a toggle.
+const THOUGHT_PREVIEW_CHARS = 280;
+
+function Thought({ text }: { text: string }) {
+  const style = 'whitespace-pre-wrap break-words text-sm text-muted-foreground';
+  if (text.length <= THOUGHT_PREVIEW_CHARS) return <p className={style}>{text}</p>;
+  return (
+    <details>
+      <summary className={`cursor-pointer ${style}`}>
+        {text.slice(0, THOUGHT_PREVIEW_CHARS).trimEnd()}...
+      </summary>
+      <p className={style}>{text.slice(THOUGHT_PREVIEW_CHARS).trimStart()}</p>
+    </details>
+  );
+}
+
 const time = (at: string | null) => (at ? new Date(at).toLocaleTimeString() : undefined);
 
 function StepRow({ step }: { step: Step }) {
   const { label, failed } = stepResult(step);
   return (
     <li className="space-y-1 border-b py-2 last:border-b-0">
+      {step.thought && <Thought text={step.thought} />}
       <div className="flex items-start justify-between gap-3">
         <code className="min-w-0 break-words font-mono text-xs">
           <span className="text-muted-foreground">

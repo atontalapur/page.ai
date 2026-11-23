@@ -74,6 +74,27 @@ describe('OpenRouterClient', () => {
     });
   });
 
+  it("keeps the model's separate reasoning, and leaves it out when it is null", async () => {
+    const reasoned = {
+      ...completionBody,
+      choices: [
+        {
+          message: { role: 'assistant', content: 'hello', reasoning: 'The user said hi.' },
+          finish_reason: 'stop',
+        },
+      ],
+    };
+    const result = await client(fakeFetch(200, reasoned)).complete(messages);
+    expect(result).toMatchObject({ ok: true, completion: { reasoning: 'The user said hi.' } });
+
+    const unreasoned = {
+      ...completionBody,
+      choices: [{ message: { content: 'hello', reasoning: null }, finish_reason: 'stop' }],
+    };
+    const plain = await client(fakeFetch(200, unreasoned)).complete(messages);
+    expect(plain.ok && 'reasoning' in plain.completion).toBe(false);
+  });
+
   it('treats null content as empty', async () => {
     const body = {
       model: 'm',

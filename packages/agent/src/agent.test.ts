@@ -169,7 +169,7 @@ describe('runAgent', () => {
     await runAgent(task, { model, ...fake, now: () => clock }, { wallTimeLimitMs: 1_000 });
 
     expect(model.options.map((o) => o?.timeoutMs)).toEqual([1_000, 500]);
-    expect(fake.options).toEqual([{ timeoutMs: 900 }]);
+    expect(fake.options).toEqual([{ timeoutMs: 900, thought: 'next step.' }]);
   });
 
   it('passes no timeout when there is no wall clock limit', async () => {
@@ -177,7 +177,7 @@ describe('runAgent', () => {
     const fake = fakeExecute();
     await runAgent(task, { model, ...fake }, { wallTimeLimitMs: 0 });
     expect(model.options.map((o) => o?.timeoutMs)).toEqual([undefined, undefined]);
-    expect(fake.options).toEqual([{}]);
+    expect(fake.options).toEqual([{ thought: 'next step.' }]);
   });
 
   it('ends on the time limit when the deadline cuts a model call short', async () => {

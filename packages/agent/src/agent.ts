@@ -1,6 +1,6 @@
 import type { ChatMessage, ModelClient, ModelError } from '@page/model-client';
 import type { ExecErr, ExecOk, Result, ToolCall } from '@page/toolkit';
-import { parseAction } from './actions.ts';
+import { parseAction, thoughtOf } from './actions.ts';
 import { budgetFor } from './threshold.ts';
 import {
   formatErrorPrompt,
@@ -13,6 +13,8 @@ import {
 export interface ExecuteOptions {
   /** The time left in the run. The command must not outlive it; unset means no limit. */
   timeoutMs?: number;
+  /** What the model said before asking for the call, for the audit log. */
+  thought?: string;
 }
 
 /** toolkit's `execute()` with the tier and runner already bound. */
@@ -157,7 +159,11 @@ export async function runAgent(
 
     if (parsed.action.kind === 'submit') return finish('submitted');
     if (outOfTime()) return finish('time_limit');
-    const result = await deps.execute(parsed.action.call, withTimeout(timeLeft()));
+    const thought = thoughtOf(reply.completion.content, reply.completion.reasoning);
+    const result = await deps.execute(parsed.action.call, {
+      ...withTimeout(timeLeft()),
+      ...(thought === undefined ? {} : { thought }),
+    });
     if (aborted()) return finish('aborted');
     // Nothing may run unaudited, so a step the log couldn't take ends the run.
     if (!result.ok && result.error.type === 'audit_failed') {

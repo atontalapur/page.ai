@@ -20,7 +20,14 @@ function setup(onStep?: (step: Step) => void) {
   return { inner, sink, streamed };
 }
 
-const allowed = { runId, kind: 'exec' as const, input: 'ls', outputTrimmed: '', exitCode: null };
+const allowed = {
+  runId,
+  kind: 'exec' as const,
+  input: 'ls',
+  outputTrimmed: '',
+  exitCode: null,
+  thought: 'List the app first.',
+};
 
 describe('StreamingAuditSink', () => {
   it('streams an allowed step once it closes, with its outcome', async () => {

@@ -94,10 +94,16 @@ export const stepSchema = z.strictObject({
   // Null when the command was refused or timed out.
   exitCode: z.int().nullable(),
   allowed: z.boolean(),
+  // What the model said before asking for this step: its THOUGHT, or its separate reasoning
+  // when it wrote none. Null when it gave neither.
+  thought: z.string().nullable(),
   createdAt: timestampSchema,
 });
 
 export type Step = z.infer<typeof stepSchema>;
+
+/** The most of a step's thought that is kept. */
+export const MAX_THOUGHT_CHARS = 4_000;
 
 /**
  * One run as `GET /issues/:id/runs` serves it: its row, the agent's diff once it submitted,

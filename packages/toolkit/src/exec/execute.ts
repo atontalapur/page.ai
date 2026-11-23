@@ -1,3 +1,4 @@
+import { clip, MAX_THOUGHT_CHARS } from '@page/contracts';
 import type { StepOutcome } from '../audit/sink.ts';
 import { writePathRefusal } from '../policy/paths.ts';
 import { checkCommand, checkHostTool } from '../policy/policy.ts';
@@ -39,7 +40,12 @@ export async function execute(call: ToolCall, ctx: ExecContext): Promise<ExecRes
   const { steps } = ctx;
   const budget = ctx.outputBudget ?? DEFAULT_OUTPUT_BUDGET;
   const input = loggedInput(call);
-  const step = { runId: steps.runId, kind: base.kind, input: base.input };
+  const step = {
+    runId: steps.runId,
+    kind: base.kind,
+    input: base.input,
+    thought: ctx.thought === undefined ? null : clip(ctx.thought, MAX_THOUGHT_CHARS),
+  };
   let log = steps.logger.child({ tier: ctx.tier, kind: base.kind });
 
   const refusal = refusalFor(call, ctx);

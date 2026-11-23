@@ -109,6 +109,8 @@ export interface ExecContext {
   timeoutMs?: number;
   /** Characters of output the agent sees; see trimOutput. */
   outputBudget?: number;
+  /** What the model said before asking for this call. Stored with its step; never run. */
+  thought?: string;
 }
 
 export interface StepBase {

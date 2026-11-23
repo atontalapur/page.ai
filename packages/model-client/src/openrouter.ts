@@ -32,7 +32,10 @@ const completionBodySchema = z.object({
   choices: z
     .array(
       z.object({
-        message: z.object({ content: z.string().nullable() }),
+        message: z.object({
+          content: z.string().nullable(),
+          reasoning: z.string().nullable().optional(),
+        }),
         finish_reason: z.string().nullable(),
       }),
     )
@@ -132,6 +135,7 @@ export class OpenRouterClient implements ModelClient {
         finishReason: choice.finish_reason,
         model: parsed.data.model,
         costUsd,
+        ...(choice.message.reasoning ? { reasoning: choice.message.reasoning } : {}),
       },
     };
   }
