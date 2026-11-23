@@ -96,6 +96,24 @@ describe('orchestrator HTTP API', () => {
     expect((await http('GET', `/issues/${issue.id}`)).json<Issue>().status).toBe('fixing');
   });
 
+  it('refuses a fix started on an agent that is not connected, and queues nothing', async () => {
+    const created = await http('POST', '/issues', { fingerprint: 'http-node', title: 'Boom' });
+    const { issue } = created.json<{ issue: Issue }>();
+    await http('POST', `/issues/${issue.id}/events`, {
+      type: 'triage',
+      class: 'frontend',
+      severity: 'low',
+    });
+
+    const res = await http('POST', `/issues/${issue.id}/events`, {
+      type: 'start_fix',
+      node: 'nowhere-1',
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json<{ message: string }>().message).toBe('agent nowhere-1 is not connected');
+    expect((await http('GET', `/issues/${issue.id}`)).json<Issue>().status).toBe('triaged');
+  });
+
   it('maps missing issues to 404 and disallowed events to 409', async () => {
     const missing = '00000000-0000-4000-8000-000000000000';
     expect((await http('GET', `/issues/${missing}`)).statusCode).toBe(404);

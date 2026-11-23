@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { IssueRun, Step } from '@page/contracts';
 import { stepFixture } from '@page/contracts/fixtures';
 
@@ -156,5 +156,30 @@ describe('AgentWorkspacePage', () => {
     renderAgent('nobody', testSource([], 'needs_token'));
     expect(screen.queryByText('Agent not found')).toBeNull();
     expect(screen.getByText('Connect to the orchestrator')).toBeTruthy();
+  });
+
+  it('starts a fix on this agent from its page, with the agent already chosen', async () => {
+    const source = testSource([issue(3, { status: 'triaged', title: 'Boom' })], 'live', [
+      daemon('idle-node'),
+    ]);
+    renderAgent('idle-node', source);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Start a fix here' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.getByLabelText<HTMLSelectElement>('Agent').value).toBe('idle-node');
+  });
+
+  it('offers a stop on the run the agent holds', async () => {
+    renderAgent('busy-node', busySource());
+    expect(await screen.findByRole('button', { name: 'Stop run' })).toBeTruthy();
+  });
+
+  it('does not offer to start a fix on an agent that has left', async () => {
+    renderAgent(
+      'gone',
+      testSource([], 'live', [daemon('gone', { connected: false, since: null })]),
+    );
+    expect(await screen.findByText('gone')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Start a fix here' })).toBeNull();
   });
 });

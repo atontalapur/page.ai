@@ -1,7 +1,15 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AltArrowLeftIcon, BotIcon, HistoryIcon, PulseIcon } from '@solar-icons/react/line-duotone';
+import {
+  AddCircleIcon,
+  AltArrowLeftIcon,
+  BotIcon,
+  HistoryIcon,
+  PulseIcon,
+} from '@solar-icons/react/line-duotone';
 import type { NodeRun, NodeSummary } from '@page/contracts';
 
+import { Button } from '@page/design-system/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
 import {
   Table,
@@ -13,6 +21,8 @@ import {
 } from '@page/design-system/components/ui/table';
 
 import { AgentStatusBadge, LastStep, RunStatusBadge } from '../components/agents/AgentBadges';
+import StartFixDialog from '../components/agents/StartFixDialog';
+import StopRunButton from '../components/agents/StopRunButton';
 import { RunHeading, RunReview } from '../components/issues/RunsPanel';
 import TokenPrompt from '../components/issues/TokenPrompt';
 import { useAgents, useIssues } from '../context/IssuesContext';
@@ -50,9 +60,12 @@ function CurrentRun({ run }: { run: NodeRun }) {
   const full = runs?.find((r) => r.id === run.id);
   return (
     <div className="space-y-3">
-      <p className="text-sm font-semibold">
-        <IssueLink run={run} />
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm font-semibold">
+          <IssueLink run={run} />
+        </p>
+        <StopRunButton issueId={run.issueId} />
+      </div>
       <RunHeading run={full ?? run} />
       {full ? (
         <RunReview run={full} />
@@ -130,6 +143,7 @@ export default function AgentWorkspacePage() {
   const { getNode, loaded } = useAgents();
   const { status } = useIssues();
   const node = getNode(id);
+  const [startOpen, setStartOpen] = useState(false);
 
   if (!node) {
     return (
@@ -170,8 +184,17 @@ export default function AgentWorkspacePage() {
             <p className="text-sm text-muted-foreground">Node daemon</p>
           </div>
         </div>
-        <AgentStatusBadge status={agentStatus(node)} />
+        <div className="flex items-center gap-3">
+          <AgentStatusBadge status={agentStatus(node)} />
+          {node.connected && (
+            <Button onClick={() => setStartOpen(true)}>
+              <AddCircleIcon className="size-4" />
+              Start a fix here
+            </Button>
+          )}
+        </div>
       </div>
+      <StartFixDialog open={startOpen} onClose={() => setStartOpen(false)} agent={node.name} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {summary.map((item) => (

@@ -276,6 +276,8 @@ export class IssuesService {
           // ingest masks one, since a Tier 2 PR is public.
           report: current.report ?? titleReport(current.title),
           ...(note === undefined ? {} : { escalationNote: note }),
+          // A fix started on a named agent goes to it; every later tier goes to any agent.
+          ...(event.type === 'start_fix' && event.node !== undefined ? { node: event.node } : {}),
         },
         trx,
       );

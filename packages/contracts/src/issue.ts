@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { BUG_CLASSES, idSchema, tierSchema, timestampSchema } from './common.ts';
 import { ISSUE_STATUSES, SEVERITIES } from './db.ts';
+import { nodeNameSchema } from './nodes.ts';
 
 // Orchestrator API shapes around `issueSchema` (db.ts). Statuses and tiers come from there.
 
@@ -40,7 +41,9 @@ const reason = z.string().trim().min(1).max(MAX_REASON_CHARS);
  */
 export const issueEventSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('triage'), class: bugClassSchema, severity: severitySchema }),
-  z.strictObject({ type: z.literal('start_fix') }),
+  // `node` names the agent that should take the Tier 1 run; without it any agent can. Higher
+  // tiers always go to any agent.
+  z.strictObject({ type: z.literal('start_fix'), node: nodeNameSchema.optional() }),
   z.strictObject({ type: z.literal('patch_ready'), runId: idSchema }),
   // A Tier 3 run fixed the live app through the ops API and left no code change. The fix is
   // live already, so the issue resolves with nothing for a human to approve.

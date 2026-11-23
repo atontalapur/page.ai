@@ -5,6 +5,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  Inject,
   NotFoundException,
   Param,
   Post,
@@ -24,6 +25,9 @@ import {
 import { z } from 'zod';
 import type { Caller } from '../auth/api-tokens.ts';
 import { actorOf, CallerOf } from '../auth/caller.ts';
+import { Nodes } from '../gateway/nodes.ts';
+import type { FixJobQueue } from '../queue/fix-jobs.ts';
+import { FIX_JOB_QUEUE } from '../tokens.ts';
 import { RunsService } from '../runs/runs.service.ts';
 import { IssueNotFoundError, IssuesService } from './issues.service.ts';
 import { TransitionError } from './transitions.ts';
@@ -56,6 +60,8 @@ export class IssuesController {
   constructor(
     private readonly issues: IssuesService,
     private readonly runs: RunsService,
+    private readonly nodes: Nodes,
+    @Inject(FIX_JOB_QUEUE) private readonly fixJobs: FixJobQueue,
   ) {}
 
   /** Opens an issue, or counts a repeat of the open one with the same fingerprint. */
@@ -96,7 +102,7 @@ export class IssuesController {
    */
   @Post(':id/events')
   @HttpCode(200)
-  apply(
+  async apply(
     @Param('id', { schema: issueId }) id: string,
     @Body({ schema: issueEventSchema }) event: IssueEvent,
     @CallerOf() caller: Caller | undefined,
@@ -105,6 +111,13 @@ export class IssuesController {
       throw new BadRequestException(
         `${event.type} comes from the node daemon's run_finished job, not this route`,
       );
+    }
+    // A fix started on a named agent waits in that agent's queue, so it has to be there.
+    if (event.type === 'start_fix' && event.node !== undefined) {
+      if (!this.nodes.state(event.node).connected) {
+        throw new ConflictException(`agent ${event.node} is not connected`);
+      }
+      await this.fixJobs.prepare(event.node);
     }
     const actor = caller === undefined ? undefined : actorOf(caller);
     return asHttp(this.issues.apply(id, event, actor === undefined ? {} : { actor }));
