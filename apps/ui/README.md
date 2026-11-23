@@ -11,7 +11,8 @@ next to the API and the socket, so in production the UI talks to the origin that
 - **Server** (`src/live/server-source.ts`), when the page's own `/health` answers JSON, which
   means an orchestrator served it. It connects to the `/ui` Socket.IO namespace, then loads
   `GET /issues` and `GET /nodes`, and applies `issue.updated`, `node.updated` and the run
-  events (`run.started`, `run.step`, `run.diff`, `run.finished`) as they arrive. Each reconnect
+  events (`run.started`, `run.step`, `run.diff`, `run.finished`, and the messages people send
+  a run, `run.chat.asked` and `run.chat.reply`) as they arrive. Each reconnect
   loads both lists again for the changes it missed. A detail page whose issue isn't in the list
   (the list holds the 200 most recent) fetches `GET /issues/:id` once.
 - **Mock** (`src/live/mock-source.ts`), when nothing answers `/health` with JSON, as under
@@ -36,6 +37,33 @@ events sent meanwhile, so the source tells the store each time the socket connec
 hooks load their runs again then. Events that land while a load is in flight are applied again
 on top of what it returns. The incident page loads an issue's runs again when the issue
 changes; the agent page loads a daemon's runs again when it takes a new one.
+
+### Asking the agent
+
+The newest run on the incident page has a box to send the agent a message while it works
+(`AskAgent` in `src/components/issues/RunChat.tsx`): a question about what it is doing, or a
+pointer. The agent reads it before its next step and answers in that step, without stopping.
+It is guidance only: the run's tier, policy and approvals still decide what it may do.
+
+- **Sending.** `askAgent` on the source emits `run.chat` and waits for the server:
+  `run.chat.asked` with the same run and text means it is stored and on its way to the daemon,
+  and `run.chat.refused` says why it isn't (no name, over the chat limit, the run is no longer
+  in progress, no daemon holds it, or the run has had 10 messages). The page gives up after 10
+  seconds, or at once when the socket drops, and says so. A message that didn't go out stays in
+  the box with the reason under it. Cmd or Ctrl with Enter sends.
+- **Shut.** The box is disabled, with the reason, while the run has ended, no connected daemon
+  holds it (from the live agents list), or the tab is not connected. An ended run keeps the box
+  only if someone talked to it, and each run's box starts empty.
+- **Name.** Messages are recorded under the name approvals use (`ui:<name>`), so the box asks
+  for it first, the same way.
+- **The conversation.** Each message shows in the run's steps after the step that started
+  before it was asked, with its answer once the agent gives it, or why it has none: not read
+  because too many were waiting or the agent had already submitted, not answered because the
+  run ended first, read and not answered, or not delivered. Messages arrive as run events, so
+  every open tab shows them live, and a reconnect loads them again with the runs. A pending
+  copy never replaces an answer.
+
+The mock source sends no messages: the box says the page isn't connected to an orchestrator.
 
 ## Agents
 

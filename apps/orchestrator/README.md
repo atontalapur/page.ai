@@ -19,6 +19,9 @@ all wired. Escalation between tiers is part of the issue state machine
 | `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone      |
 | `GatewayModule`   | Socket.IO for the UI and the daemons: live events, kills, approvals; `/nodes` |
 
+`GatewayModule` also imports `ChatsModule`, which stores the messages people send a run in
+progress and the agent's answers (run chat, below).
+
 ## Issue lifecycle
 
 ```
@@ -141,6 +144,9 @@ Bodies are validated against the zod contracts (400). `POST /issues/:id/events` 
 through the `run_finished` queue, which also writes the `runs` and `escalations` rows. Unknown ids return 404. Events the current status doesn't allow return 409. `GET /issues`
 returns at most 200 issues, most recently updated first; a repeat report counts as an update.
 
+`GET /issues/:id/runs` serves each run with its steps, its diff once the agent submitted, and
+the messages people sent it with their answers (`chats`, oldest first; run chat, below).
+
 `GET /nodes` and `GET /nodes/:name/runs` serve the UI's agents pages (`nodeSummarySchema` and
 `nodeRunSchema` in contracts). `/nodes` lists each node daemon by name: the ones connected to
 this instance, the ones it saw leave, and the 50 that worked the newest runs, each with the
@@ -245,8 +251,42 @@ daemon or a tab sends is checked against its contract (`nodeToServerEvents`,
   daemon was away, the gateway sends that daemon `run.kill`. The daemon stops the run and
   reports it `killed`.
 
-Each gateway has a handler map, and an event with no handler is logged and dropped. `run.chat`
-waits for a daemon that handles it.
+Each gateway has a handler map, and an event with no handler is logged and dropped.
+
+## Run chat
+
+A person on the incident page can send the agent on a run in progress a message: a question
+about what it is doing, or a pointer. The agent reads it at its next step boundary and
+answers in the reply that takes its next action (`apps/node/README.md`). The message is
+guidance: it changes nothing about what the run may do, since every action still goes
+through `execute()`, the policy and approvals.
+
+- **Ask.** A tab sends `run.chat` with the run and the message (1 to 1,000 characters after
+  trimming, `MAX_CHAT_CHARS`; a longer one breaks the contract and is dropped). `UiGateway`
+  checks the tab connected with a name (identity, under Tier 3 approvals) and is within its
+  chat limit, then `RunChats` checks the run is its issue's run in progress, a connected
+  daemon holds it (`Nodes`), and it has had fewer than 10 messages (`MAX_CHATS_PER_RUN`).
+  A message that fails any check is stored nowhere, and only that tab gets
+  `run.chat.refused` with the reason: `no_name`, `rate_limited`, `not_in_progress`,
+  `no_daemon` or `too_many`.
+- **Relay.** A message that passes is stored pending in `run_chats` under `ui:<name>`, every
+  tab gets `run.chat.asked`, and the daemon holding the run, and no other, gets `run.chat`
+  with the stored id and the person's name. A daemon that left between the check and the
+  send leaves the message closed as `no_daemon`.
+- **Answer.** The daemon sends `node.chat.reply`: the agent's answer (cut to 4,000
+  characters), or why there is none (`queue_full`, `submitted`, `run_ended`, `no_answer`).
+  `ChatsService` stores it only over a pending row of that run, so the first reply stands,
+  and every tab gets `run.chat.reply` (`ChatRelay`).
+- **The server closes a message** as `run_ended` when its run stops: on `node.run.finished`,
+  on a change that cancels the run's fix job (a kill, the next tier), and when the issue
+  leaves `fixing`. A message to a daemon that dies stays pending until its fix job expires
+  and the orchestrator fails the issue.
+
+`run_chats.run_id` is the fix job's id with no foreign key, as for `steps` and `approvals`,
+and `issue_id` references the issue, so an issue with messages can't be deleted
+(`010_run_chats.sql`). The CHECKs copy `CHAT_STATUSES`, `CHAT_CLOSE_REASONS` and the length
+caps from the contracts. The 10-message cap is checked before the insert, so two messages at
+the same moment can pass it by one.
 
 ## Tier 3 approvals
 
@@ -321,10 +361,22 @@ memory (`src/rate-limit.ts`), so each instance counts its own and a restart star
 | UI files, per address               | 300 a minute  | 429 with `Retry-After`                      |
 | UI socket handshakes, per address   | 30 a minute   | Refused with `connect_error` `rate_limited` |
 | UI socket messages, per socket      | 20 every 10s  | The socket is closed                        |
+| `run.chat`, per socket              | 5 a minute    | `run.chat.refused` `rate_limited`           |
+| Messages to one run, from all tabs  | 10            | `run.chat.refused` `too_many`               |
+| Messages waiting on the agent       | 3 per run     | The daemon closes it as `queue_full`        |
 | Node socket handshakes, per address | 30 a minute   | Refused with `connect_error` `rate_limited` |
 | Node socket messages, per socket    | 300 every 10s | The socket is closed                        |
 | `/nodes` routes, per address        | 60 a minute   | 429 with `Retry-After`                      |
 | Wrong API tokens, per address       | 10 in 10 min  | 429 or `rate_limited`, right token included |
+
+A message to a run is cheap to send and dear to answer: it stays in the agent's context, so
+every model call the run makes after it pays for its tokens, and the answer adds output
+tokens to the next one. So `run.chat` has its own limit on top of the socket's message limit.
+A person reading the run and typing sends one every few steps, and a step is a model call and
+a command, so 5 a minute is plenty; past it the message is refused and the socket stays open.
+The per-run cap of 10 bounds what all tabs together add to one run (at most 10,000 characters
+of messages and 40,000 of answers), and the daemon reads at most 3 at once, so one answer never
+covers a pile of questions.
 
 A page load is index.html and about ten hashed files, so 300 a minute is about 30 full reloads.
 A tab handshakes once and socket.io-client retries a lost connection at most every 5s, under

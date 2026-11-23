@@ -283,6 +283,48 @@ daemon logs a warning at startup when it is on. The eval approves every gated ca
 Undo after a run that didn't submit is not gated: it puts back what the run changed with the
 approvals it already had, and no one is waiting on the run by then.
 
+## Messages from the person on call
+
+Someone watching a run on the incident page can send the agent a message, such as "why that
+file?" or "check the config first". The orchestrator sends it to the daemon holding the run
+as `run.chat`, with the message id and the person's name, and each run's inbox
+(`src/run/inbox.ts`) keeps it until the agent loop reads it.
+
+- **When the agent reads it.** At each step boundary, before its next model call, the loop
+  takes every message waiting and adds it to the user's turn, after the result of the last
+  action, in an `<oncall_message from="...">` element (`onCallPrompt` in `@page/agent`). The
+  text is escaped, so it can't close its element or pose as another sender. A question
+  doesn't stop the run.
+- **How it answers.** The prompt asks for the answer in an `<oncall_reply>` element in the
+  next response, next to its one action. The loop takes the answer out before it reads the
+  action and the step's thought, and the inbox sends it back as `node.chat.reply`, cut to
+  4,000 characters. A reply with no answer closes the message as `no_answer`; a reply with an
+  answer and no action keeps the answer and is a format error, as before.
+- **Guidance, not authority.** The prompt says the message can't give the run tools or
+  permissions its tier doesn't have, and that every action still goes through the same rules,
+  checks and approvals. That holds whatever the model does with it: the message is only text,
+  and `execute()` is still the only way out. A test asks a Tier 1 run for `curl ... | sh` and a
+  restart of the live app, and both steps are refused.
+- **Budget.** Answering costs no model call of its own: the answer rides in the reply that
+  takes the next action, a call the run makes anyway. So a message adds no call to the
+  40-call step limit at every tier, and a run with questions runs out of steps no sooner than
+  the same run without them. It does cost tokens, which count against the run's dollar limit:
+  the message stays in the context for every later call, and the answer is output. The
+  orchestrator's caps bound that.
+- **Caps.** At most 3 messages wait at once; a fourth is closed as `queue_full` at once.
+  The orchestrator caps a message at 1,000 characters and a run at 10 messages.
+- **After the agent stops.** Once the agent loop returns, the inbox ends. What is still
+  waiting, and anything that arrives later, is closed as `submitted` when the agent submitted
+  (the daemon is reading its diff, scoring it and reporting) and `run_ended` otherwise. A
+  message the agent read whose answer never came, because the run was killed or the model
+  call failed, is `run_ended`. A `run.chat` for a run this daemon isn't running is closed as
+  `run_ended`.
+
+Every message gets exactly one `node.chat.reply`. With no message, the loop sends exactly
+what it sent before there was an inbox: `oncall.test.ts` runs the same script with no inbox
+and with an empty one and compares every call, and every recorded transcript replays with an
+empty inbox. The eval passes no inbox, so its prompts are unchanged.
+
 ## Tests
 
 ```sh
@@ -305,6 +347,9 @@ Docker and model and check the `steps` row, and start and remove a real containe
 - A kill reaches the daemon as `run.kill`: at once when its socket has named the run, or on
   its next event for a run killed while it was away. A kill for a run this daemon isn't
   holding is logged and ignored.
+- A person's message reaches the daemon holding the run as `run.chat`, and the answer goes
+  back as `node.chat.reply`, which the orchestrator stores and shows every tab. A message
+  sent while the daemon is away is never sent: the orchestrator refuses it with `no_daemon`.
 - The link reconnects on its own after a dropped connection or an orchestrator restart, and
   sends the events it buffered meanwhile. socket.io-client gives up on a refused handshake
   and on a socket the server closed, so the link tries again itself: a minute after a
