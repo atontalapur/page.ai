@@ -21,6 +21,9 @@ export const ACTION_TAGS = {
   opsSet: 'page_ops_set',
   opsUnset: 'page_ops_unset',
   opsRestart: 'page_ops_restart',
+  // Tier 3 rollback of the live app's deploy, on a node with a deployer for it.
+  opsRollbackPlan: 'page_ops_rollback_plan',
+  opsRollback: 'page_ops_rollback',
 } as const;
 
 const SEARCH = '<<<<<<< SEARCH';
@@ -127,6 +130,10 @@ export function parseAction(reply: string): ParseResult {
   if (tag === ACTION_TAGS.opsRestart) return hostTool({ kind: 'host_tool', tool: 'ops.restart' });
   if (tag === ACTION_TAGS.opsSet) return parseOpsSet(body);
   if (tag === ACTION_TAGS.opsUnset) return parseOpsUnset(body);
+  if (tag === ACTION_TAGS.opsRollbackPlan) {
+    return hostTool({ kind: 'host_tool', tool: 'ops.planRollback' });
+  }
+  if (tag === ACTION_TAGS.opsRollback) return parseOpsRollback(body);
 
   const command = body.join('\n').trim();
   if (command === '') return { ok: false, error: `The ${ACTION_TAGS.exec} block is empty.` };
@@ -211,6 +218,18 @@ function parseOpsUnset(body: string[]): ParseResult {
     };
   }
   return hostTool({ kind: 'host_tool', tool: 'ops.deleteConfig', key });
+}
+
+/** One line: the id of the deployment to go back to, as the rollback plan named it. */
+function parseOpsRollback(body: string[]): ParseResult {
+  const to = oneLine(body);
+  if (to === undefined || /\s/.test(to)) {
+    return {
+      ok: false,
+      error: `A ${ACTION_TAGS.opsRollback} block is one line, the id of the deployment the ${ACTION_TAGS.opsRollbackPlan} block named.`,
+    };
+  }
+  return hostTool({ kind: 'host_tool', tool: 'ops.rollback', to });
 }
 
 /** The first non-blank line is the title; the rest is the body. */

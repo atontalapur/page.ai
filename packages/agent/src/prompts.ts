@@ -27,6 +27,8 @@ const {
   opsSet: OPS_SET,
   opsUnset: OPS_UNSET,
   opsRestart: OPS_RESTART,
+  opsRollbackPlan: OPS_ROLLBACK_PLAN,
+  opsRollback: OPS_ROLLBACK,
 } = ACTION_TAGS;
 const FENCE = '```';
 
@@ -37,6 +39,11 @@ export interface AgentTask {
   task: string;
   /** The run's tier. From Tier 2 the agent pushes its fix and opens a PR. Unset is Tier 1. */
   tier?: Tier;
+  /**
+   * Whether a Tier 3 run can roll back the live app's deploy, because the node has a
+   * deployer for it. Unset is false, and the prompt leaves the rollback blocks out.
+   */
+  rollback?: boolean;
 }
 
 // Tier 2 and up push the fix and open a PR through the host tools.
@@ -85,8 +92,29 @@ ${FENCE}
 
 `;
 
+// A Tier 3 run on a node with a deployer can also roll the live app back.
+const rollsBack = (tier: Tier | undefined, rollback: boolean | undefined) =>
+  operates(tier) && rollback === true;
+
+// The id is a placeholder, like the setting name above.
+const ROLLBACK_BLOCKS = `9. Planning a rollback of the live app's deploy. It is a dry run: it shows the live deployment and the earlier one a rollback would bring back, and changes nothing:
+
+${FENCE}${OPS_ROLLBACK_PLAN}
+${FENCE}
+
+10. Rolling the live app back to the deployment the plan named, by its id. It waits until that build is live:
+
+${FENCE}${OPS_ROLLBACK}
+DEPLOYMENT_ID
+${FENCE}
+
+`;
+
 /** The submit block's number and when to use it, for each tier's list of blocks. */
-function submitLine(tier: Tier | undefined): string {
+function submitLine(tier: Tier | undefined, rollback: boolean): string {
+  if (rollsBack(tier, rollback)) {
+    return `${PUBLISH_BLOCKS}${OPS_BLOCKS}${ROLLBACK_BLOCKS}11. Submitting your work, once the fix is in: for a code change, after the tests pass and the pull request is open; for a settings change, after the app has restarted with it; for a rollback, once the build it brought back is live`;
+  }
   if (operates(tier)) {
     return `${PUBLISH_BLOCKS}${OPS_BLOCKS}9. Submitting your work, once the fix is in: for a code change, after the tests pass and the pull request is open; for a settings change, after the app has restarted with it`;
   }
@@ -94,8 +122,15 @@ function submitLine(tier: Tier | undefined): string {
   return `${publish ? `${PUBLISH_BLOCKS}5` : '3'}. Submitting your work, once the fix is in and the tests pass${publish ? ' and the pull request is open' : ''}`;
 }
 
-export function systemPrompt(tier?: Tier): string {
-  const kinds = operates(tier) ? 'nine' : publishes(tier) ? 'five' : 'three';
+/** The system prompt. `rollback` adds the rollback blocks at Tier 3; see AgentTask. */
+export function systemPrompt(tier?: Tier, rollback = false): string {
+  const kinds = rollsBack(tier, rollback)
+    ? 'eleven'
+    : operates(tier)
+      ? 'nine'
+      : publishes(tier)
+        ? 'five'
+        : 'three';
   return `You are a careful software engineer fixing a bug in a TypeScript repository. You work by running shell commands and editing files, one action at a time.
 
 Your response must contain exactly ONE action block. Put a THOUGHT section before it that explains your reasoning.
@@ -119,7 +154,7 @@ the new text
 >>>>>>> REPLACE
 ${FENCE}
 
-${submitLine(tier)}:
+${submitLine(tier, rollback)}:
 
 ${FENCE}${SUBMIT}
 ${FENCE}
@@ -136,7 +171,15 @@ The bug may come from the live app's settings rather than its code. The app read
 
 `;
 
-export function instancePrompt({ task, tier }: AgentTask): string {
+// When a rollback is the fix, and when it isn't. It names no file or route, so it can't
+// hint at a fix either.
+const ROLLBACK_SECTION = `## A bad deploy
+
+The live app may run a build that differs from the code in this repository: a bad deploy. Suspect one when the code here can't produce the error, for example when the stack trace points at lines that read differently here, or the code handles the failing request correctly, and the live settings look right. Then plan a rollback with a ${OPS_ROLLBACK_PLAN} block: it shows the live deployment, when it was created, and the earlier one a rollback would bring back. If the live build is the bad one, roll back with a ${OPS_ROLLBACK} block that holds the id the plan named, and then submit: a rollback needs no code change or pull request. Don't roll back to fix a bug that is in this repository's code, since the next deploy would bring it back; fix the code instead. You may roll back once.
+
+`;
+
+export function instancePrompt({ task, tier, rollback }: AgentTask): string {
   const publish = publishes(tier);
   return `Please fix this bug:
 
@@ -154,7 +197,7 @@ Work step by step so you can check each change as you go.
 4. Run the test again to confirm the fix, then the whole suite, lint and typecheck: \`${PNPM} test\`, \`${PNPM} lint\` and \`${PNPM} typecheck\`.
 ${publish ? `${PUBLISH_STEP}6` : '5'}. Submit with a ${SUBMIT} block. Do not put anything else in that response. After you submit, you cannot continue working on this task.
 
-${operates(tier) ? OPS_SECTION : ''}## Rules
+${operates(tier) ? OPS_SECTION : ''}${rollsBack(tier, rollback) ? ROLLBACK_SECTION : ''}## Rules
 
 1. Every response must contain exactly one action block.
 2. Each command runs in a fresh shell in the repository root. The app is in \`${APP}\`. \`cd\` and environment variables do not carry over to the next command.

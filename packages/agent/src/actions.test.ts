@@ -254,6 +254,7 @@ describe('parseAction', () => {
   it.each([
     ['page_ops_config', 'ops.getConfig'],
     ['page_ops_restart', 'ops.restart'],
+    ['page_ops_rollback_plan', 'ops.planRollback'],
   ])('reads a %s block, empty or not, as %s', (tag, tool) => {
     for (const body of ['', 'please\n']) {
       expect(parseAction(fence(tag, body))).toEqual({
@@ -289,6 +290,26 @@ describe('parseAction', () => {
     });
     expect(errorOf(fence('page_ops_unset', 'A\nB'))).toBe(
       "A page_ops_unset block is one line, the setting's name.",
+    );
+  });
+
+  it('reads a rollback block as the deployment id, trimmed', () => {
+    expect(parseAction(fence('page_ops_rollback', '\n  DEPLOYMENT_ID \n'))).toEqual({
+      ok: true,
+      action: {
+        kind: 'host_tool',
+        call: { kind: 'host_tool', tool: 'ops.rollback', to: 'DEPLOYMENT_ID' },
+      },
+    });
+    // The plan's tag starts the same way, and still reads as the plan.
+    expect(parseAction(fence('page_ops_rollback_plan', 'DEPLOYMENT_ID'))).toMatchObject({
+      action: { call: { tool: 'ops.planRollback' } },
+    });
+  });
+
+  it.each(['', '  ', 'A\nB', 'two words'])('refuses %j as a rollback block', (body) => {
+    expect(errorOf(fence('page_ops_rollback', body))).toBe(
+      'A page_ops_rollback block is one line, the id of the deployment the page_ops_rollback_plan block named.',
     );
   });
 
