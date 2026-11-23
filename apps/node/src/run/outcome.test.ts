@@ -29,6 +29,8 @@ describe('finishedEvent', () => {
       status: 'succeeded',
       prUrl: null,
       confidence: null,
+      // What the agent spent, for the dashboard's spend count.
+      costUsd: 0.1234,
       note: null,
       opsOnly: false,
     });
