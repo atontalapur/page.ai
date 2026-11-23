@@ -1,2 +1,19 @@
 @import '@page/design-system/globals.css';
 @import 'tailwindcss';
+
+/* @pierre/diffs views (components/issues/CodeDiff.tsx). They render in a shadow root and
+   colour with light-dark(), so the theme toggle reaches them through color-scheme, and the
+   fonts and background through their custom properties. */
+.diff-view {
+  display: block;
+  color-scheme: light;
+  --diffs-font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --diffs-font-size: 12.5px;
+  --diffs-line-height: 20px;
+  --diffs-light-bg: var(--card);
+  --diffs-dark-bg: var(--card);
+}
+
+.dark .diff-view {
+  color-scheme: dark;
+}

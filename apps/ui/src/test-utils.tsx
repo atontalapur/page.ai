@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { act, render } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import type { Issue, IssueEvent, IssueRun } from '@page/contracts';
+import type { Issue, IssueEvent, IssueEventRecord, IssueRun } from '@page/contracts';
 import { issueFixture } from '@page/contracts/fixtures';
 
 import { IssuesProvider } from './context/IssuesContext';
@@ -35,6 +35,8 @@ export interface TestSource extends IssueSource {
   extra: Map<string, Issue>;
   /** What fetchRuns returns per issue; an issue missing here has no runs. */
   runs: Map<string, IssueRun[]>;
+  /** What fetchEvents returns per issue; an issue missing here has none. */
+  events: Map<string, IssueEventRecord[]>;
   /** Every event applyEvent was given, in order. */
   applied: { id: string; event: IssueEvent }[];
   /** What applyEvent answers; by default the issue with `status` set as the server would. */
@@ -46,10 +48,12 @@ export function testSource(issues: Issue[], status: FeedStatus = 'live'): TestSo
   let feed: IssueFeed | undefined;
   const extra = new Map<string, Issue>();
   const runs = new Map<string, IssueRun[]>();
+  const events = new Map<string, IssueEventRecord[]>();
   const applied: { id: string; event: IssueEvent }[] = [];
   const source: TestSource = {
     extra,
     runs,
+    events,
     applied,
     start(next) {
       feed = next;
@@ -62,6 +66,7 @@ export function testSource(issues: Issue[], status: FeedStatus = 'live'): TestSo
     },
     fetchIssue: (id) => Promise.resolve(extra.get(id)),
     fetchRuns: (id) => Promise.resolve(runs.get(id) ?? []),
+    fetchEvents: (id) => Promise.resolve(events.get(id) ?? []),
     applyEvent(id, event) {
       applied.push({ id, event });
       if (source.respond) return source.respond(id, event);

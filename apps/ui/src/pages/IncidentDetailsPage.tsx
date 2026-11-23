@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/co
 import { buttonVariants } from '@page/design-system/components/ui/button';
 
 import { SeverityBadge, StatusBadge } from '../components/issues/IssueBadges';
+import ActivityPanel from '../components/issues/ActivityPanel';
 import ReviewActions, { awaitsReview } from '../components/issues/ReviewActions';
 import RunsPanel from '../components/issues/RunsPanel';
 import TokenPrompt from '../components/issues/TokenPrompt';
@@ -110,34 +111,41 @@ export default function IncidentDetailsPage() {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bot className="size-5" />
-              Agent Runs
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <RunsPanel issue={issue} />
-          </CardContent>
-        </Card>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <section aria-labelledby="runs-heading" className="min-w-0 space-y-3">
+          <h3 id="runs-heading" className="flex items-center gap-2 text-base font-semibold">
+            <Bot className="size-5" />
+            Agent runs
+          </h3>
+          <RunsPanel issue={issue} />
+        </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="space-y-3 text-sm">
-              {details.map((detail) => (
-                <div key={detail.label}>
-                  <dt className="text-muted-foreground">{detail.label}</dt>
-                  <dd className="break-all font-mono">{detail.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </CardContent>
-        </Card>
+        <div className="space-y-6 lg:sticky lg:top-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Activity</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ActivityPanel issue={issue} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="space-y-3 text-sm">
+                {details.map((detail) => (
+                  <div key={detail.label}>
+                    <dt className="text-muted-foreground">{detail.label}</dt>
+                    <dd className="break-all font-mono">{detail.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
