@@ -23,6 +23,8 @@ import { Button } from '@page/design-system/components/ui/button';
 import { Avatar, AvatarFallback } from '@page/design-system/components/ui/avatar';
 import { Separator } from '@page/design-system/components/ui/separator';
 
+import ConnectionBadge from '../issues/ConnectionBadge';
+
 interface DashboardLayoutProps {
   children: ReactNode;
 }
@@ -106,7 +108,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </Sidebar>
 
       {/* Main Content */}
-      <SidebarInset>
+      {/* min-w-0 lets a wide table scroll inside its card instead of widening the page. */}
+      <SidebarInset className="min-w-0">
         <header className="flex h-16 shrink-0 items-center justify-between border-b px-4 md:px-6">
           <div className="flex items-center gap-3">
             <SidebarTrigger />
@@ -117,6 +120,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           </div>
 
           <div className="flex items-center gap-3">
+            <ConnectionBadge />
+
             <Button variant="ghost" size="icon" aria-label="Notifications" disabled>
               <Bell className="size-5" />
             </Button>

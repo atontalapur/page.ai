@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Search } from 'lucide-react';
+import { ISSUE_STATUSES, SEVERITIES } from '@page/contracts';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
-import { Badge } from '@page/design-system/components/ui/badge';
 import { Input } from '@page/design-system/components/ui/input';
 import {
   Table,
@@ -14,51 +14,80 @@ import {
   TableRow,
 } from '@page/design-system/components/ui/table';
 
-import { mockIncidents } from '../data/mockIncidents';
-import { incidentStatusStyles, severityStyles } from '../lib/statusStyles';
+import { SeverityBadge, StatusBadge } from '../components/issues/IssueBadges';
+import TokenPrompt from '../components/issues/TokenPrompt';
+import { useIssues } from '../context/IssuesContext';
+import {
+  classLabel,
+  isOpen,
+  severityLabels,
+  shortId,
+  statusLabels,
+  tierLabel,
+  UNTRIAGED,
+} from '../lib/issueLabels';
+
+const ALL = 'All';
 
 export default function IncidentsPage() {
+  const { issues, loaded, status: feed } = useIssues();
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('All');
-  const [severity, setSeverity] = useState('All');
+  const [status, setStatus] = useState(ALL);
+  const [severity, setSeverity] = useState(ALL);
 
-  const filteredIncidents = useMemo(() => {
-    return mockIncidents.filter((incident) => {
+  const filteredIssues = useMemo(() => {
+    const query = search.toLowerCase();
+    return issues.filter((issue) => {
       const matchesSearch =
-        incident.title.toLowerCase().includes(search.toLowerCase()) ||
-        incident.id.toLowerCase().includes(search.toLowerCase());
+        issue.title.toLowerCase().includes(query) ||
+        issue.id.toLowerCase().includes(query) ||
+        issue.fingerprint.toLowerCase().includes(query);
 
-      const matchesStatus = status === 'All' || incident.status === status;
+      const matchesStatus = status === ALL || issue.status === status;
 
-      const matchesSeverity = severity === 'All' || incident.severity === severity;
+      const matchesSeverity =
+        severity === ALL ||
+        issue.severity === severity ||
+        (severity === UNTRIAGED && issue.severity === null);
 
       return matchesSearch && matchesStatus && matchesSeverity;
     });
-  }, [search, status, severity]);
+  }, [issues, search, status, severity]);
 
-  const total = mockIncidents.length;
-  const active = mockIncidents.filter((incident) => incident.status !== 'Resolved').length;
-  const critical = mockIncidents.filter((incident) => incident.severity === 'Critical').length;
-  const awaitingApproval = mockIncidents.filter(
-    (incident) => incident.status === 'Awaiting Approval',
-  ).length;
+  const metrics = [
+    { label: 'Total Incidents', value: issues.length },
+    { label: 'Open Incidents', value: issues.filter(isOpen).length },
+    {
+      label: 'Critical Incidents',
+      value: issues.filter((issue) => issue.severity === 'critical').length,
+    },
+    {
+      label: 'Awaiting Approval',
+      value: issues.filter((issue) => issue.status === 'awaiting_approval').length,
+    },
+  ];
+
+  const emptyMessage = !loaded
+    ? feed === 'needs_token'
+      ? 'Connect with the API token to load incidents.'
+      : 'Loading incidents...'
+    : issues.length === 0
+      ? 'No incidents yet. They appear here as errors arrive.'
+      : 'No incidents match your filters.';
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold tracking-tight">Incidents</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Monitor detected errors and track AI investigations.
+          Errors reported by the app, updated live as triage and agents work on them.
         </p>
       </div>
 
+      <TokenPrompt />
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: 'Total Incidents', value: total },
-          { label: 'Active Incidents', value: active },
-          { label: 'Critical Incidents', value: critical },
-          { label: 'Awaiting Approval', value: awaitingApproval },
-        ].map((metric) => (
+        {metrics.map((metric) => (
           <Card key={metric.label}>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">{metric.label}</CardTitle>
@@ -76,7 +105,7 @@ export default function IncidentsPage() {
             <div>
               <CardTitle>All Incidents</CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                {filteredIncidents.length} incidents found
+                {filteredIssues.length} incidents found
               </p>
             </div>
             <AlertTriangle className="size-5 text-muted-foreground" />
@@ -99,11 +128,12 @@ export default function IncidentsPage() {
               onChange={(event) => setStatus(event.target.value)}
               className="h-9 rounded-md border bg-background px-3 text-sm"
             >
-              <option value="All">All Statuses</option>
-              <option value="Open">Open</option>
-              <option value="Investigating">Investigating</option>
-              <option value="Awaiting Approval">Awaiting Approval</option>
-              <option value="Resolved">Resolved</option>
+              <option value={ALL}>All Statuses</option>
+              {ISSUE_STATUSES.map((value) => (
+                <option key={value} value={value}>
+                  {statusLabels[value]}
+                </option>
+              ))}
             </select>
 
             <select
@@ -112,11 +142,13 @@ export default function IncidentsPage() {
               onChange={(event) => setSeverity(event.target.value)}
               className="h-9 rounded-md border bg-background px-3 text-sm"
             >
-              <option value="All">All Severities</option>
-              <option value="Critical">Critical</option>
-              <option value="High">High</option>
-              <option value="Medium">Medium</option>
-              <option value="Low">Low</option>
+              <option value={ALL}>All Severities</option>
+              {SEVERITIES.map((value) => (
+                <option key={value} value={value}>
+                  {severityLabels[value]}
+                </option>
+              ))}
+              <option value={UNTRIAGED}>{UNTRIAGED}</option>
             </select>
           </div>
         </CardHeader>
@@ -127,53 +159,58 @@ export default function IncidentsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Incident</TableHead>
-                  <TableHead>Severity</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Class</TableHead>
+                  <TableHead>Severity</TableHead>
                   <TableHead>Occurrences</TableHead>
-                  <TableHead>Assigned Agent</TableHead>
+                  <TableHead>Tier</TableHead>
                   <TableHead>Updated</TableHead>
                 </TableRow>
               </TableHeader>
 
               <TableBody>
-                {filteredIncidents.map((incident) => (
-                  <TableRow key={incident.id}>
+                {filteredIssues.map((issue) => (
+                  <TableRow key={issue.id} data-issue-id={issue.id}>
                     <TableCell>
                       <Link
-                        to={`/incidents/${incident.id}`}
+                        to={`/incidents/${issue.id}`}
                         className="block max-w-64 hover:underline"
                       >
-                        <span className="block font-medium">{incident.title}</span>
-                        <span className="text-xs text-muted-foreground">{incident.id}</span>
+                        <span className="block truncate font-medium" title={issue.title}>
+                          {issue.title}
+                        </span>
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {shortId(issue.id)}
+                        </span>
                       </Link>
                     </TableCell>
 
                     <TableCell>
-                      <Badge variant="outline" className={severityStyles[incident.severity]}>
-                        {incident.severity}
-                      </Badge>
+                      <StatusBadge status={issue.status} />
                     </TableCell>
+
+                    <TableCell className="whitespace-nowrap">{classLabel(issue.class)}</TableCell>
 
                     <TableCell>
-                      <Badge variant="outline" className={incidentStatusStyles[incident.status]}>
-                        {incident.status}
-                      </Badge>
+                      <SeverityBadge severity={issue.severity} />
                     </TableCell>
 
-                    <TableCell>{incident.occurrences}</TableCell>
+                    <TableCell>{issue.occurrences}</TableCell>
 
-                    <TableCell>{incident.assignedAgent ?? 'Unassigned'}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {tierLabel(issue.currentTier)}
+                    </TableCell>
 
                     <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                      {new Date(incident.updatedAt).toLocaleString()}
+                      {new Date(issue.updatedAt).toLocaleString()}
                     </TableCell>
                   </TableRow>
                 ))}
 
-                {filteredIncidents.length === 0 && (
+                {filteredIssues.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
-                      No incidents match your filters.
+                    <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                      {emptyMessage}
                     </TableCell>
                   </TableRow>
                 )}

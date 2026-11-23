@@ -487,6 +487,9 @@ importers:
 
   apps/ui:
     dependencies:
+      '@page/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@page/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
@@ -502,6 +505,9 @@ importers:
       react-router-dom:
         specifier: ^7.18.6
         version: 7.18.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      socket.io-client:
+        specifier: 'catalog:'
+        version: 4.8.4(supports-color@7.2.0)
     devDependencies:
       '@page/config':
         specifier: workspace:*

@@ -11,22 +11,23 @@ import {
   TableCell,
 } from '@page/design-system/components/ui/table';
 
-import { Badge } from '@page/design-system/components/ui/badge';
-
 import AgentOverview, { type Agent } from '../components/agents/AgentOverview';
+import { SeverityBadge, StatusBadge } from '../components/issues/IssueBadges';
+import TokenPrompt from '../components/issues/TokenPrompt';
 
-import { mockIncidents } from '../data/mockIncidents';
 import { mockAgents } from '../data/mockAgents';
 import { getActiveTask, getAgentStatus } from '../data/mockTasks';
+import { useIssues } from '../context/IssuesContext';
 import { useTasks } from '../context/TaskContext';
-import { incidentStatusStyles, severityStyles } from '../lib/statusStyles';
+import { isOpen, shortId } from '../lib/issueLabels';
 
 export default function DashboardPage() {
   const { tasks } = useTasks();
+  const { issues } = useIssues();
 
-  const totalIncidents = mockIncidents.length;
+  const totalIncidents = issues.length;
 
-  const activeIncidents = mockIncidents.filter((incident) => incident.status !== 'Resolved').length;
+  const activeIncidents = issues.filter(isOpen).length;
 
   const runningAgents = mockAgents.filter(
     (agent) => getAgentStatus(agent, tasks) === 'Running',
@@ -63,9 +64,8 @@ export default function DashboardPage() {
     },
   ];
 
-  const recentIncidents = [...mockIncidents]
-    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
-    .slice(0, 5);
+  // The store keeps issues most recently updated first.
+  const recentIncidents = issues.slice(0, 5);
 
   const agents: Agent[] = mockAgents.map((agent) => ({
     id: agent.id,
@@ -76,6 +76,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <TokenPrompt />
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric) => (
           <Card key={metric.id}>
@@ -113,27 +115,31 @@ export default function DashboardPage() {
                   <TableCell>
                     <Link
                       to={`/incidents/${incident.id}`}
-                      className="font-medium text-primary hover:underline"
+                      className="font-mono font-medium text-primary hover:underline"
                     >
-                      {incident.id}
+                      {shortId(incident.id)}
                     </Link>
                   </TableCell>
 
                   <TableCell>{incident.title}</TableCell>
 
                   <TableCell>
-                    <Badge variant="outline" className={severityStyles[incident.severity]}>
-                      {incident.severity}
-                    </Badge>
+                    <SeverityBadge severity={incident.severity} />
                   </TableCell>
 
                   <TableCell>
-                    <Badge variant="outline" className={incidentStatusStyles[incident.status]}>
-                      {incident.status}
-                    </Badge>
+                    <StatusBadge status={incident.status} />
                   </TableCell>
                 </TableRow>
               ))}
+
+              {recentIncidents.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                    No incidents yet.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
