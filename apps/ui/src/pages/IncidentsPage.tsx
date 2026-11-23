@@ -14,21 +14,8 @@ import {
   TableRow,
 } from '@page/design-system/components/ui/table';
 
-import { mockIncidents, type IncidentSeverity, type IncidentStatus } from '../data/mockIncidents';
-
-const severityStyles: Record<IncidentSeverity, string> = {
-  Critical: 'border-red-200 bg-red-100 text-red-700',
-  High: 'border-orange-200 bg-orange-100 text-orange-700',
-  Medium: 'border-yellow-200 bg-yellow-100 text-yellow-700',
-  Low: 'border-blue-200 bg-blue-100 text-blue-700',
-};
-
-const statusStyles: Record<IncidentStatus, string> = {
-  Open: 'border-blue-200 bg-blue-100 text-blue-700',
-  Investigating: 'border-purple-200 bg-purple-100 text-purple-700',
-  'Awaiting Approval': 'border-amber-200 bg-amber-100 text-amber-700',
-  Resolved: 'border-green-200 bg-green-100 text-green-700',
-};
+import { mockIncidents } from '../data/mockIncidents';
+import { incidentStatusStyles, severityStyles } from '../lib/statusStyles';
 
 export default function IncidentsPage() {
   const [search, setSearch] = useState('');
@@ -168,7 +155,7 @@ export default function IncidentsPage() {
                     </TableCell>
 
                     <TableCell>
-                      <Badge variant="outline" className={statusStyles[incident.status]}>
+                      <Badge variant="outline" className={incidentStatusStyles[incident.status]}>
                         {incident.status}
                       </Badge>
                     </TableCell>

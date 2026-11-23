@@ -138,6 +138,36 @@ describe('IncidentDetailsPage', () => {
     expect(workspaceLink.getAttribute('href')).toBe(`/agents/${incident!.assignedAgent}`);
   });
 
+  it('renders the workspace link as a full-width button-styled link with no wrapping button', () => {
+    const incident = mockIncidents.find((item) => item.assignedAgent !== null)!;
+
+    renderIncidentDetails(incident.id);
+
+    const workspaceLink = screen.getByRole('link', {
+      name: 'View Agent Workspace',
+    });
+
+    expect(workspaceLink.tagName).toBe('A');
+    expect(workspaceLink.closest('button')).toBeNull();
+    expect(workspaceLink.querySelector('button')).toBeNull();
+    expect(workspaceLink.className).toContain('w-full');
+    expect(screen.queryByRole('button', { name: 'View Agent Workspace' })).toBeNull();
+  });
+
+  it('gives severity and status badges dark mode variants', () => {
+    const incident = mockIncidents[0]!;
+
+    renderIncidentDetails(incident.id);
+
+    const badges = Array.from(document.querySelectorAll('[data-slot="badge"]'));
+
+    expect(badges).toHaveLength(2);
+
+    for (const badge of badges) {
+      expect(badge.className).toMatch(/dark:bg-\w+-950/);
+    }
+  });
+
   it('shows an unassigned message when no agent is assigned', () => {
     const incident = mockIncidents.find((item) => !item.assignedAgent);
 
@@ -184,5 +214,7 @@ describe('IncidentDetailsPage', () => {
     });
 
     expect(backLink.getAttribute('href')).toBe('/incidents');
+    expect(backLink.closest('button')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });

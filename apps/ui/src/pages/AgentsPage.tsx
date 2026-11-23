@@ -9,13 +9,8 @@ import { Button } from '@page/design-system/components/ui/button';
 
 import AssignTaskDialog from '../components/agents/AssignTaskDialog';
 
-import { mockAgents, type AgentStatus } from '../data/mockAgents';
-
-const statusStyles: Record<AgentStatus, string> = {
-  Running: 'border-green-200 bg-green-100 text-green-700',
-  Idle: 'border-gray-200 bg-gray-100 text-gray-700',
-  Failed: 'border-red-200 bg-red-100 text-red-700',
-};
+import { mockAgents } from '../data/mockAgents';
+import { agentStatusStyles } from '../lib/statusStyles';
 
 export default function AgentsPage() {
   const [search, setSearch] = useState('');
@@ -121,7 +116,7 @@ export default function AgentsPage() {
                   </div>
                 </div>
 
-                <Badge variant="outline" className={statusStyles[agent.status]}>
+                <Badge variant="outline" className={agentStatusStyles[agent.status]}>
                   {agent.status}
                 </Badge>
               </div>

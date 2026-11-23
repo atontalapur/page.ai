@@ -18,22 +18,7 @@ import AgentOverview, { type Agent } from '../components/agents/AgentOverview';
 import { mockIncidents } from '../data/mockIncidents';
 import { mockAgents } from '../data/mockAgents';
 import { useTasks } from '../context/TaskContext';
-
-const severityColors: Record<string, string> = {
-  Critical: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
-  High: 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300',
-  Medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300',
-  Low: 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300',
-};
-
-const incidentStatusColors: Record<string, string> = {
-  Investigating:
-    'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950 dark:text-purple-300',
-  Open: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300',
-  Resolved: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-300',
-  'Awaiting Approval':
-    'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-300',
-};
+import { incidentStatusStyles, severityStyles } from '../lib/statusStyles';
 
 export default function DashboardPage() {
   const { tasks } = useTasks();
@@ -41,10 +26,6 @@ export default function DashboardPage() {
   const totalIncidents = mockIncidents.length;
 
   const activeIncidents = mockIncidents.filter((incident) => incident.status !== 'Resolved').length;
-
-  const resolvedIncidents = mockIncidents.filter(
-    (incident) => incident.status === 'Resolved',
-  ).length;
 
   const runningAgents = mockAgents.filter((agent) => agent.status === 'Running').length;
 
@@ -66,20 +47,22 @@ export default function DashboardPage() {
       description: 'Needs attention',
     },
     {
-      id: 'active-agents',
+      id: 'running-agents',
       title: 'Running Agents',
       value: runningAgents,
-      description: `${runningTasks} tasks running`,
+      description: `${runningTasks} ${runningTasks === 1 ? 'task' : 'tasks'} running`,
     },
     {
       id: 'queued-tasks',
       title: 'Queued Tasks',
       value: queuedTasks,
-      description: `${resolvedIncidents} resolved incidents`,
+      description: `${tasks.length} total ${tasks.length === 1 ? 'task' : 'tasks'}`,
     },
   ];
 
-  const recentIncidents = mockIncidents.slice(0, 5);
+  const recentIncidents = [...mockIncidents]
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+    .slice(0, 5);
 
   const agents: Agent[] = mockAgents.map((agent) => {
     const activeTask = tasks.find(
@@ -146,13 +129,13 @@ export default function DashboardPage() {
                   <TableCell>{incident.title}</TableCell>
 
                   <TableCell>
-                    <Badge variant="outline" className={severityColors[incident.severity]}>
+                    <Badge variant="outline" className={severityStyles[incident.severity]}>
                       {incident.severity}
                     </Badge>
                   </TableCell>
 
                   <TableCell>
-                    <Badge variant="outline" className={incidentStatusColors[incident.status]}>
+                    <Badge variant="outline" className={incidentStatusStyles[incident.status]}>
                       {incident.status}
                     </Badge>
                   </TableCell>

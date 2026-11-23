@@ -229,6 +229,16 @@ describe('IncidentsPage', () => {
     expect(screen.getByText('0 incidents found')).toBeTruthy();
   });
 
+  it('gives severity and status badges dark mode variants', () => {
+    renderIncidentsPage();
+
+    const firstRow = getIncidentRows()[0]!;
+    const incident = mockIncidents[0]!;
+
+    expect(within(firstRow).getByText(incident.severity).className).toMatch(/dark:bg-\w+-950/);
+    expect(within(firstRow).getByText(incident.status).className).toMatch(/dark:bg-\w+-950/);
+  });
+
   it('renders correct navigation links for incidents', () => {
     renderIncidentsPage();
 

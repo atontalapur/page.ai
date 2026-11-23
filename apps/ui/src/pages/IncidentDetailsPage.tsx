@@ -3,23 +3,10 @@ import { ArrowLeft, AlertTriangle, Bot, Clock, Activity, FileCode } from 'lucide
 
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
 import { Badge } from '@page/design-system/components/ui/badge';
-import { Button } from '@page/design-system/components/ui/button';
+import { buttonVariants } from '@page/design-system/components/ui/button';
 
-import { getIncidentById, type IncidentSeverity, type IncidentStatus } from '../data/mockIncidents';
-
-const severityStyles: Record<IncidentSeverity, string> = {
-  Critical: 'border-red-200 bg-red-100 text-red-700',
-  High: 'border-orange-200 bg-orange-100 text-orange-700',
-  Medium: 'border-yellow-200 bg-yellow-100 text-yellow-700',
-  Low: 'border-blue-200 bg-blue-100 text-blue-700',
-};
-
-const statusStyles: Record<IncidentStatus, string> = {
-  Open: 'border-blue-200 bg-blue-100 text-blue-700',
-  Investigating: 'border-purple-200 bg-purple-100 text-purple-700',
-  'Awaiting Approval': 'border-amber-200 bg-amber-100 text-amber-700',
-  Resolved: 'border-green-200 bg-green-100 text-green-700',
-};
+import { getIncidentById } from '../data/mockIncidents';
+import { incidentStatusStyles, severityStyles } from '../lib/statusStyles';
 
 export default function IncidentDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -31,12 +18,10 @@ export default function IncidentDetailsPage() {
       <div className="space-y-4">
         <h2 className="text-2xl font-bold">Incident not found</h2>
         <p className="text-muted-foreground">The requested incident does not exist.</p>
-        <Button variant="outline">
-          <Link to="/incidents">
-            <ArrowLeft className="mr-2 size-4" />
-            Back to Incidents
-          </Link>
-        </Button>
+        <Link to="/incidents" className={buttonVariants({ variant: 'outline' })}>
+          <ArrowLeft className="size-4" />
+          Back to Incidents
+        </Link>
       </div>
     );
   }
@@ -87,7 +72,7 @@ export default function IncidentDetailsPage() {
           <Badge variant="outline" className={severityStyles[incident.severity]}>
             {incident.severity}
           </Badge>
-          <Badge variant="outline" className={statusStyles[incident.status]}>
+          <Badge variant="outline" className={incidentStatusStyles[incident.status]}>
             {incident.status}
           </Badge>
         </div>
@@ -175,9 +160,12 @@ export default function IncidentDetailsPage() {
                     </div>
                   </div>
 
-                  <Button className="w-full">
-                    <Link to={`/agents/${incident.assignedAgent}`}>View Agent Workspace</Link>
-                  </Button>
+                  <Link
+                    to={`/agents/${incident.assignedAgent}`}
+                    className={buttonVariants({ className: 'w-full' })}
+                  >
+                    View Agent Workspace
+                  </Link>
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">

@@ -112,6 +112,18 @@ describe('AgentsPage', () => {
     expect(screen.getByText('No agents match your search or filters.')).toBeTruthy();
   });
 
+  it('gives agent status badges dark mode variants', () => {
+    renderAgentsPage();
+
+    const badges = Array.from(document.querySelectorAll('[data-slot="badge"]'));
+
+    expect(badges).toHaveLength(mockAgents.length);
+
+    for (const badge of badges) {
+      expect(badge.className).toMatch(/dark:bg-\w+-(800|950)/);
+    }
+  });
+
   it('renders workspace links for every agent', () => {
     renderAgentsPage();
 
