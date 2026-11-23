@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { approvalReason, SYSTEM_DECIDERS, type DecidedApproval } from '@page/contracts';
+import { approvalReason, SYSTEM_DECIDERS, type NodeDecision } from '@page/contracts';
 import {
   autoApprove,
   hostToolArgs,
@@ -150,7 +150,7 @@ export class LinkApprovals implements Approvals {
     });
   }
 
-  private decided(approval: DecidedApproval): void {
+  private decided(approval: NodeDecision): void {
     const waiting = this.waiting.get(approval.id);
     if (waiting === undefined || waiting.request.runId !== approval.runId) {
       this.logger.info(
@@ -182,7 +182,7 @@ const minutes = (ms: number) => {
 };
 
 /** The answer in words the agent reads after "was not approved:". */
-function verdictOf({ decision, decidedBy }: DecidedApproval): ApprovalVerdict {
+function verdictOf({ decision, decidedBy }: NodeDecision): ApprovalVerdict {
   if (decision === 'approved') return { approved: true, by: decidedBy };
   if (decidedBy === SYSTEM_DECIDERS.timedOut) {
     return { approved: false, reason: 'no one decided in time' };

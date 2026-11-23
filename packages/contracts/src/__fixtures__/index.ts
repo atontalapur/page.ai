@@ -10,11 +10,12 @@ import type {
   Step,
 } from '../db.ts';
 import type { EscalationNote } from '../escalation.ts';
-import type {
-  NodeToServerEvents,
-  ServerToNodeEvents,
-  ServerToUiEvents,
-  UiToServerEvents,
+import {
+  nodeDecision,
+  type NodeToServerEvents,
+  type ServerToNodeEvents,
+  type ServerToUiEvents,
+  type UiToServerEvents,
 } from '../events.ts';
 import type { JobPayload, QueueName } from '../jobs.ts';
 import type { NodeRun, NodeSummary } from '../nodes.ts';
@@ -212,7 +213,7 @@ export const nodeToServerEventFixtures: Payloads<NodeToServerEvents> = {
 export const serverToNodeEventFixtures: Payloads<ServerToNodeEvents> = {
   'run.kill': uiToServerEventFixtures['run.kill'],
   'run.chat': uiToServerEventFixtures['run.chat'],
-  'approval.decided': { v: 1, approval: decidedApprovalFixture },
+  'approval.decided': { v: 1, approval: nodeDecision(decidedApprovalFixture) },
 };
 
 export const posthogWebhookFixture: PosthogWebhook = {

@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
   confidenceFixture,
+  decidedApprovalFixture,
   escalationNoteFixture,
   nodeToServerEventFixtures,
   pendingApprovalFixture,
@@ -10,6 +11,7 @@ import {
   uiToServerEventFixtures,
 } from './__fixtures__/index.ts';
 import {
+  nodeDecision,
   nodeToServerEvents,
   serverToNodeEvents,
   serverToUiEvents,
@@ -88,6 +90,23 @@ describe('node.approval.request', () => {
   it('rejects a reason over the cap', () => {
     const long = 'x'.repeat(MAX_APPROVAL_REASON_CHARS + 1);
     expect(schema.safeParse({ ...request, reason: long }).success).toBe(false);
+  });
+});
+
+describe('approval.decided', () => {
+  const schema = serverToNodeEvents['approval.decided'];
+
+  it('carries no reason, so a daemon from before it still reads the decision', () => {
+    expect(schema.safeParse({ v: 1, approval: decidedApprovalFixture }).success).toBe(false);
+    const decision = nodeDecision(decidedApprovalFixture);
+    expect(schema.parse({ v: 1, approval: decision }).approval).toEqual(decision);
+  });
+
+  it('keeps everything else about the decision, and leaves the approval it came from alone', () => {
+    const decision = nodeDecision(decidedApprovalFixture);
+    expect(decision).not.toHaveProperty('reason');
+    expect({ ...decision, reason: decidedApprovalFixture.reason }).toEqual(decidedApprovalFixture);
+    expect(decidedApprovalFixture.reason).not.toBeNull();
   });
 });
 

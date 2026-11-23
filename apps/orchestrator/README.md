@@ -217,7 +217,8 @@ says why those four). `ApprovalsModule` holds the requests and their decisions i
   stored rejected and answered at once. One for a run no issue knows is dropped.
 - **Decision.** A tab sends `approval.decide` with the id and `approved` or `rejected`. The
   server records it as `ui:<name>` (identity, below), every tab gets `approval.updated`, and
-  the daemon holding the run gets `approval.decided`. The update is conditional on the row
+  the daemon holding the run gets `approval.decided`, without the reason it sent, so a daemon
+  from before the reason still reads it. The update is conditional on the row
   being pending and before `expires_at`, so the first decision wins. A second one is refused
   and logged, and the tab that sent it gets `approval.updated` with the decision that stands.
 - **The server closes a request** as rejected when no one decides by `expires_at`

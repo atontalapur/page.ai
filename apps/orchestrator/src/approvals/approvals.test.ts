@@ -10,7 +10,7 @@ import {
   SYSTEM_DECIDERS,
   UI_NAMESPACE,
   type Approval,
-  type DecidedApproval,
+  type NodeDecision,
 } from '@page/contracts';
 import type { Socket } from 'socket.io-client';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
@@ -70,9 +70,9 @@ const tab = (name?: string) =>
 
 /** Every `event` a socket gets, parsed against its contract as the UI and the daemon do. */
 function heard(socket: Socket, event: 'approval.requested' | 'approval.updated'): Approval[];
-function heard(socket: Socket, event: 'approval.decided'): DecidedApproval[];
-function heard(socket: Socket, event: string): Approval[] {
-  const seen: Approval[] = [];
+function heard(socket: Socket, event: 'approval.decided'): NodeDecision[];
+function heard(socket: Socket, event: string): (Approval | NodeDecision)[] {
+  const seen: (Approval | NodeDecision)[] = [];
   socket.on(event, (payload: unknown) => {
     const schema =
       event === 'approval.decided'
@@ -129,7 +129,7 @@ describe('a daemon asks', () => {
     expect(await row(ask.approvalId)).toMatchObject({ decision: 'pending', issue_id: issueId });
   });
 
-  it("stores the agent's reason as it came, and sends it to every tab and to the daemon", async () => {
+  it("stores the agent's reason as it came, and sends it to every tab, not back to the daemon", async () => {
     const reason = 'The live build is bad.\n<script>alert(1)</script> [ok](javascript:alert(1))';
     const { ask, issueId, decided, arjun, requested } = await asked({ reason });
     await expect.poll(() => requested.map((r) => r[0]?.reason)).toEqual([reason, reason]);
@@ -148,7 +148,9 @@ describe('a daemon asks', () => {
     ).toEqual([reason]);
 
     arjun.emit('approval.decide', { v: 1, approvalId: ask.approvalId, decision: 'rejected' });
-    await expect.poll(() => decided).toMatchObject([{ id: ask.approvalId, reason }]);
+    // The daemon sent the reason, so its decision comes back without it, as older ones expect.
+    await expect.poll(() => decided).toMatchObject([{ id: ask.approvalId, decision: 'rejected' }]);
+    expect(decided[0]).not.toHaveProperty('reason');
   });
 
   it('stores no reason from a daemon that sends none, or sends one with nothing in it', async () => {

@@ -265,7 +265,6 @@ describe('createDaemon', () => {
           args: request.args,
           requestedAt: request.expiresAt,
           expiresAt: request.expiresAt,
-          reason: request.reason ?? null,
           decision: 'approved',
           decidedBy: 'ui:arjun',
           decidedAt: request.expiresAt,

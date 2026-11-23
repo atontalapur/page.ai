@@ -5,6 +5,7 @@ import {
   approvalSchema,
   confidenceSchema,
   decidedApprovalSchema,
+  type DecidedApproval,
   ESCALATION_REASONS,
   issueSchema,
   pendingApprovalSchema,
@@ -144,11 +145,27 @@ export const nodeToServerEvents = {
   }),
 };
 
+/**
+ * A decision as a daemon gets it: the approval without its reason, which the daemon sent and
+ * has no use for. This keeps `approval.decided` in the shape daemons from before the reason
+ * read, so an orchestrator with it still answers them.
+ */
+export const nodeDecisionSchema = decidedApprovalSchema.omit({ reason: true });
+
+export type NodeDecision = z.infer<typeof nodeDecisionSchema>;
+
+/** `approval` as `approval.decided` carries it to a daemon. */
+export function nodeDecision(approval: DecidedApproval): NodeDecision {
+  const decision: NodeDecision & Partial<Pick<DecidedApproval, 'reason'>> = { ...approval };
+  delete decision.reason;
+  return decision;
+}
+
 /** UI requests the server relays to the node running the run (#9), and approval outcomes. */
 export const serverToNodeEvents = {
   'run.kill': runKill,
   'run.chat': runChat,
-  'approval.decided': z.strictObject({ v, approval: decidedApprovalSchema }),
+  'approval.decided': z.strictObject({ v, approval: nodeDecisionSchema }),
 };
 
 type Handlers<T extends Record<string, z.ZodType>> = {

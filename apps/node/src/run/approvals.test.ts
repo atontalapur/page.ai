@@ -1,4 +1,4 @@
-import { MAX_APPROVAL_REASON_CHARS, SYSTEM_DECIDERS, type DecidedApproval } from '@page/contracts';
+import { MAX_APPROVAL_REASON_CHARS, SYSTEM_DECIDERS, type NodeDecision } from '@page/contracts';
 import type { HostToolCall } from '@page/toolkit';
 import { pino } from 'pino';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -44,9 +44,9 @@ describe('LinkApprovals', () => {
       args: (call) => ({ tool: call.tool }),
     });
     const requests = () => link.payloads('node.approval.request');
-    const decide = (fields: Partial<DecidedApproval> = {}) => {
+    const decide = (fields: Partial<NodeDecision> = {}) => {
       const request = requests().at(-1)!;
-      const approval: DecidedApproval = {
+      const approval: NodeDecision = {
         id: request.approvalId,
         runId: request.runId,
         issueId,
@@ -54,7 +54,6 @@ describe('LinkApprovals', () => {
         args: request.args,
         requestedAt: new Date(START).toISOString(),
         expiresAt: request.expiresAt,
-        reason: request.reason ?? null,
         decision: 'approved',
         decidedBy: 'ui:arjun',
         decidedAt: new Date(Date.now()).toISOString(),
