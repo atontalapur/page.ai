@@ -585,20 +585,49 @@ describe('runFixJob', () => {
       expect(github.calls).toEqual([]);
     });
 
-    it('refuses the host tools at Tier 1 and logs the refusal', async () => {
+    it('refuses the host tools to the Tier 1 agent and logs the refusal', async () => {
       const github = new FakeGitHub({ [path]: "'USDD'\n" });
-      const { deps, sink } = setup([pushReply, submitReply()], workspace, { github });
-      const finished = await runFixJob(claim(), deps);
+      const { deps, sink } = setup([pushReply, bashReply('ls')], workspace, { github });
+      await runFixJob(claim(), deps);
 
       expect(job.tier).toBe(1);
-      expect(github.head(`pageagents/${job.runId}`)).toBeUndefined();
-      expect(sink.steps).toMatchObject([
-        {
-          kind: 'host_tool',
-          allowed: false,
-          outputTrimmed: 'refused: git.pushBranch needs Tier 2; this run is Tier 1',
-        },
-      ]);
+      expect(sink.steps[0]).toMatchObject({
+        kind: 'host_tool',
+        allowed: false,
+        outputTrimmed: 'refused: git.pushBranch needs Tier 2; this run is Tier 1',
+      });
+    });
+
+    it("opens the PR for a Tier 1 fix that succeeded, since its agent can't", async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      const { deps } = setup([submitReply()], workspace, { github });
+      const finished = await runFixJob(claim(), deps);
+
+      expect(github.files(`pageagents/${job.runId}`)[path]!.text).toBe('USD\n');
+      expect(github.pullRequests).toMatchObject([{ state: 'open' }]);
+      expect(github.pullRequests[0]!.title).toBe(`fix: ${job.report!.split('\n')[0]}`);
+      expect(github.pullRequests[0]!.body).toContain(`run \`${job.runId}\``);
+      expect(finished).toMatchObject({
+        status: 'succeeded',
+        prUrl: 'https://github.com/page-demo/shop/pull/1',
+      });
+    });
+
+    it('opens no PR for a Tier 1 fix that scored under the threshold', async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      const { deps } = setup([submitReply()], workspace, { github, score: () => untested });
+      const finished = await runFixJob(claim(), deps);
+
+      expect(finished).toMatchObject({ status: 'escalated', prUrl: null });
+      expect(github.pullRequests).toEqual([]);
+    });
+
+    it('keeps a Tier 1 fix that succeeded when its PR cannot be opened', async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      github.failOn.add('createPullRequest');
+      const { deps } = setup([submitReply()], workspace, { github });
+      const finished = await runFixJob(claim(), deps);
+
       expect(finished).toMatchObject({ status: 'succeeded', prUrl: null });
     });
 

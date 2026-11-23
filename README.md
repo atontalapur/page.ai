@@ -77,6 +77,9 @@ demo app --errors--> PostHog --webhook--> orchestrator --call + SMS--> on-call (
 | 2    | Tier 1, plus push a `pageagents/<runId>` branch and open a PR on the demo repo, [`atontalapur/page-demo`](docs/demo-repo.md)  |
 | 3    | Tier 2, plus read and change the live demo app's runtime config, restart it (at most 3 times) and roll back its deploy (once) |
 
+A Tier 1 agent can't push, so when its fix succeeds the daemon pushes it and opens the PR
+itself. Every successful code fix reaches a person as a PR to merge.
+
 At every tier the toolkit blocks `sudo`, `curl`, `wget`, `docker`, force pushes, shell
 expansion and subshells, and writes outside the repo or under `.git/`, `.github/` or
 `node_modules/`. The sandbox has no network, 1 CPU and 1 GB of memory, and is killed after 15
