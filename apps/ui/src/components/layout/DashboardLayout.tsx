@@ -39,7 +39,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const isActivePath = (path: string) =>
     pathname === path || (path !== '/' && pathname.startsWith(`${path}/`));
 
-  const activePage = navigation.find((item) => isActivePath(item.path))?.title ?? 'Dashboard';
+  const activePage = navigation.find((item) => isActivePath(item.path))?.title ?? 'Page.AI';
 
   return (
     <SidebarProvider>
@@ -74,13 +74,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                       <SidebarMenuButton
                         tooltip={item.title}
                         isActive={isActive}
-                        className="h-10 w-full rounded-lg"
+                        render={<NavLink to={item.path} />}
+                        className="h-10 rounded-lg"
                       >
-                        <NavLink to={item.path} className="flex w-full items-center gap-3 px-3">
-                          <item.icon className="size-4 shrink-0" />
+                        <item.icon />
 
-                          <span className="truncate text-sm font-medium">{item.title}</span>
-                        </NavLink>
+                        <span className="text-sm font-medium">{item.title}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );
