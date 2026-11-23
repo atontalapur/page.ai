@@ -7,6 +7,7 @@ import { ChatRelay } from './chat-relay.ts';
 import { NodeGateway } from './node.gateway.ts';
 import { NodeSummaries } from './node-summaries.ts';
 import { Nodes } from './nodes.ts';
+import { OrphanSweeper } from './orphan-sweeper.ts';
 import { NodesController } from './nodes.controller.ts';
 import { RunChats } from './run-chats.ts';
 import { RunKills } from './run-kills.ts';
@@ -30,6 +31,7 @@ import { UiGateway } from './ui.gateway.ts';
     ApprovalRelay,
     RunChats,
     ChatRelay,
+    OrphanSweeper,
   ],
   exports: [UiGateway, Nodes, RunKills],
 })

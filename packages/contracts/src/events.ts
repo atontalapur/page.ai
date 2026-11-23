@@ -80,6 +80,9 @@ const runFinishedBase = {
   runId: idSchema,
   prUrl: prUrlSchema.nullable(),
   confidence: confidenceSchema.nullable(),
+  // What the run spent on the model, in US dollars. A daemon from before it was kept sends
+  // none, and the run counts as $0.
+  costUsd: z.number().min(0).optional(),
 };
 
 /**
@@ -160,8 +163,15 @@ export const uiToServerEvents = {
  * `steps` table before it sends it, so the server relays it to the UI as `run.step` and
  * doesn't store it again.
  */
+/** How often a daemon tells the orchestrator which runs it holds. */
+export const NODE_HOLDING_INTERVAL_MS = 20_000;
+
 export const nodeToServerEvents = {
   'node.step': z.strictObject({ v, step: stepSchema }),
+  // The runs the daemon is working, sent on every connect and every NODE_HOLDING_INTERVAL_MS.
+  // A run no daemon has named for a while is one whose daemon died, and the orchestrator
+  // retries it (OrphanSweeper).
+  'node.holding': z.strictObject({ v, runIds: z.array(idSchema).max(16) }),
   'node.diff': runDiff,
   'node.run.finished': nodeRunFinishedSchema,
   // A Tier 3 agent asks to run a gated host tool such as `ops.restart`. The node picks the

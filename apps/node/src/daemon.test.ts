@@ -59,9 +59,16 @@ describe('createDaemon', () => {
       { runId: jobFixtures.fix.runId, input: 'pnpm --filter @page/demo-app test' },
     ]);
     expect(a.link.sent.map((s) => s.event)).toEqual([
+      // On start, holding nothing; then on claiming the run.
+      'node.holding',
+      'node.holding',
       'node.step',
       'node.diff',
       'node.run.finished',
+    ]);
+    expect(a.link.sent.slice(0, 2).map((s) => s.payload)).toEqual([
+      { v: 1, runIds: [] },
+      { v: 1, runIds: [jobFixtures.fix.runId] },
     ]);
     expect(a.results.sent).toMatchObject([
       { issueId: jobFixtures.fix.issueId, tier: 1, result: { status: 'succeeded' } },

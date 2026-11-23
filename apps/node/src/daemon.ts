@@ -1,4 +1,4 @@
-import type { NodeConfig } from '@page/contracts';
+import { NODE_HOLDING_INTERVAL_MS, type NodeConfig } from '@page/contracts';
 import { OpenRouterClient, withRetries, type ModelClient } from '@page/model-client';
 import {
   FakeDeployer,
@@ -94,6 +94,10 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
   const runs = new Map<string, { kill: AbortController; inbox: RunInbox; logger: Logger }>();
   // The link has no `off`, so the handlers go on once however often start() runs.
   let listening = false;
+  let heartbeat: NodeJS.Timeout | undefined;
+  // Tells the orchestrator which runs this daemon is on. A run no daemon names for a while
+  // is retried there as lost, so a restart mid-run doesn't strand its issue.
+  const announceHolding = () => link.send('node.holding', { v: 1, runIds: [...runs.keys()] });
   return {
     async start() {
       // Before claiming, so a stray can't be mistaken for a run in hand.
@@ -122,7 +126,12 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
           );
           closeChat(link, chat, 'run_ended', logger);
         });
+        link.onReconnect(announceHolding);
       }
+      announceHolding();
+      clearInterval(heartbeat);
+      heartbeat = setInterval(announceHolding, NODE_HOLDING_INTERVAL_MS);
+      heartbeat.unref();
       await jobs.start(async (claimed) => {
         const { issueId, runId, tier } = claimed.job;
         const runLogger = logger.child({ issueId, runId, tier });
@@ -132,6 +141,7 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
           logger: runLogger,
         };
         runs.set(runId, entry);
+        announceHolding();
         try {
           await runFixJob(
             claimed,
@@ -160,6 +170,7 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
       logger.info('claiming fix jobs');
     },
     async stop() {
+      clearInterval(heartbeat);
       try {
         await jobs.stop();
       } finally {

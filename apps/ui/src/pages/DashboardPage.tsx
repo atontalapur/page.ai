@@ -19,6 +19,7 @@ import { useAgents, useIssues } from '../context/IssuesContext';
 import { agentStatus } from '../lib/agents';
 import { awaitsReview } from '../components/issues/ReviewActions';
 import { isOpen, shortId } from '../lib/issueLabels';
+import { useSpend } from '../live/stats';
 
 export default function DashboardPage() {
   const { issues } = useIssues();
@@ -35,6 +36,9 @@ export default function DashboardPage() {
   const fixing = issues.filter((issue) => issue.status === 'fixing').length;
 
   const awaiting = issues.filter(awaitsReview).length;
+
+  // Reloaded whenever an issue changes, which is when a run or a decision may have cost.
+  const spend = useSpend(issues[0]?.updatedAt ?? '');
 
   const metrics = [
     {
@@ -61,6 +65,14 @@ export default function DashboardPage() {
       value: fixing,
       description: `${awaiting} awaiting review`,
     },
+    {
+      id: 'model-spend',
+      title: 'Model Spend',
+      value: spend ? `$${spend.totalUsd.toFixed(2)}` : '…',
+      description: spend
+        ? `${spend.runs} runs · ${spend.decisions} decisions, all sessions`
+        : 'Across all sessions',
+    },
   ];
 
   // The store keeps issues most recently updated first.
@@ -70,7 +82,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <TokenPrompt />
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
         {metrics.map((metric) => (
           <Card key={metric.id}>
             <CardHeader>
@@ -78,7 +90,7 @@ export default function DashboardPage() {
             </CardHeader>
 
             <CardContent>
-              <div className="text-3xl font-bold">{metric.value}</div>
+              <div className="text-3xl font-bold tabular-nums">{metric.value}</div>
               <p className="text-sm text-muted-foreground">{metric.description}</p>
             </CardContent>
           </Card>

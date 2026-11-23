@@ -64,6 +64,8 @@ export interface RunsTable {
   // The agent's diff when it submitted. Kept out of the contracts Run; GET /issues/:id/runs
   // serves it as IssueRun.
   diff: ColumnType<string | null, string | null | undefined, string | null>;
+  // What the run spent on the model (016_run_cost.sql).
+  cost_usd: Generated<number>;
   created_at: Generated<Date>;
 }
 

@@ -215,6 +215,7 @@ export const uiToServerEventFixtures: Payloads<UiToServerEvents> = {
 
 export const nodeToServerEventFixtures: Payloads<NodeToServerEvents> = {
   'node.step': { v: 1, step: stepFixture },
+  'node.holding': { v: 1, runIds: [runId] },
   'node.diff': { v: 1, runId, diff: '--- a/src/cart/total.ts\n+++ b/src/cart/total.ts\n' },
   'node.run.finished': {
     v: 1,

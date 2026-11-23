@@ -62,6 +62,12 @@ export class Nodes {
   private readonly holders = new Map<string, string>();
   // The name of a daemon with no socket left, and when its last one closed.
   private readonly departed = new Map<string, Date>();
+  // When some socket last named each run, by an event of the run or a `node.holding`, and
+  // the name of the daemon that did.
+  private readonly lastHeld = new Map<string, { at: number; by: string }>();
+  // Daemons that send `node.holding`. Only their runs can be judged lost by silence: an older
+  // daemon goes quiet during any long command.
+  private readonly beating = new Set<string>();
 
   constructor(@Inject(LOGGER) private readonly logger: Logger) {}
 
@@ -101,6 +107,7 @@ export class Nodes {
   hold(runId: string, socket: NodeSocket): string[] {
     const entry = this.sockets.get(socket.id);
     if (!entry) return [];
+    this.lastHeld.set(runId, { at: Date.now(), by: entry.name });
     const previous = this.holders.get(runId);
     if (previous === socket.id) return [];
     const changed = new Set([entry.name]);
@@ -121,9 +128,28 @@ export class Nodes {
   release(runId: string, socket: NodeSocket): string[] {
     if (this.holders.get(runId) !== socket.id) return [];
     this.holders.delete(runId);
+    this.lastHeld.delete(runId);
     const entry = this.sockets.get(socket.id);
     entry?.runs.delete(runId);
     return entry ? [entry.name] : [];
+  }
+
+  /** Records that the daemon on `socket` sends `node.holding` heartbeats. */
+  heartbeats(socket: NodeSocket): void {
+    const entry = this.sockets.get(socket.id);
+    if (entry) this.beating.add(entry.name);
+  }
+
+  /**
+   * Whether `runId` is lost: the daemon that last named it sends heartbeats, none holds it
+   * now, and none has named it in `withinMs`. A run this instance never saw named, or one
+   * an older daemon holds, is never called lost; its job's own expiry deals with it.
+   */
+  lost(runId: string, withinMs: number): boolean {
+    if (this.holders.has(runId)) return false;
+    const last = this.lastHeld.get(runId);
+    if (!last || !this.beating.has(last.by)) return false;
+    return Date.now() - last.at >= withinMs;
   }
 
   holder(runId: string): NodeSocket | undefined {
