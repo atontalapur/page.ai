@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/co
 import { buttonVariants } from '@page/design-system/components/ui/button';
 
 import { SeverityBadge, StatusBadge } from '../components/issues/IssueBadges';
+import ReviewActions, { awaitsReview } from '../components/issues/ReviewActions';
 import RunsPanel from '../components/issues/RunsPanel';
 import TokenPrompt from '../components/issues/TokenPrompt';
 import { useIssues } from '../context/IssuesContext';
@@ -93,6 +94,8 @@ export default function IncidentDetailsPage() {
           <StatusBadge status={issue.status} />
         </div>
       </div>
+
+      {awaitsReview(issue) && <ReviewActions issue={issue} />}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric) => (

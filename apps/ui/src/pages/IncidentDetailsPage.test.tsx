@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import type { IssueRun, Step } from '@page/contracts';
 
 import IncidentDetailsPage from './IncidentDetailsPage';
@@ -147,6 +147,65 @@ describe('IncidentDetailsPage', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe('review', () => {
+    const waiting = issue(3, {
+      status: 'awaiting_approval',
+      class: 'database',
+      severity: 'critical',
+      currentTier: 1,
+    });
+
+    it('shows Approve and Reject only while a fix waits for review', () => {
+      renderDetails(waiting.id, testSource([fixing, waiting]));
+      expect(screen.getByRole('region', { name: 'Review' })).toBeTruthy();
+      cleanup();
+
+      renderDetails(fixing.id);
+      expect(screen.queryByRole('region', { name: 'Review' })).toBeNull();
+    });
+
+    it('approves, and the page shows the issue resolved', async () => {
+      const source = renderDetails(waiting.id, testSource([fixing, waiting]));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+      expect(await screen.findByText('Resolved')).toBeTruthy();
+      expect(source.applied).toEqual([{ id: waiting.id, event: { type: 'approve' } }]);
+      expect(screen.queryByRole('region', { name: 'Review' })).toBeNull();
+    });
+
+    it('rejects only with a reason, and sends it trimmed', async () => {
+      const source = renderDetails(waiting.id, testSource([fixing, waiting]));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+      const submit = screen.getByRole('button', { name: 'Reject fix' });
+      expect((submit as HTMLButtonElement).disabled).toBe(true);
+
+      fireEvent.change(screen.getByLabelText('Why is the fix wrong?'), {
+        target: { value: '  breaks the slug lookup  ' },
+      });
+      fireEvent.click(submit);
+
+      expect(await screen.findByText('Fixing')).toBeTruthy();
+      expect(source.applied).toEqual([
+        { id: waiting.id, event: { type: 'reject', reason: 'breaks the slug lookup' } },
+      ]);
+    });
+
+    it("shows the server's reason when it refuses", async () => {
+      const source = testSource([fixing, waiting]);
+      source.respond = () => Promise.reject(new Error('cannot approve an issue that is fixing'));
+      renderDetails(waiting.id, source);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+      expect((await screen.findByRole('alert')).textContent).toBe(
+        'cannot approve an issue that is fixing',
+      );
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
+    });
   });
 
   it('updates live from issue.updated', () => {

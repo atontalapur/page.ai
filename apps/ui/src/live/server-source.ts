@@ -3,6 +3,7 @@ import {
   issueSchema,
   UI_NAMESPACE,
   type Issue,
+  type IssueEvent,
   type IssueRun,
   type ServerToUiEvents,
   type SocketRefusal,
@@ -90,6 +91,27 @@ export function serverSource(token: string): IssueSource {
       } catch {
         return undefined;
       }
+    },
+
+    async applyEvent(id: string, event: IssueEvent): Promise<Issue> {
+      const res = await fetch(`/issues/${encodeURIComponent(id)}/events`, {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify(event),
+      });
+      const body: unknown = await res.json().catch(() => undefined);
+      if (res.ok) {
+        const issue = issueSchema.safeParse(body);
+        if (issue.success) return issue.data;
+        throw new Error('The orchestrator answered with an issue this page cannot read.');
+      }
+      if (res.status === 401) throw new Error('The orchestrator refused the token.');
+      // 409: the issue moved on (another reviewer, a new run) since the page last heard.
+      const message =
+        typeof body === 'object' && body !== null && 'message' in body ? body.message : undefined;
+      throw new Error(
+        typeof message === 'string' ? message : `The orchestrator answered ${res.status}.`,
+      );
     },
 
     async fetchRuns(id: string): Promise<IssueRun[] | undefined> {

@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { Issue, IssueRun } from '@page/contracts';
+import type { Issue, IssueEvent, IssueRun } from '@page/contracts';
 
 import { mockSource } from '../live/mock-source';
 import { serverPresent, serverSource } from '../live/server-source';
@@ -28,6 +28,8 @@ interface IssuesContextType {
   getIssue: (id: string) => Issue | undefined;
   fetchIssue: (id: string) => Promise<Issue | undefined>;
   fetchRuns: (id: string) => Promise<IssueRun[] | undefined>;
+  /** Applies a reviewer's event and stores the issue it left. Rejects with the reason it failed. */
+  applyEvent: (id: string, event: IssueEvent) => Promise<Issue>;
   submitToken: (token: string) => void;
 }
 
@@ -135,9 +137,43 @@ export function IssuesProvider({
     [active],
   );
 
+  const applyEvent = useCallback(
+    async (id: string, event: IssueEvent) => {
+      if (!active) throw new Error('Not connected to the orchestrator.');
+      const issue = await active.applyEvent(id, event);
+      setStore((previous) => {
+        const next = new Map(previous);
+        upsert(next, issue);
+        return next;
+      });
+      return issue;
+    },
+    [active],
+  );
+
   const value = useMemo(
-    () => ({ issues, status, loaded, tokenRefused, getIssue, fetchIssue, fetchRuns, submitToken }),
-    [issues, status, loaded, tokenRefused, getIssue, fetchIssue, fetchRuns, submitToken],
+    () => ({
+      issues,
+      status,
+      loaded,
+      tokenRefused,
+      getIssue,
+      fetchIssue,
+      fetchRuns,
+      applyEvent,
+      submitToken,
+    }),
+    [
+      issues,
+      status,
+      loaded,
+      tokenRefused,
+      getIssue,
+      fetchIssue,
+      fetchRuns,
+      applyEvent,
+      submitToken,
+    ],
   );
 
   return <IssuesContext.Provider value={value}>{children}</IssuesContext.Provider>;
