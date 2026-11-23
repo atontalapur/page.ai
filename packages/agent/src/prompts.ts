@@ -32,6 +32,7 @@ const {
   kgSearch: KG_SEARCH,
   kgRead: KG_READ,
   kgWrite: KG_WRITE,
+  escalate: ESCALATE,
 } = ACTION_TAGS;
 const FENCE = '```';
 
@@ -59,7 +60,16 @@ export interface AgentTask {
    * the orchestrator. Unset is false, and the prompts stay the ones the eval saw.
    */
   knowledge?: boolean;
+  /**
+   * Whether a run below Tier 3 may hand the fix up with an escalate block, on the daemon.
+   * Unset is false, and the prompts stay the ones the eval saw.
+   */
+  canHandOff?: boolean;
 }
+
+// Below Tier 3, on a run that may hand off.
+const handsOff = (tier: Tier | undefined, canHandOff: boolean | undefined) =>
+  canHandOff === true && (tier ?? 1) < 3;
 
 // Tier 2 and up push the fix and open a PR through the host tools.
 const publishes = (tier: Tier | undefined) => tier !== undefined && tier >= 2;
@@ -169,7 +179,12 @@ ${FENCE}
  * The system prompt. `rollback` adds the rollback blocks at Tier 3, and `knowledge` the
  * knowledge-graph blocks; see AgentTask.
  */
-export function systemPrompt(tier?: Tier, rollback = false, knowledge = false): string {
+export function systemPrompt(
+  tier?: Tier,
+  rollback = false,
+  knowledge = false,
+  canHandOff = false,
+): string {
   const kinds = rollsBack(tier, rollback)
     ? 'eleven'
     : operates(tier)
@@ -205,7 +220,7 @@ ${submitLine(tier, rollback)}:
 ${FENCE}${SUBMIT}
 ${FENCE}
 
-${knowledge ? KG_BLOCKS : ''}Failure to follow these rules will cause your response to be rejected.`;
+${knowledge ? KG_BLOCKS : ''}${handsOff(tier, canHandOff) ? ESCALATE_BLOCK : ''}Failure to follow these rules will cause your response to be rejected.`;
 }
 
 const PUBLISH_STEP = `5. Push your changes with a ${PUSH} block, then open a pull request with a ${OPEN_PR} block.
@@ -251,6 +266,20 @@ If the person rejects a change, or no one answers in time, the block comes back 
 `;
 }
 
+const ESCALATE_BLOCK = `One more block hands the fix to the tier above, when it needs what this tier can't reach. Say why, in a line or two the next agent reads:
+
+${FENCE}${ESCALATE}
+The cause is a live setting, not the code, and this tier can't read or change settings.
+${FENCE}
+
+`;
+
+const ESCALATE_SECTION = `## When this tier can't make the fix
+
+This tier can't read or change the live app's settings, its runtime config overrides or its deploys. If the code handles its inputs correctly and the error must come from a bad setting or a bad deploy (a value no request could send, say), hand the fix up with a ${ESCALATE} block at once, saying what you found. Don't spend your steps on a fix this tier can't make. Hand it up also when the suite already fails in ways the bug doesn't explain and you can't fix the bug without fixing those first.
+
+`;
+
 const KG_SECTION = `## The knowledge graph
 
 Start with a ${KG_SEARCH} block about the bug: what earlier runs learned can spare you reading the same code again. Before you submit, write what you explored with ${KG_WRITE} blocks: a node for each file or function that mattered, keyed \`file:<path>\` or \`function:<path>#<name>\`, saying what it does and what you found, linked to the nodes it uses. A node must exist before another can link to it. Your writes go to this run's branch, and reach main only if the fix is merged.
@@ -263,6 +292,7 @@ export function instancePrompt({
   rollback,
   personApproves,
   knowledge,
+  canHandOff,
 }: AgentTask): string {
   const publish = publishes(tier);
   return `Please fix this bug:
@@ -281,7 +311,7 @@ Work step by step so you can check each change as you go.
 4. Run the test again to confirm the fix, then the whole suite, lint and typecheck: \`${PNPM} test\`, \`${PNPM} lint\` and \`${PNPM} typecheck\`.
 ${publish ? `${PUBLISH_STEP}6` : '5'}. Submit with a ${SUBMIT} block. Do not put anything else in that response. After you submit, you cannot continue working on this task.
 
-${knowledge === true ? KG_SECTION : ''}${operates(tier) ? OPS_SECTION : ''}${rollsBack(tier, rollback) ? ROLLBACK_SECTION : ''}${asksPerson(tier, personApproves) ? approvalSection(rollsBack(tier, rollback)) : ''}## Rules
+${knowledge === true ? KG_SECTION : ''}${handsOff(tier, canHandOff) ? ESCALATE_SECTION : ''}${operates(tier) ? OPS_SECTION : ''}${rollsBack(tier, rollback) ? ROLLBACK_SECTION : ''}${asksPerson(tier, personApproves) ? approvalSection(rollsBack(tier, rollback)) : ''}## Rules
 
 1. Every response must contain exactly one action block.
 2. Each command runs in a fresh shell in the repository root. The app is in \`${APP}\`. \`cd\` and environment variables do not carry over to the next command.

@@ -64,6 +64,8 @@ export const DEFAULT_AGENT_CONFIG: AgentConfig = {
 
 export type ExitStatus =
   | 'submitted'
+  // The agent handed the fix to the tier above (`handoff` says why).
+  | 'escalated'
   | 'step_limit'
   | 'cost_limit'
   | 'time_limit'
@@ -81,6 +83,8 @@ export interface AgentRun {
   error?: ModelError;
   /** Set when exitStatus is `audit_failed`: why the step couldn't be written. */
   auditError?: string;
+  /** Set when exitStatus is `escalated`: why the agent handed the fix up. */
+  handoff?: string;
 }
 
 const reached = (limit: number, value: number) => limit > 0 && value >= limit;
@@ -106,7 +110,10 @@ export async function runAgent(
   const now = deps.now ?? Date.now;
   const startedAt = now();
   const messages: ChatMessage[] = [
-    { role: 'system', content: systemPrompt(task.tier, task.rollback, task.knowledge) },
+    {
+      role: 'system',
+      content: systemPrompt(task.tier, task.rollback, task.knowledge, task.canHandOff),
+    },
     { role: 'user', content: instancePrompt(task) },
   ];
   let modelCalls = 0;
@@ -176,6 +183,9 @@ export async function runAgent(
     formatErrors = 0;
 
     if (parsed.action.kind === 'submit') return finish('submitted');
+    if (parsed.action.kind === 'escalate') {
+      return { ...finish('escalated'), handoff: parsed.action.reason };
+    }
     if (outOfTime()) return finish('time_limit');
     const thought = thoughtOf(content, reply.completion.reasoning);
     const result = await deps.execute(parsed.action.call, {
