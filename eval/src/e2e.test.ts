@@ -215,6 +215,7 @@ const opened = (at: number, over: Partial<IssueRow> = {}): Change => ({
       occurrences: 1,
       createdAt: now,
       lastSeenAt: now,
+      opsFixed: false,
       ...over,
     });
   },
@@ -273,6 +274,33 @@ const ladderToPatch = (): Change[] => [
 
 /** The same climb, and Tier 2 opens a PR. */
 const ladderToPr = (): Change[] => [...ladderToPatch(), pr(9 * MIN, R2, 7)];
+
+/**
+ * Tier 3 fixes the live app through the ops API and changes no code, so the orchestrator
+ * resolves the issue and cancels the finished run's job before the daemon completes it.
+ */
+const opsFix = (): Change[] => [
+  opened(10 * S),
+  triaged(11 * S),
+  fixing(12 * S, R3, 3),
+  progress(15 * S, R3, { jobState: 'active', steps: 1 }),
+  progress(4 * MIN, R3, {
+    jobState: 'cancelled',
+    steps: 8,
+    run: {
+      id: R3,
+      tier: 3,
+      status: 'succeeded',
+      startedAt: new Date(0),
+      finishedAt: new Date(0),
+      prUrl: null,
+    },
+  }),
+  {
+    at: 4 * MIN,
+    apply: (w) => Object.assign(w.issue(), { status: 'resolved', opsFixed: true }),
+  },
+];
 
 interface Harness {
   world: World;
@@ -430,7 +458,7 @@ describe('runE2E', () => {
         },
       }),
     ]);
-    const r = await play(h, scenario(3, 'ops'));
+    const r = await play(h, scenario(3, 'ops'), { expect: 'approval' });
 
     expect(r.error).toBeNull();
     expect(r.passed).toBe(true);
@@ -444,6 +472,21 @@ describe('runE2E', () => {
       'unseed',
     ]);
     expect(h.lines.some((l) => l.includes('WARNING'))).toBe(false);
+  });
+
+  it('passes a Tier 3 ops fix that resolved the issue on its own', async () => {
+    const h = harness(opsFix());
+    const r = await play(h, scenario(3, 'ops'));
+
+    expect(r.expect).toBe('resolved');
+    expect(r.error).toBeNull();
+    expect(r.passed).toBe(true);
+    expect(stepOf(r, 'outcome')?.detail).toBe('issue resolved by an ops fix');
+    expect(r.checks.find((c) => c.name === 'issue.status')?.detail).toBe(
+      'resolved by ops_fixed, want resolved by ops_fixed',
+    );
+    expect(failedChecks(r)).toEqual([]);
+    expect(r.reset.find((a) => a.action.startsWith('kill'))?.detail).toBe('already resolved');
   });
 
   describe('fails at the step that ran out of time, and still resets', () => {
@@ -600,6 +643,33 @@ describe('runE2E', () => {
       expect(r.failedStep).toBe('outcome');
       expect(r.error).toBe(
         "tier 1 ended on a patch awaiting approval; Tier 1 can't push, so no PR can open",
+      );
+      expect(stepOf(r, 'outcome')!.durationMs).toBe(0);
+    });
+
+    it('an ops fix when an approval is expected, at once', async () => {
+      const r = await play(harness(opsFix()), scenario(3, 'ops'), { expect: 'approval' });
+      expect(r.failedStep).toBe('outcome');
+      expect(r.error).toBe(
+        'tier 3 fixed the live app through the ops API and the issue resolved; ' +
+          'pass --expect resolved for it',
+      );
+      expect(stepOf(r, 'outcome')!.durationMs).toBe(0);
+    });
+
+    it('a Tier 3 patch when an ops fix is expected, at once', async () => {
+      const h = harness([
+        opened(10 * S),
+        triaged(11 * S),
+        fixing(12 * S, R3, 3),
+        progress(15 * S, R3, { jobState: 'active', steps: 1 }),
+        progress(4 * MIN, R3, { jobState: 'completed', steps: 8 }),
+        status(4 * MIN, 'awaiting_approval'),
+      ]);
+      const r = await play(h, scenario(3, 'ops'));
+      expect(r.failedStep).toBe('outcome');
+      expect(r.error).toBe(
+        'tier 3 left a patch for review, not a fix made live through the ops API',
       );
       expect(stepOf(r, 'outcome')!.durationMs).toBe(0);
     });
@@ -1114,10 +1184,10 @@ describe('helpers', () => {
     expect(formatMs(125_000)).toBe('2m05s');
   });
 
-  it('expects a PR only from a Tier 2 code scenario', () => {
+  it('expects a PR from a Tier 2 code scenario and a resolved issue from an ops one', () => {
     expect(defaultExpectation(scenario(1))).toBe('approval');
     expect(defaultExpectation(scenario(2))).toBe('pr');
-    expect(defaultExpectation(scenario(3, 'ops'))).toBe('approval');
+    expect(defaultExpectation(scenario(3, 'ops'))).toBe('resolved');
   });
 
   it('gives the fix 16 minutes per tier up to the expected one', () => {

@@ -35,6 +35,7 @@ const issueRow = z.object({
   occurrences: z.number(),
   created_at: z.date(),
   last_seen_at: z.date(),
+  ops_fixed: z.boolean(),
 });
 
 const runRow = z.object({
@@ -52,7 +53,9 @@ const nowRow = z.object({ now: z.date() });
 const idRow = z.object({ id: z.string() });
 
 const ISSUE_COLUMNS = `id, fingerprint, title, status, class, severity, current_tier,
-  current_run_id, occurrences, created_at, last_seen_at`;
+  current_run_id, occurrences, created_at, last_seen_at,
+  exists (select 1 from issue_events e
+    where e.issue_id = issues.id and e.event->>'type' = 'ops_fixed') as ops_fixed`;
 
 function toIssue(raw: unknown): IssueRow {
   const row = issueRow.parse(raw);
@@ -68,6 +71,7 @@ function toIssue(raw: unknown): IssueRow {
     occurrences: row.occurrences,
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
+    opsFixed: row.ops_fixed,
   };
 }
 

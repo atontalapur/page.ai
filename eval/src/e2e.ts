@@ -73,13 +73,19 @@ export function defaultBudget(timeouts: Timeouts): number {
 /**
  * What the run should end on. `pr`: an open PR from `pageagents/<runId>` on the demo repo.
  * `approval`: the issue waits on a human, either with a patch (`awaiting_approval`) or with
- * a pending Tier 3 approval request on its run.
+ * a pending Tier 3 approval request on its run. `resolved`: a Tier 3 run fixed the live app
+ * through the ops API and changed no code, so the orchestrator resolved the issue
+ * (`ops_fixed`).
  */
-export type Expectation = 'pr' | 'approval';
+export type Expectation = 'pr' | 'approval' | 'resolved';
 
-/** Tier 2 code fixes open a PR. Tier 1 can't push, and Tier 3 asks before an ops action. */
+/**
+ * Tier 2 code fixes open a PR, and Tier 1 can't push, so its patch waits for approval. An ops
+ * fix is live once Tier 3 makes it, so the issue resolves.
+ */
 export function defaultExpectation(scenario: Scenario): Expectation {
-  return scenario.kind === 'code' && scenario.meta.expectedTier === 2 ? 'pr' : 'approval';
+  if (scenario.kind === 'ops') return 'resolved';
+  return scenario.meta.expectedTier === 2 ? 'pr' : 'approval';
 }
 
 // ---- Ports -----------------------------------------------------------------------------
@@ -120,6 +126,8 @@ export interface IssueRow {
   occurrences: number;
   createdAt: Date;
   lastSeenAt: Date;
+  /** Whether an `ops_fixed` event resolved it: a Tier 3 run's fix, made live through ops. */
+  opsFixed: boolean;
 }
 
 /** pg-boss job states (pg-boss `states`), as the `job` table's `state` column holds them. */
@@ -722,9 +730,11 @@ export async function runE2E(
       log(`[fix] run ${run.runId} at tier ${run.tier ?? '-'}`);
       return run;
     };
-    // `resolved` too: only a human's approve gets there (issues/transitions.ts), so the
-    // test can no longer see the outcome it waits for, nor tell a PR from a patch.
+    // `resolved` too, unless `ops_fixed` got it there: otherwise only a human's approve does
+    // (issues/transitions.ts), so the test can no longer see the outcome it waits for, nor
+    // tell a PR from a patch. An ops fix is an outcome, which `outcome` checks.
     const stopIfEnded = (row: IssueRow, at: E2EStep) => {
+      if (row.opsFixed) return;
       if (row.status === 'resolved') {
         throw new E2EFailure(
           at,
@@ -760,7 +770,8 @@ export async function runE2E(
       return { value: undefined, detail: `run ${claimed.runId} at tier ${claimed.tier ?? '-'}` };
     });
 
-    // Done when the issue waits on a human: a patch or PR, or a Tier 3 approval request.
+    // Done when the issue waits on a human (a patch or PR, or a Tier 3 approval request), or
+    // a Tier 3 ops fix resolved it.
     let finishedAt: number | null = null;
     let finishedRun = '';
     await step('fix', async () => {
@@ -773,7 +784,9 @@ export async function runE2E(
           const row = await read();
           stopIfEnded(row, 'fix');
           const run = track(row);
-          if (row.status === 'awaiting_approval' || row.status === 'pr_open') return row;
+          if (row.status === 'awaiting_approval' || row.status === 'pr_open' || row.opsFixed) {
+            return row;
+          }
           if (run === undefined) return undefined;
           progress = observe(await reader.run(run.runId));
           if (progress.pendingApprovals > 0) return row;
@@ -818,7 +831,27 @@ export async function runE2E(
               "tier 1 ended on a patch awaiting approval; Tier 1 can't push, so no PR can open",
             );
           }
+          const tier = row.currentTier ?? '-';
+          if (row.opsFixed && expect !== 'resolved') {
+            throw new E2EFailure(
+              'outcome',
+              `tier ${tier} fixed the live app through the ops API and the issue resolved; ` +
+                'pass --expect resolved for it',
+            );
+          }
+          if (
+            expect === 'resolved' &&
+            (row.status === 'awaiting_approval' || row.status === 'pr_open')
+          ) {
+            throw new E2EFailure(
+              'outcome',
+              `tier ${tier} left a patch for review, not a fix made live through the ops API`,
+            );
+          }
           progress = observe(await reader.run(finalRun.runId));
+          if (expect === 'resolved') {
+            return row.opsFixed ? 'issue resolved by an ops fix' : undefined;
+          }
           if (expect === 'pr') {
             pr = await github!.findOpenPullRequest(agentBranch(finalRun.runId));
             if (pr === null) return undefined;
@@ -1153,14 +1186,23 @@ export function assertEndState(
     checks.push({ name, level, ok, detail });
 
   const waitingOnApproval = issue.status === 'fixing' && progress.pendingApprovals > 0;
-  const statuses: readonly IssueStatus[] =
-    expect === 'pr' ? ['pr_open', 'awaiting_approval'] : ['awaiting_approval'];
-  check(
-    'issue.status',
-    'error',
-    statuses.includes(issue.status) || (expect === 'approval' && waitingOnApproval),
-    `${issue.status}, want ${statuses.join(' or ')}${expect === 'approval' ? ' or fixing with a pending approval' : ''}`,
-  );
+  if (expect === 'resolved') {
+    check(
+      'issue.status',
+      'error',
+      issue.opsFixed,
+      `${issue.status}${issue.opsFixed ? ' by ops_fixed' : ''}, want resolved by ops_fixed`,
+    );
+  } else {
+    const statuses: readonly IssueStatus[] =
+      expect === 'pr' ? ['pr_open', 'awaiting_approval'] : ['awaiting_approval'];
+    check(
+      'issue.status',
+      'error',
+      statuses.includes(issue.status) || (expect === 'approval' && waitingOnApproval),
+      `${issue.status}, want ${statuses.join(' or ')}${expect === 'approval' ? ' or fixing with a pending approval' : ''}`,
+    );
+  }
   check(
     'issue.triaged',
     'error',
@@ -1186,10 +1228,12 @@ export function assertEndState(
     `tier ${issue.currentTier ?? '-'}, scenario expects ${scenario.meta.expectedTier}`,
   );
   check('run.steps', 'error', progress.steps > 0, `${progress.steps} steps recorded`);
+  // Resolving the issue cancels the fix job of the run that fixed it, which can land before
+  // the daemon marks that job complete.
   check(
     'run.job',
     'error',
-    progress.jobState !== 'failed' && progress.jobState !== 'cancelled',
+    progress.jobState !== 'failed' && (progress.jobState !== 'cancelled' || issue.opsFixed),
     `fix job ${progress.jobState ?? 'gone'}`,
   );
   if (progress.run === null) {
