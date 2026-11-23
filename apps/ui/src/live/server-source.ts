@@ -1,10 +1,12 @@
 import {
+  approvalSchema,
   issueEventRecordSchema,
   issueRunSchema,
   issueSchema,
   nodeRunSchema,
   nodeSummarySchema,
   UI_NAMESPACE,
+  type Approval,
   type Issue,
   type IssueEvent,
   type IssueEventRecord,
@@ -18,10 +20,12 @@ import {
 import { io, type Socket } from 'socket.io-client';
 
 import {
+  parseApproval,
   parseIssueUpdated,
   parseNodeUpdated,
   parseRunEvent,
   RUN_EVENTS,
+  type ApprovalDecision,
   type IssueFeed,
   type IssueSource,
 } from './source';
@@ -31,6 +35,7 @@ const runList = issueRunSchema.array();
 const eventList = issueEventRecordSchema.array();
 const nodeList = nodeSummarySchema.array();
 const nodeRunList = nodeRunSchema.array();
+const approvalList = approvalSchema.array();
 
 // The server counts handshakes per minute; one that refuses for that is waited out.
 const RATE_LIMIT_RETRY_MS = 60_000;
@@ -43,9 +48,15 @@ class Unauthorized extends Error {}
  * store keeps whichever copy of an issue is newer, and a `node.updated` that lands during the
  * load is applied again after it. Each reconnect loads both lists again, for the changes made
  * while the socket was down, and tells the store (`synced`) so loaded runs are loaded again.
+ *
+ * `name` is the person's, sent as `auth.name` in the handshake. The server records each Tier 3
+ * decision this tab sends under it, and refuses decisions from a tab with none.
  */
-export function serverSource(token: string): IssueSource {
+export function serverSource(token: string, name?: string): IssueSource {
   const headers = { authorization: `Bearer ${token}`, accept: 'application/json' };
+  let approver = name;
+  const auth = () => (approver === undefined ? { token } : { token, name: approver });
+  let socket: Socket<ServerToUiEvents, UiToServerEvents> | undefined;
 
   async function get(path: string): Promise<Response> {
     const res = await fetch(path, { headers });
@@ -56,9 +67,10 @@ export function serverSource(token: string): IssueSource {
   return {
     start(feed: IssueFeed) {
       let retry: ReturnType<typeof setTimeout> | undefined;
-      const socket: Socket<ServerToUiEvents, UiToServerEvents> = io(UI_NAMESPACE, {
-        auth: { token },
+      const current: Socket<ServerToUiEvents, UiToServerEvents> = io(UI_NAMESPACE, {
+        auth: auth(),
       });
+      socket = current;
       feed.status('connecting');
 
       // The node.updated events that arrive while GET /nodes is loading, to apply after it.
@@ -96,46 +108,79 @@ export function serverSource(token: string): IssueSource {
         }
       }
 
-      socket.on('connect', () => {
+      current.on('connect', () => {
         feed.status('live');
         feed.synced();
         void load();
         void loadNodes();
       });
-      socket.on('issue.updated', (payload: unknown) => {
+      current.on('issue.updated', (payload: unknown) => {
         const issue = parseIssueUpdated(payload);
         if (issue) feed.update(issue);
       });
-      socket.on('node.updated', (payload: unknown) => {
+      current.on('node.updated', (payload: unknown) => {
         const node = parseNodeUpdated(payload);
         if (!node) return;
         nodesLoading?.push(node);
         feed.node(node);
       });
       // The typed on() wants each event as a literal; the payload is parsed here.
-      const on = socket.on.bind(socket) as (event: string, fn: (payload: unknown) => void) => void;
+      const on = current.on.bind(current) as (
+        event: string,
+        fn: (payload: unknown) => void,
+      ) => void;
       for (const event of RUN_EVENTS) {
         on(event, (payload) => {
           const parsed = parseRunEvent(event, payload);
           if (parsed) feed.run(parsed);
         });
       }
-      socket.on('disconnect', () => feed.status('reconnecting'));
-      socket.on('connect_error', (err) => {
+      for (const event of ['approval.requested', 'approval.updated'] as const) {
+        current.on(event, (payload: unknown) => {
+          const approval = parseApproval(event, payload);
+          if (approval) feed.approval(approval);
+        });
+      }
+      current.on('disconnect', () => feed.status('reconnecting'));
+      current.on('connect_error', (err) => {
         // A refusal from the server's middleware is final for socket.io-client; anything
         // else (server down, network gone) it retries on its own.
         const refused = (refusal: SocketRefusal) => err.message === refusal;
         if (refused('unauthorized')) return feed.status('needs_token');
         feed.status('reconnecting');
         if (refused('rate_limited')) {
-          retry = setTimeout(() => socket.connect(), RATE_LIMIT_RETRY_MS);
+          retry = setTimeout(() => current.connect(), RATE_LIMIT_RETRY_MS);
         }
       });
 
       return () => {
         clearTimeout(retry);
-        socket.close();
+        current.close();
+        if (socket === current) socket = undefined;
       };
+    },
+
+    decideApproval(approvalId: string, decision: ApprovalDecision) {
+      socket?.emit('approval.decide', { v: 1, approvalId, decision });
+    },
+
+    setApproverName(next: string) {
+      approver = next;
+      if (socket === undefined) return;
+      // The name goes in the handshake, so it takes a new connection.
+      socket.auth = auth();
+      socket.disconnect().connect();
+    },
+
+    async fetchApprovals(id: string): Promise<Approval[] | undefined> {
+      try {
+        const res = await get(`/approvals?issueId=${encodeURIComponent(id)}`);
+        if (!res.ok) return undefined;
+        const approvals = approvalList.safeParse(await res.json());
+        return approvals.success ? approvals.data : undefined;
+      } catch {
+        return undefined;
+      }
     },
 
     async fetchIssue(id: string): Promise<Issue | undefined> {

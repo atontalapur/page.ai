@@ -96,19 +96,21 @@ export const escalationFixture: Escalation = {
 export const pendingApprovalFixture: PendingApproval = {
   id: approvalId,
   runId,
-  action: 'ops.restart',
-  args: { service: 'api' },
+  issueId,
+  action: 'ops.setConfig',
+  args: { tool: 'ops.setConfig', key: 'SHIPPING_FLAT_CENTS', value: '500' },
   decision: 'pending',
   decidedBy: null,
   requestedAt: at,
+  expiresAt: '2026-10-30T12:03:00.000Z',
   decidedAt: null,
 };
 
 export const decidedApprovalFixture: DecidedApproval = {
   ...pendingApprovalFixture,
   decision: 'approved',
-  decidedBy: 'arjun',
-  decidedAt: later,
+  decidedBy: 'ui:arjun',
+  decidedAt: '2026-10-30T12:01:10.000Z',
 };
 
 export const jobFixtures: { [Q in QueueName]: JobPayload<Q> } = {
@@ -201,6 +203,7 @@ export const nodeToServerEventFixtures: Payloads<NodeToServerEvents> = {
     runId,
     action: pendingApprovalFixture.action,
     args: pendingApprovalFixture.args,
+    expiresAt: pendingApprovalFixture.expiresAt,
   },
 };
 

@@ -23,6 +23,7 @@ import { FakeLink } from './link/fake-link.ts';
 import type { OrchestratorLink } from './link/link.ts';
 import { SocketIoLink } from './link/socket-io-link.ts';
 import { ScriptedModel } from './model/scripted-model.ts';
+import { autoApprovals, LinkApprovals, type Approvals } from './run/approvals.ts';
 import { liveAppLock, type OpsLock } from './run/ops-lock.ts';
 import { PgBossRunResults, type RunResults } from './run/results.ts';
 import { runFixJob } from './run/run-fix-job.ts';
@@ -48,6 +49,11 @@ export interface Adapters {
   opsLock?: OpsLock;
   /** That app's deploys, for the Tier 3 rollback tool. Without it, runs get no rollback. */
   deployer?: Deployer;
+  /**
+   * How a run asks a person before a gated ops tool runs. Without it, those calls are
+   * refused.
+   */
+  approvals?: Approvals;
   /** Closes connections the adapters opened, after the daemon stops claiming jobs. */
   close(): Promise<void>;
 }
@@ -64,7 +70,8 @@ export interface Daemon {
  * may hold it, or it already finished.
  */
 export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
-  const { jobs, sandboxes, sink, link, results, model, github, ops, opsLock, deployer } = adapters;
+  const { jobs, sandboxes, sink, link, results, model, github, ops, opsLock, deployer, approvals } =
+    adapters;
   // Each run's kill switch, with a logger that carries the run's issueId, runId and tier.
   const runs = new Map<string, { kill: AbortController; logger: Logger }>();
   // The link has no `off`, so the kill handler goes on once however often start() runs.
@@ -107,6 +114,7 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
               model,
               github,
               ...withOps(ops, opsLock, deployer),
+              ...(approvals === undefined ? {} : { approvals }),
               logger,
             },
             entry.kill.signal,
@@ -168,6 +176,7 @@ export async function createAdapters(config: NodeConfig, logger: Logger): Promis
       opsLockFor(config, pool, logger),
       deployerFor(config, logger),
     ),
+    approvals: approvalsFor(config, link, logger),
     async close() {
       const results = await Promise.allSettled([
         link.close(),
@@ -241,6 +250,21 @@ export function deployerFor(config: NodeConfig, logger: Logger): Deployer | unde
     return undefined;
   }
   return new RailwayDeployer({ token, projectId, environmentId, serviceId });
+}
+
+/**
+ * How Tier 3 runs ask a person before a gated ops call: the orchestrator, over `link`, which
+ * shows the request on the incident page. AUTO_APPROVE_OPS approves every call instead, and
+ * says so once at startup; the config takes it only with fakes or an app on this machine.
+ */
+export function approvalsFor(
+  config: NodeConfig,
+  link: OrchestratorLink,
+  logger: Logger,
+): Approvals {
+  if (!config.AUTO_APPROVE_OPS) return new LinkApprovals({ link, logger });
+  logger.warn('AUTO_APPROVE_OPS is on: gated ops calls run without asking anyone');
+  return autoApprovals('AUTO_APPROVE_OPS');
 }
 
 function fakeDeploys(): Deployer {

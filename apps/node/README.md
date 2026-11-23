@@ -42,6 +42,7 @@ pnpm --filter @page/node start
 | `OPS_APP_URL`                 |                | Optional; the app for Tier 3 ops tools  |
 | `OPS_SECRET`                  |                | That app's ops secret; needs 32+ chars  |
 | `OPS_RAILWAY_*` (four)        |                | Optional; that app's Railway service    |
+| `AUTO_APPROVE_OPS`            | `false`        | Fakes or a local app only; see below    |
 | `USE_FAKE_ADAPTERS`           | `false`        | See below                               |
 | `LOG_LEVEL`                   | `info`         |                                         |
 
@@ -221,6 +222,49 @@ Tier 3. The note says what was missing, the patch stays on the run's record, a P
 opened is closed, and its ops changes are put back, as for any run that doesn't succeed. A
 run the daemon couldn't score, because scoring threw or the daemon predates it, has
 `confidence: null` and never escalates for want of a score.
+
+## Tier 3: a person approves each change to the live app
+
+`ops.setConfig`, `ops.deleteConfig`, `ops.restart` and `ops.rollback` wait for a person's
+approval before they run (`APPROVAL_TOOLS` in `@page/toolkit`). A restart drops requests in
+flight and loads any staged override, and a rollback replaces the live build. A setting
+change only loads on the next restart, but that can be any restart (a crash, a redeploy,
+someone else's), so it is approved where it is made, with its key and value in view. The
+reads, `ops.getConfig` and `ops.planRollback`, are not gated, and neither are the Tier 2
+GitHub tools, which only reach the run's own branch and PR.
+
+`execute()` asks after the tier check and before the step opens. The daemon sends
+`node.approval.request` with the tool, its arguments (a rollback also names the live
+deployment and the one it would deploy, from the run's last plan) and `expiresAt`, and waits
+for the `approval.decided` that answers it. The orchestrator shows the request on the
+incident page.
+
+- **Approved**: the tool runs with what is left of the command's time limit.
+- **Rejected**: the step is a refusal, `refused: ops.restart was not approved: arjun
+rejected it`, and the agent reads it like a policy refusal, so it can try something else or
+  escalate.
+- **No answer**: the wait lasts at most 3 minutes (`APPROVAL_TIMEOUT_MS`), and no longer than
+  the command may take, which is no longer than the run has left. The run's wall clock keeps
+  running meanwhile. The orchestrator rejects the request at `expiresAt` and says so; the
+  daemon waits 10 seconds past it for that answer (`APPROVAL_GRACE_MS`), then counts the call
+  rejected itself.
+- **Kill or expiry while waiting**: the wait ends at once as a refusal, the agent loop stops,
+  and the run reports `killed` as before.
+- **Dropped socket**: the orchestrator keeps no event for a daemon that is away, so after a
+  reconnect the link sends every request still waiting again, with the same id. The
+  orchestrator answers one decided meanwhile with its decision, and keeps waiting on one still
+  open. A link that stays down can't hold a run: the wait still ends at its deadline.
+- A call the tool would refuse anyway (a bad key, a spent restart or rollback, a rollback
+  with no plan, a run refused the app) asks no one and refuses itself.
+
+A daemon with no way to ask refuses every gated call. `AUTO_APPROVE_OPS=true` approves them
+all without asking, and the config takes it only with `USE_FAKE_ADAPTERS`, or with an
+`OPS_APP_URL` on this machine and no `OPS_RAILWAY_*`, so it can't reach a shared app. The
+daemon logs a warning at startup when it is on. The eval approves every gated call itself
+(`evalApprove` in `eval/src/approve.ts`), since no one watches its runs.
+
+Undo after a run that didn't submit is not gated: it puts back what the run changed with the
+approvals it already had, and no one is waiting on the run by then.
 
 ## Tests
 

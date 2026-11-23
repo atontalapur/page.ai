@@ -15,6 +15,7 @@ import {
   type Step,
 } from '@page/contracts';
 import type { Namespace } from 'socket.io';
+import { ApprovalsService } from '../approvals/approvals.service.ts';
 import type { Config } from '../config.ts';
 import type { Logger } from '../logger.ts';
 import { RateLimiter } from '../rate-limit.ts';
@@ -72,7 +73,8 @@ const runIdOf = (payload: NodePayload<NodeEvent>) =>
  * no daemon held the run, or moved on. Steps, diffs and results go to the UI as `run.step`,
  * `run.diff` and `run.finished`, and a run's first step (seq 0) also sends `run.started`.
  * None of this is a record: the daemon writes each step to the `steps` table itself, and the
- * `run_finished` job is the run's record.
+ * `run_finished` job is the run's record. A Tier 3 run's `node.approval.request` is the
+ * exception: ApprovalsService stores it, and closes the run's open ones when it finishes.
  *
  * A daemon sends its name as `auth.name`. The gateway records which daemon worked each run
  * (NodeRuns) on the daemon's first event for it, and sends the tabs `node.updated` whenever a
@@ -90,12 +92,16 @@ export class NodeGateway
 
   /**
    * What each event does once it passes its contract. An event with no handler is logged and
-   * dropped, so a new one goes here: `node.approval.request` comes with Tier 3 approvals.
+   * dropped, so a new one goes here.
    */
   private readonly handlers: { [E in NodeEvent]?: Handler<E> } = {
     'node.step': (socket, { step }) => this.relayStep(socket, step),
     'node.diff': (_socket, diff) => this.ui.send('run.diff', diff),
     'node.run.finished': (socket, result) => this.relayFinished(socket, result),
+    // Stored, then sent to the tabs (ApprovalRelay). The answer comes back the same way.
+    'node.approval.request': async (_socket, request) => {
+      await this.approvals.request(request);
+    },
   };
 
   constructor(
@@ -107,6 +113,7 @@ export class NodeGateway
     private readonly ui: UiGateway,
     private readonly nodeRuns: NodeRuns,
     private readonly summaries: NodeSummaries,
+    private readonly approvals: ApprovalsService,
   ) {
     this.guard = {
       name: 'node',
@@ -251,6 +258,8 @@ export class NodeGateway
   ): Promise<void> {
     const { runId } = result;
     this.links.get(socket.id)?.owners.delete(runId);
+    // A finished run waits on no answer, so its open requests leave every tab.
+    await this.approvals.closeRun(runId);
     // Looked up again for the first step's time, which the run had no row for before.
     const owner = await this.runs.owner(runId);
     if (!owner) {

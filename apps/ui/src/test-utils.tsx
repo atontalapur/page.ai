@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { act, render } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type {
+  Approval,
   Issue,
   IssueEvent,
   IssueEventRecord,
@@ -13,9 +14,11 @@ import { issueFixture } from '@page/contracts/fixtures';
 
 import { IssuesProvider } from './context/IssuesContext';
 import {
+  parseApproval,
   parseIssueUpdated,
   parseNodeUpdated,
   parseRunEvent,
+  type ApprovalDecision,
   type FeedStatus,
   type IssueFeed,
   type IssueSource,
@@ -92,6 +95,14 @@ export interface TestSource extends IssueSource {
   applied: { id: string; event: IssueEvent }[];
   /** What applyEvent answers; by default the issue with `status` set as the server would. */
   respond?: (id: string, event: IssueEvent) => Promise<Issue>;
+  /** What fetchApprovals returns per issue; an issue missing here has none. */
+  approvals: Map<string, Approval[]>;
+  /** Every decision decideApproval was given, in order. */
+  decisions: { approvalId: string; decision: ApprovalDecision }[];
+  /** Every name setApproverName was given, in order. */
+  names: string[];
+  /** Delivers a raw `approval.requested` or `approval.updated` payload, parsed first. */
+  sendApproval(event: 'approval.requested' | 'approval.updated', payload: unknown): void;
 }
 
 /** A source that loads `issues` as its list and plays whatever a test sends. */
@@ -107,6 +118,9 @@ export function testSource(
   const nodeRuns = new Map<string, NodeRun[]>();
   const applied: { id: string; event: IssueEvent }[] = [];
   const loads = { runs: 0, nodeRuns: 0 };
+  const approvals = new Map<string, Approval[]>();
+  const decisions: { approvalId: string; decision: ApprovalDecision }[] = [];
+  const names: string[] = [];
   const source: TestSource = {
     extra,
     runs,
@@ -115,6 +129,20 @@ export function testSource(
     nodeRuns,
     loads,
     applied,
+    approvals,
+    decisions,
+    names,
+    fetchApprovals: (id) => Promise.resolve(approvals.get(id) ?? []),
+    decideApproval(approvalId, decision) {
+      decisions.push({ approvalId, decision });
+    },
+    setApproverName(name) {
+      names.push(name);
+    },
+    sendApproval(event, payload) {
+      const parsed = parseApproval(event, payload);
+      if (parsed) act(() => feed?.approval(parsed));
+    },
     start(next) {
       feed = next;
       feed.status(status);

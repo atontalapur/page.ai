@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type {
+  Approval,
   Issue,
   IssueEvent,
   IssueEventRecord,
@@ -17,10 +18,17 @@ import type {
   NodeSummary,
 } from '@page/contracts';
 
+import { readApproverName, saveApproverName } from '../live/approver';
 import { mockSource } from '../live/mock-source';
 import { applyToNode } from '../live/runs';
 import { serverPresent, serverSource } from '../live/server-source';
-import type { FeedStatus, IssueFeed, IssueSource, RunEvent } from '../live/source';
+import type {
+  ApprovalDecision,
+  FeedStatus,
+  IssueFeed,
+  IssueSource,
+  RunEvent,
+} from '../live/source';
 import { clearToken, readToken, saveToken } from '../live/token';
 
 /** `detecting` until the page knows whether an orchestrator served it. */
@@ -41,6 +49,15 @@ interface IssuesContextType {
   /** Applies a reviewer's event and stores the issue it left. Rejects with the reason it failed. */
   applyEvent: (id: string, event: IssueEvent) => Promise<Issue>;
   submitToken: (token: string) => void;
+  /** An issue's Tier 3 requests still waiting on a person, oldest first. */
+  pendingApprovals: (issueId: string) => Approval[];
+  /** Loads an issue's approvals, for a page that opens or a socket that reconnects. */
+  loadApprovals: (issueId: string) => Promise<void>;
+  /** Sends a decision; every tab drops the request once the server records it. */
+  decideApproval: (approvalId: string, decision: ApprovalDecision) => void;
+  /** The name decisions are recorded under, or null until the person gives one. */
+  approverName: string | null;
+  setApproverName: (name: string) => void;
 }
 
 const IssuesContext = createContext<IssuesContextType | undefined>(undefined);
@@ -76,6 +93,12 @@ function upsert(store: Map<string, Issue>, incoming: Issue): void {
   if (!current || current.updatedAt <= incoming.updatedAt) store.set(incoming.id, incoming);
 }
 
+/** A decision is final, so a pending copy loaded late never replaces it. */
+function keepApproval(store: Map<string, Approval>, incoming: Approval): void {
+  const current = store.get(incoming.id);
+  if (current === undefined || current.decision === 'pending') store.set(incoming.id, incoming);
+}
+
 /**
  * The issues and node daemons every page reads, kept current by a source: the orchestrator
  * that served the page (GET /issues and GET /nodes, then `issue.updated`, `node.updated` and
@@ -99,6 +122,8 @@ export function IssuesProvider({
   const [nodesLoaded, setNodesLoaded] = useState(false);
   const [syncs, setSyncs] = useState(0);
   const runListeners = useRef(new Set<RunListener>());
+  const [approvals, setApprovals] = useState<Map<string, Approval>>(() => new Map());
+  const [approverName, setName] = useState<string | null>(() => readApproverName());
 
   // Pick a source once, unless one was passed in.
   useEffect(() => {
@@ -108,7 +133,7 @@ export function IssuesProvider({
       if (cancelled) return;
       if (!present) return setActive(mockSource());
       const token = readToken();
-      if (token) setActive(serverSource(token));
+      if (token) setActive(serverSource(token, readApproverName() ?? undefined));
       else setStatus('needs_token');
     });
     return () => {
@@ -131,6 +156,13 @@ export function IssuesProvider({
         setStore((previous) => {
           const next = new Map(previous);
           upsert(next, issue);
+          return next;
+        });
+      },
+      approval(approval) {
+        setApprovals((previous) => {
+          const next = new Map(previous);
+          keepApproval(next, approval);
           return next;
         });
       },
@@ -176,11 +208,50 @@ export function IssuesProvider({
     };
   }, []);
 
-  const submitToken = useCallback((token: string) => {
-    saveToken(token);
-    setTokenRefused(false);
-    setActive(serverSource(token));
-  }, []);
+  const submitToken = useCallback(
+    (token: string) => {
+      saveToken(token);
+      setTokenRefused(false);
+      setActive(serverSource(token, approverName ?? undefined));
+    },
+    [approverName],
+  );
+
+  const pendingApprovals = useCallback(
+    (issueId: string) =>
+      [...approvals.values()]
+        .filter((a) => a.issueId === issueId && a.decision === 'pending')
+        .sort((a, b) => a.requestedAt.localeCompare(b.requestedAt)),
+    [approvals],
+  );
+
+  const loadApprovals = useCallback(
+    async (issueId: string) => {
+      const list = await active?.fetchApprovals(issueId);
+      if (!list) return;
+      setApprovals((previous) => {
+        const next = new Map(previous);
+        for (const approval of list) keepApproval(next, approval);
+        return next;
+      });
+    },
+    [active],
+  );
+
+  const decideApproval = useCallback(
+    (approvalId: string, decision: ApprovalDecision) =>
+      active?.decideApproval(approvalId, decision),
+    [active],
+  );
+
+  const setApproverName = useCallback(
+    (name: string) => {
+      saveApproverName(name);
+      setName(name);
+      active?.setApproverName?.(name);
+    },
+    [active],
+  );
 
   const issues = useMemo(
     () => [...store.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
@@ -244,6 +315,11 @@ export function IssuesProvider({
       fetchEvents,
       applyEvent,
       submitToken,
+      pendingApprovals,
+      loadApprovals,
+      decideApproval,
+      approverName,
+      setApproverName,
     }),
     [
       issues,
@@ -256,6 +332,11 @@ export function IssuesProvider({
       fetchEvents,
       applyEvent,
       submitToken,
+      pendingApprovals,
+      loadApprovals,
+      decideApproval,
+      approverName,
+      setApproverName,
     ],
   );
 

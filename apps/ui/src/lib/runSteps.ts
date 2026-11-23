@@ -42,7 +42,10 @@ export function commandLabel(command: string): { verb: string; target: string } 
  */
 export function outputNotes(step: Step): { text: string; tone: 'muted' | StepTone }[] {
   if (!step.allowed) {
-    return [{ text: step.outputTrimmed.replace(/^refused: /, 'Policy: '), tone: 'refused' }];
+    const why = step.outputTrimmed.replace(/^refused: /, '');
+    // A person, not the policy, said no to a gated ops call.
+    const text = / was not approved: /.test(why) ? why : `Policy: ${why}`;
+    return [{ text, tone: 'refused' }];
   }
   const out = step.outputTrimmed;
   const failed = step.exitCode !== null && step.exitCode !== 0;

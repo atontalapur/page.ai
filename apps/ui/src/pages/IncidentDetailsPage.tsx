@@ -7,6 +7,7 @@ import { buttonVariants } from '@page/design-system/components/ui/button';
 
 import { SeverityBadge, StatusBadge } from '../components/issues/IssueBadges';
 import ActivityPanel from '../components/issues/ActivityPanel';
+import ApprovalRequests from '../components/issues/ApprovalRequests';
 import ReviewActions, { awaitsReview } from '../components/issues/ReviewActions';
 import RunsPanel from '../components/issues/RunsPanel';
 import TokenPrompt from '../components/issues/TokenPrompt';
@@ -96,6 +97,7 @@ export default function IncidentDetailsPage() {
         </div>
       </div>
 
+      <ApprovalRequests issue={issue} />
       {awaitsReview(issue) && <ReviewActions issue={issue} />}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

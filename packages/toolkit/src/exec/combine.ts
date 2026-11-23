@@ -10,6 +10,7 @@ export function combineHostTools(...parts: HostTools[]): HostTools {
   const owner = (tool: HostToolName) => parts.find((part) => part.handles?.(tool) ?? true);
   return {
     handles: (tool) => owner(tool) !== undefined,
+    refusal: (call) => owner(call.tool)?.refusal?.(call) ?? null,
     run: (call, timeoutMs) => {
       const part = owner(call.tool);
       return part === undefined

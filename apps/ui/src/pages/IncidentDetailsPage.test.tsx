@@ -380,6 +380,32 @@ describe('IncidentDetailsPage', () => {
     });
   });
 
+  it('shows a Tier 3 request apart from patch review, which a fixing issue has none of', async () => {
+    const tier3 = issue(3, { status: 'fixing', currentTier: 3 });
+    const source = testSource([tier3]);
+    source.approvals.set(tier3.id, [
+      {
+        id: '0000000a-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        runId: '30000000-2222-4222-8222-222222222222',
+        issueId: tier3.id,
+        action: 'ops.restart',
+        args: { tool: 'ops.restart' },
+        requestedAt: '2026-11-22T09:00:00.000Z',
+        expiresAt: new Date(Date.now() + 120_000).toISOString(),
+        decision: 'pending',
+        decidedBy: null,
+        decidedAt: null,
+      },
+    ]);
+    renderDetails(tier3.id, source);
+
+    const bar = await screen.findByRole('region', {
+      name: 'Live app actions waiting for approval',
+    });
+    expect(within(bar).getByText('Restart the live app')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Review' })).toBeNull();
+  });
+
   it('updates live from issue.updated', () => {
     const source = renderDetails(fixing.id);
 

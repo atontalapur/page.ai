@@ -93,8 +93,8 @@ export class OpsHostTools implements HostTools {
   private readonly unanswered = new Set<string>();
   /** Whether a restart went out after the run's first change, so the app may serve it. */
   private servesChanges = false;
-  /** The run's last rollback plan, by deployment id. ops.rollback must match it. */
-  private plan: { from: string; to: string } | null = null;
+  /** The run's last rollback plan. ops.rollback must name its target. */
+  private plan: { from: Deployment; to: Deployment } | null = null;
   /** The rollback this run sent, if any. */
   private sent: SentRollback | null = null;
 
@@ -107,10 +107,64 @@ export class OpsHostTools implements HostTools {
     return isOpsTool(tool);
   }
 
+  /**
+   * Why run() would refuse `call` without sending anything, or null: a tool this node lacks,
+   * a run refused the app, a bad setting, a spent restart or rollback, or a rollback that
+   * isn't the last plan's. execute() asks before a person approves the call.
+   */
+  refusal(call: HostToolCall): string | null {
+    if (!isOpsTool(call.tool)) return `${call.tool} is not an ops tool`;
+    if (!this.handles(call.tool)) return `${call.tool} is not set up on this node`;
+    if (this.options.refusal !== undefined) return this.options.refusal;
+    switch (call.tool) {
+      case 'ops.setConfig':
+        return (
+          keyRefusal(call.key) ??
+          (call.value.length > MAX_SETTING_VALUE
+            ? `a setting value is at most ${MAX_SETTING_VALUE} characters`
+            : null)
+        );
+      case 'ops.deleteConfig':
+        return keyRefusal(call.key);
+      case 'ops.restart': {
+        const max = this.options.maxRestarts ?? MAX_RESTARTS;
+        return this.restarts >= max
+          ? `this run has restarted the app ${max} times, the most one run may`
+          : null;
+      }
+      case 'ops.rollback':
+        return this.rollbackRefusal(call.to);
+      default:
+        return null;
+    }
+  }
+
+  private rollbackRefusal(to: string): string | null {
+    const max = this.options.maxRollbacks ?? MAX_ROLLBACKS;
+    if (this.rollbacks >= max) {
+      return `this run has rolled the app back ${times(max)}, the most one run may`;
+    }
+    if (this.plan === null) {
+      return 'plan the rollback first: ops.planRollback shows what is live and what a rollback would deploy';
+    }
+    if (this.plan.to.id !== to) {
+      return `the last plan goes back to ${this.plan.to.id}, not ${to}; send the target it named`;
+    }
+    return null;
+  }
+
+  /**
+   * The rollback the run's last plan named, as the plan showed it: the live deployment and
+   * the one ops.rollback would deploy again. Null until a plan succeeds, and once a rollback
+   * has been sent for it.
+   */
+  get plannedRollback(): { live: DeploymentSummary; rollBackTo: DeploymentSummary } | null {
+    return this.plan && { live: described(this.plan.from), rollBackTo: described(this.plan.to) };
+  }
+
   async run(call: HostToolCall, timeoutMs: number): Promise<HostToolOutcome> {
-    if (!isOpsTool(call.tool)) return fail(`${call.tool} is not an ops tool`);
-    if (!this.handles(call.tool)) return fail(`${call.tool} is not set up on this node`);
-    if (this.options.refusal !== undefined) return fail(this.options.refusal);
+    const refusal = this.refusal(call);
+    if (refusal !== null) return fail(refusal);
     const timeout = AbortSignal.timeout(Math.max(1, timeoutMs));
     const { signal: stopped } = this.options;
     const signal = stopped === undefined ? timeout : AbortSignal.any([timeout, stopped]);
@@ -129,29 +183,18 @@ export class OpsHostTools implements HostTools {
     switch (call.tool) {
       case 'ops.getConfig':
         return answered('GET /api/ops/config', await ops.getConfig(signal));
+      // run() has checked each call's key, value and limits (refusal()).
       case 'ops.setConfig': {
-        const refusal =
-          keyRefusal(call.key) ??
-          (call.value.length > MAX_SETTING_VALUE
-            ? `a setting value is at most ${MAX_SETTING_VALUE} characters`
-            : null);
-        if (refusal !== null) return fail(refusal);
         const reply = await this.change(call.key, call.value, () =>
           ops.setConfig(call.key, call.value, signal),
         );
         return answered(`PUT /api/ops/config/${call.key}`, reply);
       }
       case 'ops.deleteConfig': {
-        const refusal = keyRefusal(call.key);
-        if (refusal !== null) return fail(refusal);
         const reply = await this.change(call.key, null, () => ops.deleteConfig(call.key, signal));
         return answered(`DELETE /api/ops/config/${call.key}`, reply);
       }
       case 'ops.restart': {
-        const max = this.options.maxRestarts ?? MAX_RESTARTS;
-        if (this.restarts >= max) {
-          return fail(`this run has restarted the app ${max} times, the most one run may`);
-        }
         this.restarts += 1;
         if (this.changed.size > 0 || this.unanswered.size > 0) this.servesChanges = true;
         const reply = await ops.restart(signal);
@@ -182,7 +225,7 @@ export class OpsHostTools implements HostTools {
       return fail(`no rollback: ${result.error.message}`);
     }
     const { from, to } = result.value.plan;
-    this.plan = { from: from.id, to: to.id };
+    this.plan = { from, to };
     const plan = { live: described(from), rollBackTo: described(to) };
     return {
       ok: true,
@@ -202,28 +245,17 @@ export class OpsHostTools implements HostTools {
     to: string,
     signal: AbortSignal,
   ): Promise<HostToolOutcome> {
-    const max = this.options.maxRollbacks ?? MAX_ROLLBACKS;
-    if (this.rollbacks >= max) {
-      return fail(`this run has rolled the app back ${times(max)}, the most one run may`);
-    }
-    const { plan } = this;
-    if (plan === null) {
-      return fail(
-        'plan the rollback first: ops.planRollback shows what is live and what a rollback would deploy',
-      );
-    }
-    if (plan.to !== to) {
-      return fail(`the last plan goes back to ${plan.to}, not ${to}; send the target it named`);
-    }
+    // run() has checked the limit and that the plan names `to` (rollbackRefusal).
+    const from = this.plan!.from.id;
     this.plan = null;
-    const attempt: SentRollback = { from: plan.from, to, accepted: false };
+    const attempt: SentRollback = { from, to, accepted: false };
     const before = this.rollbacks;
     const result = await rollback(
       stoppable(deployer, signal, () => {
         this.sent = attempt;
         this.rollbacks += 1;
       }),
-      { dryRun: false, to, from: plan.from },
+      { dryRun: false, to, from },
     );
     if (!result.ok) {
       if (this.rollbacks > before) {
@@ -236,9 +268,9 @@ export class OpsHostTools implements HostTools {
     }
     attempt.accepted = true;
 
-    const { from, to: target } = result.value.plan;
-    const head = `Rolled back: ${build(target)} is deploying in place of ${build(from)}.`;
-    const wait = await this.waitLive(deployer, from.id, signal);
+    const { from: live, to: target } = result.value.plan;
+    const head = `Rolled back: ${build(target)} is deploying in place of ${build(live)}.`;
+    const wait = await this.waitLive(deployer, live.id, signal);
     const seconds = Math.round(wait.afterMs / 1000);
     switch (wait.state) {
       case 'live':
@@ -397,7 +429,15 @@ function stoppable(deployer: Deployer, signal: AbortSignal, onSend?: () => void)
   };
 }
 
-const described = ({ id, status, commitSha, createdAt }: Deployment) => ({
+/** A deployment as a rollback plan shows it to the agent and to the person approving it. */
+export interface DeploymentSummary {
+  id: string;
+  status: string;
+  commit: string | null;
+  createdAt: string;
+}
+
+const described = ({ id, status, commitSha, createdAt }: Deployment): DeploymentSummary => ({
   id,
   status,
   commit: commitSha,

@@ -42,6 +42,8 @@ export class SocketIoLink implements OrchestratorLink {
   private readonly retry: { refusedMs: number; closedMs: number };
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
+  private connectedBefore = false;
+  private readonly reconnected: (() => void)[] = [];
 
   constructor({ url, secret, name, logger, retry }: SocketIoLinkOptions) {
     this.logger = logger;
@@ -50,7 +52,12 @@ export class SocketIoLink implements OrchestratorLink {
       auth: { token: secret, name },
       transports: ['websocket'],
     });
-    this.socket.on('connect', () => logger.info({ url, name }, 'connected to the orchestrator'));
+    this.socket.on('connect', () => {
+      logger.info({ url, name }, 'connected to the orchestrator');
+      // socket.io-client has sent what it buffered by now.
+      if (this.connectedBefore) for (const handler of this.reconnected) handler();
+      this.connectedBefore = true;
+    });
     this.socket.on('disconnect', (reason) => {
       logger.warn({ url, reason }, 'disconnected from the orchestrator');
       // `io server disconnect`: the orchestrator closed it, say for too many messages.
@@ -93,6 +100,10 @@ export class SocketIoLink implements OrchestratorLink {
       const parsed = received(event, payload, this.logger);
       if (parsed !== undefined) handler(parsed);
     });
+  }
+
+  onReconnect(handler: () => void): void {
+    this.reconnected.push(handler);
   }
 
   close(): Promise<void> {

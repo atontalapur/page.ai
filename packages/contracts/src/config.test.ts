@@ -249,6 +249,44 @@ describe('nodeConfigSchema', () => {
       expect(result.success).toBe(true);
     });
   });
+
+  describe('AUTO_APPROVE_OPS', () => {
+    const secret = 'a'.repeat(32);
+    const parse = (env: Record<string, string | undefined>) =>
+      nodeConfigSchema.safeParse({ ...nodeEnvFixture, ...env });
+    const refused = (env: Record<string, string | undefined>) => {
+      const result = parse({ AUTO_APPROVE_OPS: 'true', ...env });
+      return !result.success && result.error.issues.some((i) => i.path[0] === 'AUTO_APPROVE_OPS');
+    };
+
+    it('is off unless set, so a person approves each gated ops call', () => {
+      expect(parse({}).data?.AUTO_APPROVE_OPS).toBe(false);
+    });
+
+    it('may be on with fakes, with no ops app, or with one on this machine', () => {
+      expect(refused({ USE_FAKE_ADAPTERS: 'true', OPS_APP_URL: 'https://demo.example.com' })).toBe(
+        false,
+      );
+      expect(refused({})).toBe(false);
+      expect(refused({ OPS_APP_URL: 'http://localhost:3000', OPS_SECRET: secret })).toBe(false);
+      expect(parse({ AUTO_APPROVE_OPS: 'true' }).data?.AUTO_APPROVE_OPS).toBe(true);
+    });
+
+    it('is refused for a shared app, or one with a Railway service to roll back', () => {
+      expect(refused({ OPS_APP_URL: 'https://demo.example.com', OPS_SECRET: secret })).toBe(true);
+      expect(
+        refused({
+          OPS_APP_URL: 'http://localhost:3000',
+          OPS_SECRET: secret,
+          OPS_RAILWAY_TOKEN: 'project-token',
+          OPS_RAILWAY_PROJECT_ID: '6f9619ff-8b86-4d11-b42d-00c04fc964ff',
+          OPS_RAILWAY_ENVIRONMENT_ID: '0b4a3a5e-9a3c-4c8e-8f0e-1f2d3c4b5a69',
+          OPS_RAILWAY_SERVICE_ID: 'c56a4180-65aa-42ec-a945-5fd21dec0538',
+        }),
+      ).toBe(true);
+      expect(refused({ OPS_APP_URL: 'not a url' })).toBe(true);
+    });
+  });
 });
 
 describe('demoAppConfigSchema', () => {

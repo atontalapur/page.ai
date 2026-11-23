@@ -245,17 +245,22 @@ describe('node events to the UI', () => {
     expect(node.connected).toBe(true);
   });
 
-  it('leaves node.approval.request for Tier 3 approvals', async () => {
+  it('shows a node.approval.request to the tabs, in order with the run', async () => {
     const { runId } = await fixing();
     const seen = await tab();
     const node = await daemon();
     node.emit('node.approval.request', {
       ...nodeToServerEventFixtures['node.approval.request'],
+      approvalId: randomUUID(),
       runId,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
     });
     node.emit('node.diff', { v: 1, runId, diff: '' });
-    await expect.poll(() => seen.length).toBe(1);
-    expect(seen.map((s) => s.event)).toEqual(['run.diff']);
+    await expect.poll(() => seen.length).toBe(2);
+    expect(seen.map((s) => [s.event, s.ok])).toEqual([
+      ['approval.requested', true],
+      ['run.diff', true],
+    ]);
   });
 });
 
@@ -560,7 +565,7 @@ describe('kills', () => {
     expect(killed).toEqual([]);
   });
 
-  it('drops a run.kill that breaks its contract, and leaves run.chat and approval.decide', async () => {
+  it('drops a run.kill that breaks its contract, run.chat, and a decision from a nameless tab', async () => {
     const held = await fixing();
     const other = await fixing();
     const { killed } = await holding(held.runId);

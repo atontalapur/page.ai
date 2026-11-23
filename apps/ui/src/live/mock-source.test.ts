@@ -33,6 +33,7 @@ function recorder() {
     run: (event) => runs.push(event),
     resetNodes: (list) => nodeLists.push(list),
     node: (node) => nodes.push(node),
+    approval: () => undefined,
   };
   return { feed, statuses, lists, updates, runs, nodeLists, nodes };
 }
@@ -200,6 +201,12 @@ describe('mockSource', () => {
     await expect(source.applyEvent(triaged.id, { type: 'approve' })).rejects.toThrow(
       'Mock data has no orchestrator to review with.',
     );
+  });
+
+  it('has no Tier 3 requests, and takes a decision without complaint', async () => {
+    const source = mockSource({ intervalMs: 0 });
+    expect(await source.fetchApprovals(mockId(1))).toEqual([]);
+    expect(() => source.decideApproval(mockId(1), 'approved')).not.toThrow();
   });
 
   it('makes distinct uuids that read apart on screen', () => {

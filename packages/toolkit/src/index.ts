@@ -1,5 +1,8 @@
 export { execute, DEFAULT_TIMEOUT_MS, hostToolArgs } from './exec/execute.ts';
+export { APPROVAL_TOOLS, autoApprove, needsApproval } from './exec/approval.ts';
 export type {
+  ApprovalVerdict,
+  Approve,
   EditCall,
   ExecCall,
   ExecContext,
@@ -36,7 +39,12 @@ export {
   OpsHostTools,
   ROLLBACK_POLL_MS,
 } from './ops/host-tools.ts';
-export type { OpsHostToolsOptions, OpsUndo, SentRollback } from './ops/host-tools.ts';
+export type {
+  DeploymentSummary,
+  OpsHostToolsOptions,
+  OpsUndo,
+  SentRollback,
+} from './ops/host-tools.ts';
 export { liveAppKey, liveAppLockDir, tryLockLiveApp } from './ops/live-app-lock.ts';
 export { DockerExecRunner } from './exec/docker-runner.ts';
 export { UserExecRunner } from './exec/user-runner.ts';
