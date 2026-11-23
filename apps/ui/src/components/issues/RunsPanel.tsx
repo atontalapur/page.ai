@@ -266,7 +266,8 @@ export function RunReview({ run, ask = false }: { run: IssueRun; ask?: boolean }
             );
           })}
         </CardContent>
-        {ask && <AskAgent run={run} />}
+        {/* Keyed by run, so a draft or an error never carries over to the next one. */}
+        {ask && <AskAgent key={run.id} run={run} />}
       </Card>
     </div>
   );

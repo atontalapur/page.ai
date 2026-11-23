@@ -205,6 +205,36 @@ describe('the box to ask the agent', () => {
     expect(((await box()) as HTMLTextAreaElement).value).toBe('One more?');
   });
 
+  it("starts empty for the next run, with neither the last one's draft nor its error", async () => {
+    const source = testSource([fixing], 'live', [holder()]);
+    source.askFailure = 'rate_limited';
+    render([run()], { source });
+    fireEvent.change(await box(), { target: { value: 'Draft for tier 1' } });
+    await act(async () => {
+      fireEvent.click(sendButton());
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('alert')).toBeTruthy();
+
+    const next = '20000000-2222-4222-8222-222222222222';
+    source.sendRun('run.started', {
+      v: 1,
+      run: {
+        id: next,
+        issueId: fixing.id,
+        tier: 2,
+        status: 'running',
+        startedAt: at(40),
+        finishedAt: null,
+        prUrl: null,
+        confidence: null,
+      },
+    });
+    expect(await screen.findByText('Tier 2')).toBeTruthy();
+    expect(((await box()) as HTMLTextAreaElement).value).toBe('');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('asks for a name first, and sends nothing until there is one', async () => {
     localStorage.clear();
     const source = render([run()]);
