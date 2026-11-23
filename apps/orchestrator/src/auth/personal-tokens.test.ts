@@ -8,7 +8,7 @@ import {
   sessionSchema,
   UI_NAMESPACE,
   type Approval,
-  type DecidedApproval,
+  type NodeDecision,
 } from '@page/contracts';
 import type { Socket } from 'socket.io-client';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
@@ -92,7 +92,7 @@ async function asked(tab: Socket) {
     requested.push(serverToUiEvents['approval.requested'].parse(payload).approval),
   );
   const node = await connected(nodes.connect({ token: testConfig.nodeSharedSecret }));
-  const decided: DecidedApproval[] = [];
+  const decided: NodeDecision[] = [];
   node.on('approval.decided', (payload: unknown) =>
     decided.push(serverToNodeEvents['approval.decided'].parse(payload).approval),
   );

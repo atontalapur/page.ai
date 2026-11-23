@@ -40,7 +40,7 @@ kill from any open status    ─▶ killed
 `issue_events` with its `actor`, who sent it: `ui:<name>` for a person (their personal token,
 or the tab's name label on the socket while there are none), `api:shared` for the shared API
 token, `system:triage` for triage, and `system:run` for a run's outcome
-(`ISSUE_EVENT_ACTORS` in contracts; `010_issue_event_actor.sql`). Events from before 010
+(`ISSUE_EVENT_ACTORS` in contracts; `012_issue_event_actor.sql`). Events from before 012
 have none. `GET /issues/:id/events` returns it. Entering a tier queues one `fix` job (`fixJobSchema` in `@page/contracts`) in the same
 transaction as the status change. The job's `runId` is also its pg-boss job id and is stored
 on the issue as `current_run_id`. Entering a new tier or a terminal status cancels the job it

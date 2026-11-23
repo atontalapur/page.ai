@@ -78,7 +78,7 @@ export const issueEventRecordSchema = z.strictObject({
   fromStatus: issueStatusSchema,
   toStatus: issueStatusSchema,
   currentTier: tierSchema.nullable(),
-  // Null on events recorded before the actor was (migration 010).
+  // Null on events recorded before the actor was (migration 012).
   actor: z.string().min(1).nullable(),
   createdAt: timestampSchema,
 });
