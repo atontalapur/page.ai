@@ -74,7 +74,7 @@ export interface StepsTable {
   created_at: Generated<Date>;
 }
 
-// The daemon that worked each run (007_run_nodes.sql). NodeRuns writes it from the gateway.
+// The daemon that worked each run (008_run_nodes.sql). NodeRuns writes it from the gateway.
 export interface RunNodesTable {
   run_id: string;
   node_name: string;
