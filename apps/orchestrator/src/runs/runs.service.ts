@@ -6,6 +6,7 @@ import {
   type IssueRun,
   type JobPayload,
   type Step,
+  type Tier,
 } from '@page/contracts';
 import type { Insertable, Selectable, Transaction } from 'kysely';
 import type { Database, Db, RunsTable, StepsTable } from '../db/database.ts';
@@ -57,6 +58,16 @@ export type RecordOutcome =
   // move the issue when it is recorded.
   | { kind: 'result_pending' }
   | { kind: 'no_issue' };
+
+/** The issue a run belongs to, for the gateway to relay the run's events. */
+export interface RunOwner {
+  issueId: string;
+  tier: Tier;
+  /** The issue is fixing with this as its current run: the run a daemon should be on. */
+  current: boolean;
+  /** As `forIssue` gives it: the row's, or the first step's while the run has no row. */
+  startedAt: string | null;
+}
 
 /** What a transaction did, and the issue change to log once it commits. */
 interface Recorded {
@@ -160,6 +171,43 @@ export class RunsService {
       });
     }
     return runs;
+  }
+
+  /**
+   * Whose run `runId` is: the issue waiting on it, or the issue on its `runs` row once it
+   * has one. Undefined for a run neither knows, such as one a new tier replaced before it
+   * reported.
+   */
+  async owner(runId: string): Promise<RunOwner | undefined> {
+    const issue = await this.db
+      .selectFrom('issues')
+      .select(['id', 'status', 'current_tier'])
+      .where('current_run_id', '=', runId)
+      .executeTakeFirst();
+    const current = issue?.status === 'fixing';
+    const row = await this.db
+      .selectFrom('runs')
+      .select(['issue_id', 'tier', 'started_at'])
+      .where('id', '=', runId)
+      .executeTakeFirst();
+    if (row) {
+      const startedAt = row.started_at?.toISOString() ?? null;
+      return { issueId: row.issue_id, tier: row.tier, current, startedAt };
+    }
+    if (!issue || issue.current_tier === null) return undefined;
+    const first = await this.db
+      .selectFrom('steps')
+      .select('created_at')
+      .where('run_id', '=', runId)
+      .orderBy('seq')
+      .limit(1)
+      .executeTakeFirst();
+    return {
+      issueId: issue.id,
+      tier: issue.current_tier,
+      current,
+      startedAt: first?.created_at.toISOString() ?? null,
+    };
   }
 
   /**

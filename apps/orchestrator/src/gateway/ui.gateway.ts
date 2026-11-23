@@ -3,7 +3,6 @@ import { WebSocketGateway, type OnGatewayConnection, type OnGatewayInit } from '
 import {
   serverToUiEvents,
   UI_NAMESPACE,
-  type Issue,
   type ServerToUiEvents,
   type UiToServerEvents,
 } from '@page/contracts';
@@ -19,6 +18,9 @@ import { guardHandshakes, limitMessages, type SocketGuard } from './socket-guard
 type UiNamespace = Namespace<UiToServerEvents, ServerToUiEvents>;
 type UiSocket = Socket<UiToServerEvents, ServerToUiEvents>;
 
+export type UiEvent = keyof ServerToUiEvents;
+export type UiPayload<E extends UiEvent> = Parameters<ServerToUiEvents[E]>[0];
+
 // A tab connects once, and socket.io-client retries a dropped connection at most every 5s,
 // so one tab stays under 12 handshakes a minute even while the server is down. 30 leaves
 // room for a few tabs behind one address, and holds a token guesser to 30 tries a minute.
@@ -30,11 +32,13 @@ export const MESSAGES_PER_10_SECONDS = 20;
 /**
  * The Socket.IO namespace for the UI. A handshake needs ORCHESTRATOR_API_TOKEN as
  * `auth.token`, the same token as the HTTP API, and is refused with `unauthorized` without
- * it. Every issue change IssuesService commits goes to every connected tab as `issue.updated`.
+ * it. Every issue change IssuesService commits goes to every connected tab as `issue.updated`,
+ * and NodeGateway sends each run's events through `send`.
  */
 @WebSocketGateway({ namespace: UI_NAMESPACE, serveClient: false })
 export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnection, OnModuleDestroy {
   private readonly guard: SocketGuard;
+  private namespace: UiNamespace | undefined;
   private unsubscribe: (() => void) | undefined;
 
   constructor(
@@ -52,8 +56,11 @@ export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnectio
   }
 
   afterInit(namespace: UiNamespace): void {
+    this.namespace = namespace;
     guardHandshakes(namespace, this.guard);
-    this.unsubscribe = this.updates.subscribe((issue) => this.sendIssue(namespace, issue));
+    this.unsubscribe = this.updates.subscribe((issue) =>
+      this.send('issue.updated', { v: 1, issue }),
+    );
   }
 
   handleConnection(socket: UiSocket): void {
@@ -64,16 +71,22 @@ export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnectio
     this.unsubscribe?.();
   }
 
-  /** Checks the payload against its contract, so a tab never gets one it would reject. */
-  private sendIssue(namespace: UiNamespace, issue: Issue): void {
-    const payload = serverToUiEvents['issue.updated'].safeParse({ v: 1, issue });
-    if (!payload.success) {
+  /**
+   * Sends `event` to every connected tab. Checks the payload against its contract first, so
+   * a tab never gets one it would reject.
+   */
+  send<E extends UiEvent>(event: E, payload: UiPayload<E>): void {
+    const parsed = serverToUiEvents[event].safeParse(payload);
+    if (!parsed.success) {
       this.logger.error(
-        { issueId: issue.id, problems: z.prettifyError(payload.error) },
-        'issue.updated failed its contract; not sent',
+        { event, problems: z.prettifyError(parsed.error) },
+        `${event} failed its contract; not sent`,
       );
       return;
     }
-    namespace.emit('issue.updated', payload.data);
+    if (!this.namespace) return;
+    // The typed emit wants the event as a literal; the payload is already checked.
+    const emit = this.namespace.emit.bind(this.namespace) as (e: string, p: unknown) => boolean;
+    emit(event, parsed.data);
   }
 }

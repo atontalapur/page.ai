@@ -370,25 +370,25 @@ describe('RunsService.recordFailedResult', () => {
   });
 });
 
-describe('RunsService.forIssue', () => {
-  /** Writes steps the way the daemon does, before its run has a row. */
-  async function stepsFor(runId: string, inputs: string[]) {
-    await deps.db
-      .insertInto('steps')
-      .values(
-        inputs.map((input, seq) => ({
-          run_id: runId,
-          seq,
-          kind: 'exec' as const,
-          input,
-          output_trimmed: `out ${seq}`,
-          exit_code: 0,
-          allowed: true,
-        })),
-      )
-      .execute();
-  }
+/** Writes steps the way the daemon does, before its run has a row. */
+async function stepsFor(runId: string, inputs: string[]) {
+  await deps.db
+    .insertInto('steps')
+    .values(
+      inputs.map((input, seq) => ({
+        run_id: runId,
+        seq,
+        kind: 'exec' as const,
+        input,
+        output_trimmed: `out ${seq}`,
+        exit_code: 0,
+        allowed: true,
+      })),
+    )
+    .execute();
+}
 
+describe('RunsService.forIssue', () => {
   it('throws for an unknown issue', async () => {
     await expect(runs.forIssue(randomUUID())).rejects.toBeInstanceOf(IssueNotFoundError);
   });
@@ -437,6 +437,39 @@ describe('RunsService.forIssue', () => {
     const served = await runs.forIssue(issue.id);
     expect(served).toHaveLength(1);
     expect(served[0]).toMatchObject({ status: 'succeeded', diff });
+  });
+});
+
+describe('RunsService.owner', () => {
+  it('names the issue fixing on the run, with the first step as its start', async () => {
+    const { issue, job } = await fixing();
+    expect(await runs.owner(job.runId)).toEqual({
+      issueId: issue.id,
+      tier: 1,
+      current: true,
+      startedAt: null,
+    });
+    await stepsFor(job.runId, ['ls', 'cat a.ts']);
+    const [run] = await runs.forIssue(issue.id);
+    expect(await runs.owner(job.runId)).toMatchObject({ current: true, startedAt: run?.startedAt });
+  });
+
+  it('is no longer current once the issue is killed', async () => {
+    const { issue, job } = await fixing();
+    await issues.apply(issue.id, { type: 'kill' });
+    expect(await runs.owner(job.runId)).toMatchObject({ issueId: issue.id, current: false });
+  });
+
+  it("reads a recorded run's row, and knows no run that never was", async () => {
+    const { issue, job } = await fixing();
+    await runs.record(finished(job, escalation));
+    expect(await runs.owner(job.runId)).toEqual({
+      issueId: issue.id,
+      tier: 1,
+      current: false,
+      startedAt: at,
+    });
+    expect(await runs.owner(randomUUID())).toBeUndefined();
   });
 });
 
