@@ -51,6 +51,14 @@ describe('FakeLink', () => {
     expect(JSON.parse(lines[0]!)).toMatchObject({ event: 'run.kill', level: 40 });
   });
 
+  it('plays a reconnect to its handlers', () => {
+    const link = new FakeLink();
+    let reconnects = 0;
+    link.onReconnect(() => reconnects++);
+    link.reconnect();
+    expect(reconnects).toBe(1);
+  });
+
   it('logs what it would send when given a logger', async () => {
     const lines: string[] = [];
     const link = new FakeLink(pino({}, { write: (line: string) => lines.push(line) }));
@@ -182,7 +190,7 @@ describe('SocketIoLink', () => {
     await link.close();
   });
 
-  it('connects again after the orchestrator closes the socket', async () => {
+  it('connects again after the orchestrator closes the socket, and says so', async () => {
     const { url, nodes } = await orchestrator('s3cret');
     let connections = 0;
     nodes.on('connection', (socket) => {
@@ -196,7 +204,11 @@ describe('SocketIoLink', () => {
       logger,
       retry: fast,
     });
+    let reconnects = 0;
+    link.onReconnect(() => reconnects++);
     await expect.poll(() => connections).toBe(2);
+    // The first connection isn't a reconnect; the second is.
+    await expect.poll(() => reconnects).toBe(1);
     await link.close();
   });
 

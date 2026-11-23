@@ -28,6 +28,12 @@ export interface OrchestratorLink {
    * One that doesn't is logged and dropped.
    */
   on<E extends ServerEvent>(event: E, handler: ServerHandler<E>): void;
+  /**
+   * Calls `handler` each time the link connects again after it was down, once the events it
+   * buffered meanwhile are sent. The orchestrator doesn't keep what it sent while the link
+   * was down, so a daemon waiting on an answer asks again here.
+   */
+  onReconnect(handler: () => void): void;
   close(): Promise<void>;
 }
 

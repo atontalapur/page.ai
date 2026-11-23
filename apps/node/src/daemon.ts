@@ -23,7 +23,7 @@ import { FakeLink } from './link/fake-link.ts';
 import type { OrchestratorLink } from './link/link.ts';
 import { SocketIoLink } from './link/socket-io-link.ts';
 import { ScriptedModel } from './model/scripted-model.ts';
-import type { Approvals } from './run/approvals.ts';
+import { autoApprovals, LinkApprovals, type Approvals } from './run/approvals.ts';
 import { liveAppLock, type OpsLock } from './run/ops-lock.ts';
 import { PgBossRunResults, type RunResults } from './run/results.ts';
 import { runFixJob } from './run/run-fix-job.ts';
@@ -176,6 +176,7 @@ export async function createAdapters(config: NodeConfig, logger: Logger): Promis
       opsLockFor(config, pool, logger),
       deployerFor(config, logger),
     ),
+    approvals: approvalsFor(config, link, logger),
     async close() {
       const results = await Promise.allSettled([
         link.close(),
@@ -249,6 +250,21 @@ export function deployerFor(config: NodeConfig, logger: Logger): Deployer | unde
     return undefined;
   }
   return new RailwayDeployer({ token, projectId, environmentId, serviceId });
+}
+
+/**
+ * How Tier 3 runs ask a person before a gated ops call: the orchestrator, over `link`, which
+ * shows the request on the incident page. AUTO_APPROVE_OPS approves every call instead, and
+ * says so once at startup; the config takes it only with fakes or an app on this machine.
+ */
+export function approvalsFor(
+  config: NodeConfig,
+  link: OrchestratorLink,
+  logger: Logger,
+): Approvals {
+  if (!config.AUTO_APPROVE_OPS) return new LinkApprovals({ link, logger });
+  logger.warn('AUTO_APPROVE_OPS is on: gated ops calls run without asking anyone');
+  return autoApprovals('AUTO_APPROVE_OPS');
 }
 
 function fakeDeploys(): Deployer {

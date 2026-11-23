@@ -17,6 +17,7 @@ export class FakeLink implements OrchestratorLink {
   closed = false;
   private readonly logger: Logger | undefined;
   private readonly handlers = new Map<ServerEvent, ((payload: unknown) => void)[]>();
+  private readonly reconnected: (() => void)[] = [];
 
   constructor(logger?: Logger) {
     this.logger = logger;
@@ -44,6 +45,15 @@ export class FakeLink implements OrchestratorLink {
     const parsed = received(event, payload, this.logger);
     if (parsed === undefined) return;
     for (const handler of this.handlers.get(event) ?? []) handler(parsed);
+  }
+
+  onReconnect(handler: () => void): void {
+    this.reconnected.push(handler);
+  }
+
+  /** Plays the link coming back after it was down. */
+  reconnect(): void {
+    for (const handler of this.reconnected) handler();
   }
 
   close(): Promise<void> {

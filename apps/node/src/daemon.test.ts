@@ -14,6 +14,7 @@ import { pino } from 'pino';
 import { describe, expect, it, vi } from 'vitest';
 import { loadConfig } from './config.ts';
 import {
+  approvalsFor,
   createDaemon,
   deployerFor,
   opsFor,
@@ -24,7 +25,7 @@ import {
 import { FakeJobSource } from './jobs/fake-job-source.ts';
 import { FakeLink } from './link/fake-link.ts';
 import { ScriptedModel, submitReply } from './model/scripted-model.ts';
-import { autoApprovals } from './run/approvals.ts';
+import { autoApprovals, LinkApprovals } from './run/approvals.ts';
 import { FakeRunResults } from './run/results.ts';
 import { DockerSandboxes } from './sandbox/docker-sandboxes.ts';
 import { FakeSandboxes, fakeWorkspace } from './sandbox/fake-sandboxes.ts';
@@ -228,6 +229,101 @@ describe('createDaemon', () => {
     await a.jobs.deliver({ ...jobFixtures.fix, tier: 3 });
     expect(deployer.rollbacks).toEqual([]);
     expect(a.sink.steps.at(-1)).toMatchObject({ allowed: false });
+  });
+
+  describe('asking the orchestrator', () => {
+    const tier3 = { ...jobFixtures.fix, tier: 3 as const };
+    const restartModel = () => new ScriptedModel(['```page_ops_restart\n```', submitReply()]);
+
+    function asking() {
+      const ops = new FakeOps();
+      const base = adapters();
+      const a = {
+        ...base,
+        ops,
+        model: restartModel(),
+        approvals: new LinkApprovals({ link: base.link, logger: pino({ enabled: false }) }),
+      };
+      const asked = () => a.link.payloads('node.approval.request');
+      return { a, ops, asked };
+    }
+
+    it('restarts the app once a person approves, on the same link', async () => {
+      const { a, ops, asked } = asking();
+      const daemon = createDaemon(a, pino({ enabled: false }));
+      await daemon.start();
+      const done = a.jobs.deliver(tier3);
+      await vi.waitFor(() => expect(asked()).toHaveLength(1));
+      const request = asked()[0]!;
+      a.link.deliver('approval.decided', {
+        v: 1,
+        approval: {
+          id: request.approvalId,
+          runId: request.runId,
+          issueId: tier3.issueId,
+          action: request.action,
+          args: request.args,
+          requestedAt: request.expiresAt,
+          expiresAt: request.expiresAt,
+          decision: 'approved',
+          decidedBy: 'ui:arjun',
+          decidedAt: request.expiresAt,
+        },
+      });
+      await done;
+      expect(ops.calls).toEqual(['restart']);
+      expect(a.link.payloads('node.run.finished')).toMatchObject([{ status: 'succeeded' }]);
+    });
+
+    it('stops waiting and runs nothing when the run is killed while it waits', async () => {
+      const { a, ops, asked } = asking();
+      const daemon = createDaemon(a, pino({ enabled: false }));
+      await daemon.start();
+      const done = a.jobs.deliver(tier3);
+      await vi.waitFor(() => expect(asked()).toHaveLength(1));
+      a.link.deliver('run.kill', { v: 1, runId: tier3.runId });
+      await done;
+      expect(ops.calls).toEqual([]);
+      expect(a.sink.steps).toMatchObject([
+        {
+          allowed: false,
+          outputTrimmed:
+            'refused: ops.restart was not approved: the run was stopped while it waited',
+        },
+      ]);
+      expect(a.link.payloads('node.run.finished')).toMatchObject([{ status: 'killed' }]);
+    });
+  });
+});
+
+describe('approvalsFor', () => {
+  const lines: { level: number; msg: string }[] = [];
+  const logger = pino(
+    {},
+    { write: (line: string) => void lines.push(JSON.parse(line) as (typeof lines)[number]) },
+  );
+  const config = (env: Record<string, string>) => {
+    const result = loadConfig({ ...nodeEnvFixture, ...env });
+    if (!result.ok) throw new Error(result.error);
+    return result.value;
+  };
+
+  it('asks a person through the orchestrator unless AUTO_APPROVE_OPS is on', async () => {
+    expect(approvalsFor(config({}), new FakeLink(), logger)).toBeInstanceOf(LinkApprovals);
+    expect(lines).toEqual([]);
+
+    const auto = approvalsFor(config({ AUTO_APPROVE_OPS: 'true' }), new FakeLink(), logger);
+    const approve = auto.forRun({
+      runId: 'r',
+      signal: new AbortController().signal,
+      args: () => ({}),
+    });
+    await expect(
+      approve({ kind: 'host_tool', tool: 'ops.restart' }, { timeoutMs: 1 }),
+    ).resolves.toEqual({ approved: true, by: 'AUTO_APPROVE_OPS' });
+    expect(lines).toMatchObject([
+      { level: 40, msg: 'AUTO_APPROVE_OPS is on: gated ops calls run without asking anyone' },
+    ]);
   });
 });
 

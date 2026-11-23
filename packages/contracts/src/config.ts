@@ -151,6 +151,31 @@ function railwayForApp() {
   return [check, { when: () => true }] as const;
 }
 
+/**
+ * AUTO_APPROVE_OPS skips the person who approves each gated ops call, so it is refused for
+ * an app anyone else uses: only with fakes, or with OPS_APP_URL on this machine and no
+ * Railway service, whose rollback would reach a shared deploy. Runs even when other fields
+ * fail.
+ */
+function autoApproveOnlyHere() {
+  const check = (config: Record<string, unknown> | undefined, ctx: z.RefinementCtx) => {
+    if (config?.AUTO_APPROVE_OPS !== true || config.USE_FAKE_ADAPTERS === true) return;
+    const raw = config.OPS_APP_URL;
+    const local =
+      typeof raw !== 'string' ||
+      (URL.canParse(raw) && LOOPBACK_HOSTS.includes(new URL(raw).hostname));
+    const railway = OPS_RAILWAY_KEYS.some((key) => config[key] !== undefined);
+    if (local && !railway) return;
+    ctx.addIssue({
+      code: 'custom',
+      path: ['AUTO_APPROVE_OPS'],
+      message:
+        'AUTO_APPROVE_OPS needs USE_FAKE_ADAPTERS, or an OPS_APP_URL on this machine and no OPS_RAILWAY_*: a person approves changes to a shared app',
+    });
+  };
+  return [check, { when: () => true }] as const;
+}
+
 export const orchestratorConfigSchema = envSchema(
   baseConfigSchema
     .extend({
@@ -228,6 +253,9 @@ export const nodeConfigSchema = envSchema(
       OPS_RAILWAY_PROJECT_ID: railwayId.optional(),
       OPS_RAILWAY_ENVIRONMENT_ID: railwayId.optional(),
       OPS_RAILWAY_SERVICE_ID: railwayId.optional(),
+      // Off: a person approves each gated ops call on the incident page. On, the daemon
+      // approves them itself, which only fakes or an ops app on this machine may do.
+      AUTO_APPROVE_OPS: z.stringbool().default(false),
     })
     .superRefine(
       ...requireUnlessFake([
@@ -238,7 +266,8 @@ export const nodeConfigSchema = envSchema(
       ]),
     )
     .superRefine(...opsSecretForApp())
-    .superRefine(...railwayForApp()),
+    .superRefine(...railwayForApp())
+    .superRefine(...autoApproveOnlyHere()),
 );
 
 export type NodeConfig = z.infer<typeof nodeConfigSchema>;
