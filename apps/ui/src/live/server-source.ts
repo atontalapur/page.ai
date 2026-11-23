@@ -71,6 +71,7 @@ export function serverSource(token: string, name?: string): IssueSource {
   return {
     start(feed: IssueFeed) {
       let retry: ReturnType<typeof setTimeout> | undefined;
+      let stopped = false;
       const current: Socket<ServerToUiEvents, UiToServerEvents> = io(UI_NAMESPACE, {
         auth: auth(),
       });
@@ -145,7 +146,11 @@ export function serverSource(token: string, name?: string): IssueSource {
           if (approval) feed.approval(approval);
         });
       }
-      current.on('disconnect', () => feed.status('reconnecting'));
+      // Closing a stopped source disconnects it too, and that is not a dropped connection: the
+      // tab may be asking for another token, and `reconnecting` would hide the prompt.
+      current.on('disconnect', () => {
+        if (!stopped) feed.status('reconnecting');
+      });
       current.on('connect_error', (err) => {
         // A refusal from the server's middleware is final for socket.io-client; anything
         // else (server down, network gone) it retries on its own.
@@ -158,6 +163,7 @@ export function serverSource(token: string, name?: string): IssueSource {
       });
 
       return () => {
+        stopped = true;
         clearTimeout(retry);
         current.close();
         if (socket === current) socket = undefined;

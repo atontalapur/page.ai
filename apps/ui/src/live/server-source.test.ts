@@ -288,6 +288,18 @@ describe('serverSource', () => {
     await vi.waitFor(() => expect(lists).toHaveLength(2));
   });
 
+  it('reports nothing for the disconnect its own stop causes', () => {
+    const { feed, statuses } = recorder();
+    const stop = serverSource('s3cret').start(feed);
+    const socket = sockets[0]!;
+    socket.fire('connect');
+    stop();
+    // socket.io-client fires disconnect when a connected socket is closed.
+    socket.fire('disconnect', 'io client disconnect');
+    expect(socket.closed).toBe(true);
+    expect(statuses.at(-1)).toBe('live');
+  });
+
   it('keeps going when the list fails or breaks the contract', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { feed, statuses, lists } = recorder();

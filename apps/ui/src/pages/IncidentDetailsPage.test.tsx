@@ -451,6 +451,16 @@ describe('IncidentDetailsPage', () => {
     expect(screen.queryByText('Loading incident...')).toBeNull();
   });
 
+  it('asks for a token above an incident it already shows, once the token is gone', () => {
+    const source = testSource([fixing]);
+    renderDetails(fixing.id, source);
+    expect(screen.queryByLabelText('Personal or API token')).toBeNull();
+
+    source.setStatus('needs_token');
+    expect(screen.getByLabelText('Personal or API token')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: fixing.title })).toBeTruthy();
+  });
+
   it('renders a back link to the incidents page', () => {
     renderDetails(fixing.id);
 

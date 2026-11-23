@@ -85,6 +85,9 @@ export default function IncidentDetailsPage() {
     <div className="space-y-6">
       <BackLink />
 
+      {/* Shown when the token is refused, or the person switches tokens from the approval bar. */}
+      <TokenPrompt />
+
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 space-y-2">
           <p className="font-mono text-sm text-muted-foreground">{shortId(issue.id)}</p>
