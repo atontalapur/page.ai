@@ -93,7 +93,7 @@ export interface EscalationsTable {
 
 export interface ApprovalsTable {
   id: Generated<string>;
-  // The fix job's id. No foreign key: a run in progress has no runs row yet (007).
+  // The fix job's id. No foreign key: a run in progress has no runs row yet (009).
   run_id: string;
   issue_id: string;
   action: string;

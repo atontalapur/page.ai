@@ -267,7 +267,7 @@ describe('orchestrator tables on real Postgres', () => {
     const deleteIssue = () => db.deleteFrom('issues').where('id', '=', issue_id).execute();
     const deleteRun = () => db.deleteFrom('runs').where('id', '=', runId).execute();
     await expect(deleteIssue()).rejects.toMatchObject({ code: '23001' });
-    // The escalation holds the run; an approval doesn't (007).
+    // The escalation holds the run; an approval doesn't (009).
     await expect(deleteRun()).rejects.toMatchObject({ code: '23001' });
 
     const runs = await db.selectFrom('runs').select('id').where('id', '=', runId).execute();

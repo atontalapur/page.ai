@@ -272,7 +272,9 @@ describe('createDaemon', () => {
       });
       await done;
       expect(ops.calls).toEqual(['restart']);
-      expect(a.link.payloads('node.run.finished')).toMatchObject([{ status: 'succeeded' }]);
+      expect(a.sink.steps).toMatchObject([
+        { input: '{"tool":"ops.restart"}', allowed: true, exitCode: 0 },
+      ]);
     });
 
     it('stops waiting and runs nothing when the run is killed while it waits', async () => {

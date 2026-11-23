@@ -232,7 +232,7 @@ says why those four). `ApprovalsModule` holds the requests and their decisions i
 `approvals.run_id` is the fix job's id, as `steps.run_id` is, with no foreign key: a run in
 progress has no `runs` row until its result is recorded, and that is when it asks. Each
 request names its issue instead (`issue_id`, a foreign key), so an issue with approvals can't
-be deleted (`007_approvals_in_progress.sql`). Creating the `runs` row when a run starts would
+be deleted (`009_approvals_in_progress.sql`). Creating the `runs` row when a run starts would
 have kept the key, but `GET /issues/:id/runs`, `RunsService.owner` (which tells a recorded run
 from one in progress) and `recordLost` all read a row as a finished run.
 
