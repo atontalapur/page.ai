@@ -3,8 +3,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { Approval, DecidedApproval, PendingApproval } from '@page/contracts';
 
-import { issue, renderWithIssues, testSource, type TestSource } from '../../test-utils';
+import {
+  issue,
+  renderWithIssues,
+  testSource,
+  withSession,
+  type TestSource,
+} from '../../test-utils';
 import ApprovalRequests from './ApprovalRequests';
+import TokenPrompt from './TokenPrompt';
 
 afterEach(() => {
   cleanup();
@@ -235,6 +242,56 @@ describe('ApprovalRequests', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Change' }));
     expect(screen.getByLabelText('Your name')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Approve' })).toHaveProperty('disabled', true);
+  });
+
+  it('decides under the name a personal token carries, with no name to give', async () => {
+    named('Someone else');
+    const source = withSession(testSource([fixing]), { token: 'personal', name: 'Daniyal' });
+    source.approvals.set(fixing.id, [pending()]);
+    renderFor(source);
+    const bar = await section();
+
+    await waitFor(() => expect(within(bar).getByText('Daniyal')).toBeTruthy());
+    expect(bar.textContent).toContain('Signed in as Daniyal. Your decision is recorded');
+    expect(within(bar).queryByLabelText('Your name')).toBeNull();
+    expect(within(bar).queryByRole('button', { name: 'Change' })).toBeNull();
+    fireEvent.click(within(bar).getByRole('button', { name: 'Approve' }));
+    expect(source.decisions).toHaveLength(1);
+  });
+
+  it('keeps the shared token from deciding once personal tokens exist, and offers to switch', async () => {
+    named();
+    const source = withSession(testSource([fixing]), { token: 'shared', canDecide: false });
+    source.approvals.set(fixing.id, [pending()]);
+    sessionStorage.setItem('page-ai-api-token', 'shared');
+    renderWithIssues(
+      <>
+        <ApprovalRequests issue={fixing} />
+        <TokenPrompt />
+      </>,
+      source,
+    );
+    const bar = await section();
+
+    await waitFor(() =>
+      expect(bar.textContent).toContain("connected with the shared API token, which can't"),
+    );
+    expect(within(bar).queryByLabelText('Your name')).toBeNull();
+    expect(within(bar).getByRole('button', { name: 'Approve' })).toHaveProperty('disabled', true);
+    expect(within(bar).getByRole('button', { name: 'Reject' })).toHaveProperty('disabled', true);
+    fireEvent.click(within(bar).getByRole('button', { name: 'Connect with your personal token' }));
+    // The token is forgotten and the prompt asks for another, with no refusal shown.
+    expect(await screen.findByLabelText('Personal or API token')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(sessionStorage.getItem('page-ai-api-token')).toBeNull();
+    expect(bar.textContent).not.toContain('shared API token');
+  });
+
+  it('asks for a name as before when the shared token may decide', async () => {
+    const source = withSession(testSource([fixing]), { token: 'shared', canDecide: true });
+    source.approvals.set(fixing.id, [pending()]);
+    renderFor(source);
+    expect(await screen.findByLabelText('Your name')).toBeTruthy();
   });
 
   it('keeps the buttons off while the socket is down, and loads again once it is back', async () => {

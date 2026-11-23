@@ -439,6 +439,25 @@ describe('serverSource approvals', () => {
     fetchMock.mockRejectedValueOnce(new TypeError('network'));
     expect(await source.fetchApprovals(issueFixture.id)).toBeUndefined();
   });
+
+  it('asks who the token names, and finds nothing for an older server, a bad body or no network', async () => {
+    const source = serverSource('personal-token');
+
+    fetchMock.mockResolvedValueOnce(json({ token: 'personal', name: 'Arjun' }));
+    expect(await source.fetchSession!()).toEqual({ token: 'personal', name: 'Arjun' });
+    expect(fetchMock).toHaveBeenLastCalledWith('/me', {
+      headers: { authorization: 'Bearer personal-token', accept: 'application/json' },
+    });
+    fetchMock.mockResolvedValueOnce(json({ token: 'shared', canDecide: false }));
+    expect(await source.fetchSession!()).toEqual({ token: 'shared', canDecide: false });
+
+    fetchMock.mockResolvedValueOnce(json({ statusCode: 404 }, 404));
+    expect(await source.fetchSession!()).toBeUndefined();
+    fetchMock.mockResolvedValueOnce(json({ token: 'personal', name: 'ui:Arjun' }));
+    expect(await source.fetchSession!()).toBeUndefined();
+    fetchMock.mockRejectedValueOnce(new TypeError('network'));
+    expect(await source.fetchSession!()).toBeUndefined();
+  });
 });
 
 describe('serverPresent', () => {

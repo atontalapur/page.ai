@@ -9,6 +9,7 @@ import type {
   IssueRun,
   NodeRun,
   NodeSummary,
+  Session,
 } from '@page/contracts';
 import { issueFixture } from '@page/contracts/fixtures';
 
@@ -103,6 +104,12 @@ export interface TestSource extends IssueSource {
   names: string[];
   /** Delivers a raw `approval.requested` or `approval.updated` payload, parsed first. */
   sendApproval(event: 'approval.requested' | 'approval.updated', payload: unknown): void;
+}
+
+/** `source`, answering GET /me with `session`, as a server source does. */
+export function withSession(source: TestSource, session: Session): TestSource {
+  source.fetchSession = () => Promise.resolve(session);
+  return source;
 }
 
 /** A source that loads `issues` as its list and plays whatever a test sends. */

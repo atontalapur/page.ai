@@ -447,7 +447,7 @@ describe('IncidentDetailsPage', () => {
   it('asks for the token instead of saying not found', () => {
     renderDetails(fixing.id, testSource([], 'needs_token'));
 
-    expect(screen.getByLabelText('API token')).toBeTruthy();
+    expect(screen.getByLabelText('Personal or API token')).toBeTruthy();
     expect(screen.queryByText('Loading incident...')).toBeNull();
   });
 

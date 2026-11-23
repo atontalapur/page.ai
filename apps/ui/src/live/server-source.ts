@@ -5,6 +5,7 @@ import {
   issueSchema,
   nodeRunSchema,
   nodeSummarySchema,
+  sessionSchema,
   UI_NAMESPACE,
   type Approval,
   type Issue,
@@ -14,6 +15,7 @@ import {
   type NodeRun,
   type NodeSummary,
   type ServerToUiEvents,
+  type Session,
   type SocketRefusal,
   type UiToServerEvents,
 } from '@page/contracts';
@@ -49,8 +51,10 @@ class Unauthorized extends Error {}
  * load is applied again after it. Each reconnect loads both lists again, for the changes made
  * while the socket was down, and tells the store (`synced`) so loaded runs are loaded again.
  *
- * `name` is the person's, sent as `auth.name` in the handshake. The server records each Tier 3
- * decision this tab sends under it, and refuses decisions from a tab with none.
+ * `token` is the shared API token or a person's dashboard token. A personal token names its
+ * holder, and the server records this tab's Tier 3 decisions under that name. With the shared
+ * token, `name` (sent as `auth.name` in the handshake) is used instead while the server has no
+ * personal tokens, and a tab with none can't decide.
  */
 export function serverSource(token: string, name?: string): IssueSource {
   const headers = { authorization: `Bearer ${token}`, accept: 'application/json' };
@@ -170,6 +174,17 @@ export function serverSource(token: string, name?: string): IssueSource {
       // The name goes in the handshake, so it takes a new connection.
       socket.auth = auth();
       socket.disconnect().connect();
+    },
+
+    async fetchSession(): Promise<Session | undefined> {
+      try {
+        const res = await get('/me');
+        if (!res.ok) return undefined;
+        const session = sessionSchema.safeParse(await res.json());
+        return session.success ? session.data : undefined;
+      } catch {
+        return undefined;
+      }
     },
 
     async fetchApprovals(id: string): Promise<Approval[] | undefined> {

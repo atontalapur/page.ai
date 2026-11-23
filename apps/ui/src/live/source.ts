@@ -9,6 +9,7 @@ import {
   type NodeRun,
   type NodeSummary,
   type ServerToUiEvents,
+  type Session,
 } from '@page/contracts';
 
 /**
@@ -78,6 +79,12 @@ export interface IssueSource {
   decideApproval(approvalId: string, decision: ApprovalDecision): void;
   /** Connects again under `name`, the one the server records decisions with. */
   setApproverName?(name: string): void;
+  /**
+   * Who the token names (GET /me): a person, or the shared token and whether it may decide.
+   * Undefined when it can't be loaded, as from an orchestrator from before /me. A source
+   * without it, such as the mock, decides under a name the tab gives.
+   */
+  fetchSession?(): Promise<Session | undefined>;
 }
 
 /**

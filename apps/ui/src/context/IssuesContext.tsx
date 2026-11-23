@@ -16,6 +16,7 @@ import type {
   IssueRun,
   NodeRun,
   NodeSummary,
+  Session,
 } from '@page/contracts';
 
 import { readApproverName, saveApproverName } from '../live/approver';
@@ -55,9 +56,19 @@ interface IssuesContextType {
   loadApprovals: (issueId: string) => Promise<void>;
   /** Sends a decision; every tab drops the request once the server records it. */
   decideApproval: (approvalId: string, decision: ApprovalDecision) => void;
-  /** The name decisions are recorded under, or null until the person gives one. */
+  /**
+   * The name a tab with the shared token decides under, or null until the person gives one.
+   * A personal token decides under its own name instead (`session`).
+   */
   approverName: string | null;
   setApproverName: (name: string) => void;
+  /**
+   * Who the token names, once the orchestrator has said (GET /me). Undefined before that, and
+   * for a source that can't say, such as the mock: the tab then decides under `approverName`.
+   */
+  session: Session | undefined;
+  /** Forgets the token and asks for one again, to connect as someone else. */
+  signOut: () => void;
 }
 
 const IssuesContext = createContext<IssuesContextType | undefined>(undefined);
@@ -124,6 +135,8 @@ export function IssuesProvider({
   const runListeners = useRef(new Set<RunListener>());
   const [approvals, setApprovals] = useState<Map<string, Approval>>(() => new Map());
   const [approverName, setName] = useState<string | null>(() => readApproverName());
+  const [session, setSession] = useState<Session | undefined>();
+  const live = status === 'live';
 
   // Pick a source once, unless one was passed in.
   useEffect(() => {
@@ -171,6 +184,7 @@ export function IssuesProvider({
         if (next === 'needs_token') {
           clearToken();
           setTokenRefused(true);
+          setSession(undefined);
           setActive(undefined);
         }
       },
@@ -201,6 +215,19 @@ export function IssuesProvider({
     return active.start(feed);
   }, [active]);
 
+  // Who the token names, asked each time the socket connects: the token can't change without
+  // a new source, but a reconnect may follow a restart that changed DASHBOARD_TOKENS.
+  useEffect(() => {
+    if (!live || !active?.fetchSession) return;
+    let cancelled = false;
+    void active.fetchSession().then((next) => {
+      if (!cancelled && next) setSession(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, live]);
+
   const subscribeRuns = useCallback((listener: RunListener) => {
     runListeners.current.add(listener);
     return () => {
@@ -212,10 +239,19 @@ export function IssuesProvider({
     (token: string) => {
       saveToken(token);
       setTokenRefused(false);
+      setSession(undefined);
       setActive(serverSource(token, approverName ?? undefined));
     },
     [approverName],
   );
+
+  const signOut = useCallback(() => {
+    clearToken();
+    setTokenRefused(false);
+    setSession(undefined);
+    setActive(undefined);
+    setStatus('needs_token');
+  }, []);
 
   const pendingApprovals = useCallback(
     (issueId: string) =>
@@ -320,6 +356,8 @@ export function IssuesProvider({
       decideApproval,
       approverName,
       setApproverName,
+      session,
+      signOut,
     }),
     [
       issues,
@@ -337,6 +375,8 @@ export function IssuesProvider({
       decideApproval,
       approverName,
       setApproverName,
+      session,
+      signOut,
     ],
   );
 
@@ -387,4 +427,9 @@ export function useRunFeed(): RunFeedContextType {
 /** The provider's status, or undefined outside one (the layout renders in tests without it). */
 export function useIssuesStatus(): IssuesStatus | undefined {
   return useContext(IssuesContext)?.status;
+}
+
+/** Who the token names, or undefined outside a provider or before the server has said. */
+export function useSession(): Session | undefined {
+  return useContext(IssuesContext)?.session;
 }

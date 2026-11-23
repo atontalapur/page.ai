@@ -192,7 +192,7 @@ describe('IncidentsPage', () => {
   it('asks for the token when the orchestrator needs one', () => {
     renderWithIssues(<IncidentsPage />, testSource([], 'needs_token'));
 
-    expect(screen.getByLabelText('API token')).toBeTruthy();
+    expect(screen.getByLabelText('Personal or API token')).toBeTruthy();
     expect(screen.getByText('Connect with the API token to load incidents.')).toBeTruthy();
   });
 
