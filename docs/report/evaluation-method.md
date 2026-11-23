@@ -109,6 +109,14 @@ Tier 1 only is the low-privilege baseline and Tier 3 from the start is the high-
 one. The ladder is the system under test. We want to know how close it gets to the Tier 3
 fix rate while granting privilege only when a run needs it.
 
+In every run reported below (dev, held-out and ops), a run escalated only when the agent ran
+out of steps, money or time. A run that submitted landed at that tier, whatever its patch.
+Confidence escalation came later: the daemon now scores a submitted run from its steps and
+the files it changed, and a score under the tier's threshold escalates the run as
+`low_confidence` (or pages at Tier 3). None of the reported runs was scored, none escalated
+on a score, and the numbers below are left as they were measured. The held-out set has had
+its one run and won't be rerun with it; any run with it is a new set on dev bugs.
+
 Each dev bug runs 3 times per configuration. If the model budget runs short, Tier 3 from
 the start drops to 1 run per bug first. Each held-out bug runs once per configuration, the
 one run the [preregistration](eval-prereg.md) reserves for that set. In those runs Tier 3
@@ -160,8 +168,16 @@ tried.
   break something else.
 - Locally, ops scenarios run against a compose stand-in for Railway, not the production
   deploy path.
+- The results describe the system before confidence escalation. The daemon now escalates a
+  submitted run whose score is under its tier's threshold, so the ladder deployed today
+  climbs on more than the ladder measured here. How that changes fix rate, cost and false
+  escalations is not known: the results files don't keep the steps the score reads, so the
+  recorded runs can't be scored after the fact.
 
 ## Results
+
+Every result in this section was measured before confidence escalation existed (see
+[Configurations](#configurations)): the ladder climbed only on step, cost and time limits.
 
 ### Dev set
 
@@ -302,9 +318,10 @@ The ladder matched the tier3-start fix rate overall (1.00 x). It fell short on t
 backend-api bugs, 013 and 014, where tier3-start fixed every run. Two of those three misses
 are the worst kind: the agent submitted a wrong patch at Tier 1 (013 #2, 014 #1), so the
 ladder neither climbed nor paged. A real deploy would have opened a PR with a patch that
-doesn't fix the bug. The ladder only climbs on step, cost or time limits, so a confident
-wrong patch never reaches Tier 2. tier1-only and tier3-start had no wrong submissions:
-all their misses paged.
+doesn't fix the bug. In this run the ladder climbed only on step, cost or time limits, so a
+confident wrong patch never reached Tier 2. tier1-only and tier3-start had no wrong
+submissions: all their misses paged. Confidence escalation was added later for this failure;
+whether it would have caught these two runs is not known, since their steps weren't kept.
 
 ### Held-out set
 
@@ -550,8 +567,8 @@ Tier 1 and again at Tier 2, climbed, and fixed the bug at Tier 3 in 6 to 17 step
 the agent at Tier 1 or Tier 2 traced the 500 to the setting and wrote a code patch that caps
 the shop settings at the `integer` maximum, with a test. At Tier 2 it also opened a PR (to
 the in-memory GitHub every eval run uses). The patch is a fair hardening, but it changes
-code, not the live app, so the check still failed. The ladder only climbs on step, cost or
-time limits, so none of these runs reached Tier 3. This is the failure dev showed, a
+code, not the live app, so the check still failed. The ladder climbed only on step, cost or
+time limits in this run, so none of these runs reached Tier 3. This is the failure dev showed, a
 confident patch at a lower tier that neither climbs nor pages, here on all 3 runs of one
 bug.
 
@@ -623,5 +640,7 @@ result, and the set shows both sides of it. When the lower tiers run out of step
 ladder climbs and fixes the bug (030, 3 of 3). When a lower tier submits a plausible code
 patch, the ladder stops there (029, 0 of 3). The ladder misses the 0.8 bar on this set (0.60
 x tier3-start), and the whole miss is 029. Two bugs and 18 runs can't carry a firm rate, but
-they put a number on the risk dev only hinted at: the ladder's escalation trigger doesn't
-look at whether the submitted fix worked.
+they put a number on the risk dev only hinted at: the ladder's escalation trigger, as it was
+in this run, didn't look at whether the submitted fix worked. Confidence escalation came
+after this run and the set wasn't played again with it. The score reads the tests and checks
+the agent ran, and the 029 patches came with a test, so it may not have caught them either.

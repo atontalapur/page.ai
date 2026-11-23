@@ -40,6 +40,14 @@ different prompt from the frozen runs. The bars are scored on dev only; the repo
 same checks on this set for comparison, as it does for held-out. 024 stays unrun: it is held
 out, its reservation is used, and its fix is a rollback, which has no agent tool yet.
 
+Note (2026-11-23), not an amendment: every run this preregistration covers (the pilots, dev,
+held-out and ops) came before confidence escalation. The ladder arm below climbed on step,
+cost or time limit only, and no run was scored. The daemon now also escalates a submitted
+run whose confidence score is under its tier's threshold (`CONFIDENCE_THRESHOLD`, next to the
+frozen budgets in `threshold.ts`, which are unchanged). The bars, arms and results stay as
+they were. A run with confidence escalation is a new set on dev bugs, with an amendment of
+its own; the held-out reservation is used and is not run again.
+
 ## Bars
 
 lesson: how close the full ladder gets to the Tier 3 from-start fix rate while granting
