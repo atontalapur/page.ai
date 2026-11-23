@@ -392,6 +392,7 @@ describe('IncidentDetailsPage', () => {
         args: { tool: 'ops.restart' },
         requestedAt: '2026-11-22T09:00:00.000Z',
         expiresAt: new Date(Date.now() + 120_000).toISOString(),
+        reason: null,
         decision: 'pending',
         decidedBy: null,
         decidedAt: null,

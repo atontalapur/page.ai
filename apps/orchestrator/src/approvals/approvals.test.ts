@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import {
   approvalSchema,
+  MAX_APPROVAL_REASON_CHARS,
   MAX_APPROVAL_WAIT_MS,
   NODE_NAMESPACE,
   serverToNodeEvents,
@@ -126,6 +127,59 @@ describe('a daemon asks', () => {
     };
     expect(requested[0]![0]).toMatchObject(pending);
     expect(await row(ask.approvalId)).toMatchObject({ decision: 'pending', issue_id: issueId });
+  });
+
+  it("stores the agent's reason as it came, and sends it to every tab and to the daemon", async () => {
+    const reason = 'The live build is bad.\n<script>alert(1)</script> [ok](javascript:alert(1))';
+    const { ask, issueId, decided, arjun, requested } = await asked({ reason });
+    await expect.poll(() => requested.map((r) => r[0]?.reason)).toEqual([reason, reason]);
+    expect((await row(ask.approvalId))?.reason).toBe(reason);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/approvals?issueId=${issueId}`,
+      headers: auth,
+    });
+    expect(
+      approvalSchema
+        .array()
+        .parse(res.json())
+        .map((a) => a.reason),
+    ).toEqual([reason]);
+
+    arjun.emit('approval.decide', { v: 1, approvalId: ask.approvalId, decision: 'rejected' });
+    await expect.poll(() => decided).toMatchObject([{ id: ask.approvalId, reason }]);
+  });
+
+  it('stores no reason from a daemon that sends none, or sends one with nothing in it', async () => {
+    const { ask: older, requested } = await asked();
+    expect('reason' in older).toBe(false);
+    await expect.poll(() => requested[0]!.length).toBe(1);
+    expect(requested[0]![0]!.reason).toBeNull();
+    expect((await row(older.approvalId))?.reason).toBeNull();
+
+    const blank = await asked({ reason: null });
+    await expect.poll(() => blank.requested[0]!.length).toBe(1);
+    expect((await row(blank.ask.approvalId))?.reason).toBeNull();
+  });
+
+  it('drops control characters and bidirectional marks from a reason', async () => {
+    const [bell, rlo, pdf] = [0x07, 0x202e, 0x202c].map((point) => String.fromCodePoint(point));
+    const { ask, requested } = await asked({ reason: `Restart${bell} ${rlo}won${pdf} now` });
+    await expect.poll(() => requested[0]!.length).toBe(1);
+    expect(requested[0]![0]!.reason).toBe('Restart won now');
+    expect((await row(ask.approvalId))?.reason).toBe('Restart won now');
+  });
+
+  it('drops a request whose reason is over the cap, as its contract says', async () => {
+    const { ask, node, requested } = await asked({
+      reason: 'x'.repeat(MAX_APPROVAL_REASON_CHARS + 1),
+    });
+    // Events from one socket are handled in order, so this one comes after the request.
+    node.emit('node.diff', { v: 1, runId: ask.runId, diff: '' });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(requested[0]).toEqual([]);
+    expect(await row(ask.approvalId)).toBeUndefined();
   });
 
   it('holds a deadline to the longest a run could wait', async () => {

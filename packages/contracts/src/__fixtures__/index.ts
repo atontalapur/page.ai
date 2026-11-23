@@ -103,6 +103,7 @@ export const pendingApprovalFixture: PendingApproval = {
   decidedBy: null,
   requestedAt: at,
   expiresAt: '2026-10-30T12:03:00.000Z',
+  reason: 'The live flat shipping fee is 2500000000 cents. Setting it back to 500 fixes the 500s.',
   decidedAt: null,
 };
 
@@ -204,6 +205,7 @@ export const nodeToServerEventFixtures: Payloads<NodeToServerEvents> = {
     action: pendingApprovalFixture.action,
     args: pendingApprovalFixture.args,
     expiresAt: pendingApprovalFixture.expiresAt,
+    reason: pendingApprovalFixture.reason,
   },
 };
 

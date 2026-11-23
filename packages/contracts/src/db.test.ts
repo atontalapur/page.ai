@@ -18,6 +18,7 @@ import {
   stepSchema,
   SYSTEM_DECIDERS,
 } from './db.ts';
+import { MAX_APPROVAL_REASON_CHARS } from './approval-reason.ts';
 import { roundTrip } from './test-utils.ts';
 
 describe('issueSchema', () => {
@@ -154,6 +155,19 @@ describe('approvalSchema', () => {
     expect(() =>
       approvalSchema.parse({ ...pendingApprovalFixture, expiresAt: undefined }),
     ).toThrow();
+  });
+
+  it("carries the agent's reason, or null when it gave none", () => {
+    expect(approvalSchema.parse(pendingApprovalFixture).reason).toBe(pendingApprovalFixture.reason);
+    const none = { ...decidedApprovalFixture, reason: null };
+    expect(roundTrip(approvalSchema, none)).toEqual(none);
+    expect(() => approvalSchema.parse({ ...pendingApprovalFixture, reason: undefined })).toThrow();
+  });
+
+  it('rejects an empty reason, and one over the cap', () => {
+    expect(() => approvalSchema.parse({ ...pendingApprovalFixture, reason: '' })).toThrow();
+    const long = 'x'.repeat(MAX_APPROVAL_REASON_CHARS + 1);
+    expect(() => approvalSchema.parse({ ...pendingApprovalFixture, reason: long })).toThrow();
   });
 });
 

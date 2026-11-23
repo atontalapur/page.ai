@@ -135,10 +135,13 @@ export type ApprovalVerdict = { approved: true; by: string } | { approved: false
  * Asks a person to approve `call`, and resolves with their answer within `timeoutMs`. No
  * answer in time, or a stopped run, resolves as a rejection with its reason. It rejects only
  * when something is broken, which execute() turns into a refusal.
+ *
+ * `thought` is what the model said before asking for the call (ExecContext.thought), so the
+ * person can see why. It is the model's text, so it is untrusted; unset when it said nothing.
  */
 export type Approve = (
   call: HostToolCall,
-  options: { timeoutMs: number },
+  options: { timeoutMs: number; thought?: string },
 ) => Promise<ApprovalVerdict>;
 
 export type ToolCall = ExecCall | EditCall | HostToolCall;

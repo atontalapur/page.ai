@@ -401,6 +401,27 @@ describe('execute gated host tools', () => {
     ]);
   });
 
+  it('asks with the thought behind the call, and keeps it on the step a person rejected', async () => {
+    const sink = new InMemoryAuditSink();
+    const { tools } = hostTools();
+    const thoughts: (string | undefined)[] = [];
+    const approve: Approve = (_call, { thought }) => {
+      thoughts.push(thought);
+      return Promise.resolve({ approved: false, reason: 'arjun rejected it' });
+    };
+    const thought = 'The override is wrong, so a restart loads the env value.';
+    await execute(restart, {
+      tier: 3,
+      runner: new FakeRunner(),
+      steps: testSteps(sink),
+      hostTools: tools,
+      approve,
+      thought,
+    });
+    expect(thoughts).toEqual([thought]);
+    expect(sink.steps).toEqual([expect.objectContaining({ allowed: false, thought })]);
+  });
+
   it('refuses the call when asking breaks', async () => {
     const { tools, calls } = hostTools();
     const { approve } = approver(new Error('socket gone'));

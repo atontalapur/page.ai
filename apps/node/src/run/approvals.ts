@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { SYSTEM_DECIDERS, type DecidedApproval } from '@page/contracts';
+import { approvalReason, SYSTEM_DECIDERS, type DecidedApproval } from '@page/contracts';
 import {
   autoApprove,
   hostToolArgs,
@@ -71,7 +71,8 @@ interface Waiting {
 /**
  * Asks a person through the orchestrator: sends `node.approval.request` and waits for the
  * `approval.decided` that answers it. One per daemon: it listens on the link once and hands
- * each answer to the run waiting on it.
+ * each answer to the run waiting on it. The request carries the model's thought for the call
+ * as its `reason` (approvalReason), so the person sees why the agent asks.
  *
  * A wait ends as a rejection when no one decides by the deadline, when the run is killed or
  * its job expires, and when the server says the run is no longer in progress. The server
@@ -101,7 +102,8 @@ export class LinkApprovals implements Approvals {
   }
 
   forRun({ runId, signal, args }: Parameters<Approvals['forRun']>[0]): Approve {
-    return (call, { timeoutMs }) => this.ask(runId, signal, call, args(call), timeoutMs);
+    return (call, { timeoutMs, thought }) =>
+      this.ask(runId, signal, call, args(call), approvalReason(thought), timeoutMs);
   }
 
   private async ask(
@@ -109,6 +111,7 @@ export class LinkApprovals implements Approvals {
     signal: AbortSignal,
     call: HostToolCall,
     args: Record<string, unknown>,
+    reason: string | null,
     timeoutMs: number,
   ): Promise<ApprovalVerdict> {
     if (signal.aborted) return STOPPED;
@@ -121,6 +124,7 @@ export class LinkApprovals implements Approvals {
       action: call.tool,
       args,
       expiresAt: new Date(this.now() + waitMs).toISOString(),
+      reason,
     };
     const log = this.logger.child({ runId, approvalId: request.approvalId, tool: call.tool });
     // Sent first: a request the contract refuses throws here, before anything waits on it.

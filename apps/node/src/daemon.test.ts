@@ -265,6 +265,7 @@ describe('createDaemon', () => {
           args: request.args,
           requestedAt: request.expiresAt,
           expiresAt: request.expiresAt,
+          reason: request.reason ?? null,
           decision: 'approved',
           decidedBy: 'ui:arjun',
           decidedAt: request.expiresAt,
@@ -275,6 +276,23 @@ describe('createDaemon', () => {
       expect(a.sink.steps).toMatchObject([
         { input: '{"tool":"ops.restart"}', allowed: true, exitCode: 0 },
       ]);
+    });
+
+    it("sends the agent's THOUGHT with the request, as plain text", async () => {
+      const { a, asked } = asking();
+      a.model = new ScriptedModel([
+        'THOUGHT: The <b>override</b> is wrong; a restart loads the env value.\n\n```page_ops_restart\n```',
+        submitReply(),
+      ]);
+      const daemon = createDaemon(a, pino({ enabled: false }));
+      await daemon.start();
+      const done = a.jobs.deliver(tier3);
+      await vi.waitFor(() => expect(asked()).toHaveLength(1));
+      expect(asked()[0]?.reason).toBe(
+        'The <b>override</b> is wrong; a restart loads the env value.',
+      );
+      a.link.deliver('run.kill', { v: 1, runId: tier3.runId });
+      await done;
     });
 
     it('stops waiting and runs nothing when the run is killed while it waits', async () => {
@@ -311,10 +329,13 @@ describe('approvalsFor', () => {
   };
 
   it('asks a person through the orchestrator unless AUTO_APPROVE_OPS is on', async () => {
-    expect(approvalsFor(config({}), new FakeLink(), logger)).toBeInstanceOf(LinkApprovals);
+    const asking = approvalsFor(config({}), new FakeLink(), logger);
+    expect(asking).toBeInstanceOf(LinkApprovals);
+    expect(asking.asksPerson).toBe(true);
     expect(lines).toEqual([]);
 
     const auto = approvalsFor(config({ AUTO_APPROVE_OPS: 'true' }), new FakeLink(), logger);
+    expect(auto.asksPerson).toBe(false);
     const approve = auto.forRun({
       runId: 'r',
       signal: new AbortController().signal,

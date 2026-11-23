@@ -7,8 +7,8 @@ import { IssuesService } from '../issues/issues.service.ts';
 import { RunsService } from '../runs/runs.service.ts';
 import { ApprovalsService } from './approvals.service.ts';
 
-// ApprovalsService on real Postgres: a request from a run with no runs row yet, the first
-// decision winning, a deadline enforced by the database clock, and a kill closing the rest.
+// ApprovalsService on real Postgres: a request from a run with no runs row yet, its reason, the
+// first decision winning, a deadline enforced by the database clock, and a kill closing the rest.
 
 const deps = await createSchemaDeps();
 const updates = new IssueUpdates(deps.logger);
@@ -60,6 +60,15 @@ describe('ApprovalsService on real Postgres', () => {
     expect(second).toMatchObject({ kind: 'already_decided', approval: { decision: 'approved' } });
     expect((await approvals.request(request))?.decision).toBe('approved');
     expect(await approvals.forIssue(issueId)).toHaveLength(1);
+  });
+
+  it("keeps the agent's reason as plain text, and reads it back with the request", async () => {
+    const { issueId, runId } = await fixing();
+    const reason = "The override is wrong.\n<b>Approve</b> '; drop table approvals; --";
+    const request = { ...ask(runId), reason };
+    expect(approvalSchema.parse(await approvals.request(request)).reason).toBe(reason);
+    expect((await approvals.forIssue(issueId)).map((a) => a.reason)).toEqual([reason]);
+    expect((await approvals.request({ ...ask(runId), reason: null }))?.reason).toBeNull();
   });
 
   it('refuses a decision once the deadline has passed', async () => {

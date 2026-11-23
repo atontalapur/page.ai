@@ -131,7 +131,8 @@ export const nodeToServerEvents = {
   // A Tier 3 agent asks to run a gated host tool such as `ops.restart`. The node picks the
   // approval id so it can match the `approval.decided` that answers it, and sends the same
   // request again after a reconnect. `expiresAt` is when it stops waiting; the server holds
-  // the request open no longer than MAX_APPROVAL_WAIT_MS.
+  // the request open no longer than MAX_APPROVAL_WAIT_MS. `reason` is the agent's own words
+  // for why (approvalReason); a daemon from before it was kept sends none.
   'node.approval.request': z.strictObject({
     v,
     approvalId: idSchema,
@@ -139,6 +140,7 @@ export const nodeToServerEvents = {
     action: pendingApprovalSchema.shape.action,
     args: pendingApprovalSchema.shape.args,
     expiresAt: pendingApprovalSchema.shape.expiresAt,
+    reason: pendingApprovalSchema.shape.reason.optional(),
   }),
 };
 

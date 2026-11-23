@@ -15,6 +15,7 @@ import {
   serverToUiEvents,
   uiToServerEvents,
 } from './events.ts';
+import { MAX_APPROVAL_REASON_CHARS } from './approval-reason.ts';
 import { roundTrip } from './test-utils.ts';
 
 const directions: [string, Record<string, z.ZodType>, Record<string, unknown>][] = [
@@ -67,6 +68,27 @@ it('rejects a pending approval sent as a decision to the node or the UI', () => 
   const pending = { v: 1, approval: pendingApprovalFixture };
   expect(() => serverToNodeEvents['approval.decided'].parse(pending)).toThrow();
   expect(() => serverToUiEvents['approval.updated'].parse(pending)).toThrow();
+});
+
+describe('node.approval.request', () => {
+  const schema = nodeToServerEvents['node.approval.request'];
+  const request = nodeToServerEventFixtures['node.approval.request'];
+
+  it("carries the agent's reason, or null when it gave none", () => {
+    expect(schema.parse(request).reason).toBe(pendingApprovalFixture.reason);
+    expect(schema.parse({ ...request, reason: null }).reason).toBeNull();
+  });
+
+  it('takes a request with no reason, from a daemon older than it', () => {
+    const older: Partial<typeof request> = { ...request };
+    delete older.reason;
+    expect(schema.parse(older)).not.toHaveProperty('reason');
+  });
+
+  it('rejects a reason over the cap', () => {
+    const long = 'x'.repeat(MAX_APPROVAL_REASON_CHARS + 1);
+    expect(schema.safeParse({ ...request, reason: long }).success).toBe(false);
+  });
 });
 
 describe('node.run.finished', () => {

@@ -4,6 +4,7 @@ import {
   BUG_CLASSES,
   ESCALATION_REASONS,
   ISSUE_STATUSES,
+  MAX_APPROVAL_REASON_CHARS,
   RUN_STATUSES,
   SEVERITIES,
   STEP_KINDS,
@@ -289,6 +290,13 @@ describe('approvals table matches @page/contracts', () => {
   it('needs an issue that exists, and a deadline', async () => {
     await expect(request({ issue_id: randomUUID() })).rejects.toThrow();
     await expect(request({ expires_at: bad(null) })).rejects.toThrow();
+  });
+
+  it('takes a reason up to the contract cap, or none, and refuses an empty one', async () => {
+    await expect(request({ reason: null })).resolves.toBeDefined();
+    await expect(request({ reason: 'x'.repeat(MAX_APPROVAL_REASON_CHARS) })).resolves.toBeDefined();
+    await expect(request({ reason: 'x'.repeat(MAX_APPROVAL_REASON_CHARS + 1) })).rejects.toThrow();
+    await expect(request({ reason: '' })).rejects.toThrow();
   });
 
   it("won't delete an issue that has approvals", async () => {

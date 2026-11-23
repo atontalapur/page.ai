@@ -39,6 +39,7 @@ function pending(fields: Partial<PendingApproval> = {}): PendingApproval {
     },
     requestedAt: new Date().toISOString(),
     expiresAt: inMinutes(3),
+    reason: null,
     decision: 'pending',
     decidedBy: null,
     decidedAt: null,

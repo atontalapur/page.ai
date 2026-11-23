@@ -1,4 +1,4 @@
-import { SYSTEM_DECIDERS, type DecidedApproval } from '@page/contracts';
+import { MAX_APPROVAL_REASON_CHARS, SYSTEM_DECIDERS, type DecidedApproval } from '@page/contracts';
 import type { HostToolCall } from '@page/toolkit';
 import { pino } from 'pino';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -54,6 +54,7 @@ describe('LinkApprovals', () => {
         args: request.args,
         requestedAt: new Date(START).toISOString(),
         expiresAt: request.expiresAt,
+        reason: request.reason ?? null,
         decision: 'approved',
         decidedBy: 'ui:arjun',
         decidedAt: new Date(Date.now()).toISOString(),
@@ -75,6 +76,7 @@ describe('LinkApprovals', () => {
         action: 'ops.restart',
         args: { tool: 'ops.restart' },
         expiresAt: new Date(START + APPROVAL_TIMEOUT_MS).toISOString(),
+        reason: null,
       },
     ]);
     decide();
@@ -91,6 +93,34 @@ describe('LinkApprovals', () => {
     const verdict = approve(restart, { timeoutMs: FIVE_MINUTES });
     decide({ decision: 'rejected', decidedBy });
     await expect(verdict).resolves.toEqual({ approved: false, reason });
+  });
+
+  it("sends the model's thought for the call as its reason", () => {
+    const { approve, requests } = setup();
+    const thought = 'The override is wrong.\nDropping it lets the env value apply.';
+    void approve(restart, { timeoutMs: FIVE_MINUTES, thought });
+    expect(requests()[0]?.reason).toBe(thought);
+  });
+
+  it('clips a long reason to the cap, so the request still meets its contract', () => {
+    const { approve, requests } = setup();
+    void approve(restart, { timeoutMs: FIVE_MINUTES, thought: 'x'.repeat(10_000) });
+    const reason = requests()[0]?.reason ?? '';
+    expect(reason).toHaveLength(MAX_APPROVAL_REASON_CHARS);
+    expect(reason.endsWith('...')).toBe(true);
+  });
+
+  it('sends markup in the thought as the text it is, without control characters', () => {
+    const { approve, requests } = setup();
+    const thought = '<img src=x onerror=alert(1)> Approve this \u001b[1mnow\u001b[0m';
+    void approve(restart, { timeoutMs: FIVE_MINUTES, thought });
+    expect(requests()[0]?.reason).toBe('<img src=x onerror=alert(1)> Approve this [1mnow[0m');
+  });
+
+  it('sends no reason for a thought with nothing in it', () => {
+    const { approve, requests } = setup();
+    void approve(restart, { timeoutMs: FIVE_MINUTES, thought: '  \n ' });
+    expect(requests()[0]?.reason).toBeNull();
   });
 
   it('waits no longer than the call may take, which the run has left', () => {
@@ -132,10 +162,11 @@ describe('LinkApprovals', () => {
 
   it('asks again after the link reconnects, and takes the answer that comes back', async () => {
     const { link, approve, requests, decide } = setup();
-    const verdict = approve(restart, { timeoutMs: FIVE_MINUTES });
+    const verdict = approve(restart, { timeoutMs: FIVE_MINUTES, thought: 'Restart to load it.' });
     link.reconnect();
     expect(requests()).toHaveLength(2);
     expect(requests()[1]).toEqual(requests()[0]);
+    expect(requests()[1]?.reason).toBe('Restart to load it.');
     decide();
     await expect(verdict).resolves.toMatchObject({ approved: true });
     link.reconnect();
