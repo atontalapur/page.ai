@@ -232,9 +232,13 @@ live or has failed (#172). Each limit has a reason:
 
 The Railway token is a project token for one environment. Its variable names are not Railway's
 own `RAILWAY_*` names, because Railway sets those on every service it runs, and a daemon on
-Railway would read its own service and roll itself back. The rollback tool has run only against
-a fake deployer; the Railway GraphQL fields are checked against Railway's docs and a faked
-fetch, and #172 names `ops.planRollback` against staging as the first live check to make.
+Railway would read its own service and roll itself back.
+
+No rollback has run against Railway. The tests use a fake deployer and a faked fetch. A
+read-only check, the one #172 named first, ran the planner against staging's real deployment
+list through a guard that let only that query out: the query, its fields and the parsing held,
+and it found no target, since the older deployments were skipped or no longer redeployable.
+The staging node has no project token yet (#178), so its Tier 3 runs get no rollback tool.
 
 ### Approvals
 
@@ -246,9 +250,12 @@ in view ([`approval.ts`](../../packages/toolkit/src/exec/approval.ts)).
 
 `execute()` asks after the tier check and before the step opens. The daemon sends
 `node.approval.request` with the tool, its arguments and a deadline. A rollback's request also
-names the live deployment and the one it would deploy. The orchestrator shows it on the incident
-page and answers with `approval.decided`
-([`approvals.ts`](../../apps/node/src/run/approvals.ts)).
+names the live deployment and the one it would deploy. Each request carries the agent's reason,
+the model's thought for the step that asked, cleaned and clipped to 1,000 characters, and the
+Tier 3 prompt says which calls wait and what to do after a no (#188). The orchestrator shows the
+request on the incident page and answers with `approval.decided`
+([`approvals.ts`](../../apps/node/src/run/approvals.ts)). Where personal dashboard tokens are
+configured, only a person's own token can decide, and the record names them (#189).
 
 | Answer                       | What the run sees                                                      |
 | ---------------------------- | ---------------------------------------------------------------------- |
@@ -310,6 +317,21 @@ so the link tries again itself, a minute after a refusal and 5 seconds after a c
 orchestrator limits each address to 30 handshakes a minute and each socket to 300 messages
 every 10 seconds.
 
+### Messages from the person on call
+
+Someone watching a run on the incident page can send the agent a message (`run.chat`, #192).
+The orchestrator sends it only to the daemon holding the run, and the run's inbox
+([`inbox.ts`](../../apps/node/src/run/inbox.ts)) keeps it until the agent loop's next step
+boundary, where it joins the user's turn in an escaped `<oncall_message>` element. The agent
+answers in an `<oncall_reply>` element in the same reply that takes its next action, so a
+question costs no model call of its own, only tokens. The daemon sends the answer back as
+`node.chat.reply`, cut to 4,000 characters. The message is guidance, not authority: every
+action still goes through `execute()`, and a test that asks a Tier 1 run for `curl ... | sh`
+and a live restart sees both refused. At most 3 messages wait at once, and each message gets
+exactly one reply, closed as `queue_full`, `submitted`, `run_ended` or `no_answer` when there is
+no answer. With an empty inbox the loop sends exactly what it sent before, and the eval passes
+none, so its prompts are unchanged.
+
 ## Confidence from the node's side
 
 Once the agent submits, the daemon scores the run with `scoreRun` from `@page/agent` (#174). It
@@ -329,15 +351,18 @@ tier's `CONFIDENCE_THRESHOLD`, 0.2 at every tier, sends the run on as `low_confi
 it at Tier 3 ([`threshold.ts`](../../packages/agent/src/threshold.ts)). At 0.2, a code fix
 escalates only when it scores 0: it changed no code, or no test, typecheck or lint passed after
 its last edit and no test failed before its first code edit. The value comes from a dev-only
-calibration (Amendment 5 in [the preregistration](eval-prereg.md)). A run whose scoring threw has no score and never escalates for want of one.
+calibration (Amendment 5 in [the preregistration](eval-prereg.md)). A run whose scoring threw
+has no score and never escalates for want of one.
 
 #174 gives the reasons for measured signals over asking a model. The failure the score is after
 is a confident wrong patch, and the model that wrote the patch would most likely give a
 confident answer in exactly those cases. A model call would also add cost, latency and another
 place for text from a production error to act as instructions. `scoreRun` reads only exit
-codes, summary lines and paths. The weights and the threshold are a judgment call: every run in
-the Results came before scoring, and Amendment 5 of the [preregistration](eval-prereg.md) sets
-out a dev run to calibrate the threshold.
+codes, summary lines and paths. The weights are a judgment call. Every run in the Results came
+before scoring; the dev calibration then scored 98 code fixes at 0.3, and its preregistered rule
+picked 0.2. It also found what the score misses: a wrong patch for 029 that brought its own
+passing test scored 1
+([Confidence calibration (dev)](evaluation-method.md#confidence-calibration-dev)).
 
 ## The demo app and the seeded bugs
 

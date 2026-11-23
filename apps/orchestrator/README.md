@@ -193,9 +193,9 @@ a token names (`sessionSchema` in contracts): `{ "token": "personal", "name": "A
 | Send issue events (`start_fix`, `kill`, `approve` ...) | yes                 | yes                               | yes                       |
 | Decide a Tier 3 approval                               | yes, as `ui:<name>` | no                                | yes, under the tab's name |
 
-**Fallback.** With `DASHBOARD_TOKENS` unset, as in local runs and on staging until it is set,
-nothing changes: a tab with the shared token decides under the name it sends as `auth.name`,
-which anyone with the token can choose. Boot logs a warning while this holds.
+**Fallback.** With `DASHBOARD_TOKENS` unset, as in local runs, nothing changes: a tab with
+the shared token decides under the name it sends as `auth.name`, which anyone with the token
+can choose. Boot logs a warning while this holds.
 
 ## UI
 
