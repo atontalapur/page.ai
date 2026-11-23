@@ -43,7 +43,14 @@ export const issueEventSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('triage'), class: bugClassSchema, severity: severitySchema }),
   // `node` names the agent that should take the Tier 1 run; without it any agent can. Higher
   // tiers always go to any agent.
-  z.strictObject({ type: z.literal('start_fix'), node: nodeNameSchema.optional() }),
+  // `tier` is where the fix starts; without it, the tier triage picked, else Tier 1.
+  z.strictObject({
+    type: z.literal('start_fix'),
+    node: nodeNameSchema.optional(),
+    tier: tierSchema.optional(),
+  }),
+  // The escalation classifier sends the fix back to the same tier for one more try.
+  z.strictObject({ type: z.literal('retry'), runId: idSchema, reason }),
   z.strictObject({ type: z.literal('patch_ready'), runId: idSchema }),
   // A Tier 3 run fixed the live app through the ops API and left no code change. The fix is
   // live already, so the issue resolves with nothing for a human to approve.

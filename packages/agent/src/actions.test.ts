@@ -390,3 +390,59 @@ describe('thoughtOf', () => {
     );
   });
 });
+
+describe('parseAction: knowledge graph blocks', () => {
+  const block = (tag: string, body: string) => `THOUGHT: x\n\n\`\`\`${tag}\n${body}\n\`\`\``;
+
+  it('reads a search query and a key', () => {
+    expect(parseAction(block('page_kg_search', 'how the cart\ncomputes shipping'))).toEqual({
+      ok: true,
+      action: {
+        kind: 'host_tool',
+        call: { kind: 'host_tool', tool: 'kg.search', query: 'how the cart computes shipping' },
+      },
+    });
+    expect(parseAction(block('page_kg_read', 'file:a.ts'))).toMatchObject({
+      ok: true,
+      action: { call: { tool: 'kg.read', key: 'file:a.ts' } },
+    });
+  });
+
+  it('reads a write: key, kind, title, links, then the body', () => {
+    const parsed = parseAction(
+      block(
+        'page_kg_write',
+        'file:src/cart.ts\nkind: file\ntitle: Cart totals\nlinks: imports file:src/money.ts, tests file:src/cart.test.ts\n---\nSums the lines.\n\nRounds at the end.',
+      ),
+    );
+    expect(parsed).toEqual({
+      ok: true,
+      action: {
+        kind: 'host_tool',
+        call: {
+          kind: 'host_tool',
+          tool: 'kg.write',
+          key: 'file:src/cart.ts',
+          nodeKind: 'file',
+          title: 'Cart totals',
+          body: 'Sums the lines.\n\nRounds at the end.',
+          links: [
+            { relation: 'imports', to: 'file:src/money.ts' },
+            { relation: 'tests', to: 'file:src/cart.test.ts' },
+          ],
+        },
+      },
+    });
+  });
+
+  it('refuses a write without its divider, kind or title', () => {
+    for (const body of [
+      'file:a.ts\nkind: file\ntitle: A',
+      'file:a.ts\ntitle: A\n---\nx',
+      'file:a.ts\nkind: File Thing\ntitle: A\n---\nx',
+      'file:a.ts\nkind: file\n---\nx',
+    ]) {
+      expect(parseAction(block('page_kg_write', body)).ok).toBe(false);
+    }
+  });
+});

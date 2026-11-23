@@ -24,6 +24,10 @@ export const ACTION_TAGS = {
   // Tier 3 rollback of the live app's deploy, on a node with a deployer for it.
   opsRollbackPlan: 'page_ops_rollback_plan',
   opsRollback: 'page_ops_rollback',
+  // The knowledge graph, at every tier, on a node that has it.
+  kgSearch: 'page_kg_search',
+  kgRead: 'page_kg_read',
+  kgWrite: 'page_kg_write',
 } as const;
 
 const SEARCH = '<<<<<<< SEARCH';
@@ -134,6 +138,9 @@ export function parseAction(reply: string): ParseResult {
     return hostTool({ kind: 'host_tool', tool: 'ops.planRollback' });
   }
   if (tag === ACTION_TAGS.opsRollback) return parseOpsRollback(body);
+  if (tag === ACTION_TAGS.kgSearch) return parseKgSearch(body);
+  if (tag === ACTION_TAGS.kgRead) return parseKgRead(body);
+  if (tag === ACTION_TAGS.kgWrite) return parseKgWrite(body);
 
   const command = body.join('\n').trim();
   if (command === '') return { ok: false, error: `The ${ACTION_TAGS.exec} block is empty.` };
@@ -218,6 +225,66 @@ function parseOpsUnset(body: string[]): ParseResult {
     };
   }
   return hostTool({ kind: 'host_tool', tool: 'ops.deleteConfig', key });
+}
+
+/** The search query, on one or more lines. */
+function parseKgSearch(body: string[]): ParseResult {
+  const query = body.join(' ').replace(/\s+/g, ' ').trim();
+  if (query === '') {
+    return { ok: false, error: `A ${ACTION_TAGS.kgSearch} block holds what to search for.` };
+  }
+  return hostTool({ kind: 'host_tool', tool: 'kg.search', query });
+}
+
+/** One line: the key of the node to read. */
+function parseKgRead(body: string[]): ParseResult {
+  const key = oneLine(body);
+  if (key === undefined) {
+    return { ok: false, error: `A ${ACTION_TAGS.kgRead} block is one line, the node's key.` };
+  }
+  return hostTool({ kind: 'host_tool', tool: 'kg.read', key });
+}
+
+const KG_KIND = /^[a-z][a-z_]{0,30}$/;
+
+/**
+ * The key on the first line; then `kind:`, `title:` and an optional `links:` line of
+ * comma-separated `relation key` pairs; then `---` and the body.
+ */
+function parseKgWrite(body: string[]): ParseResult {
+  const format = `A ${ACTION_TAGS.kgWrite} block is the node's key on the first line, then kind: and title: lines, an optional links: line ("relation key, relation key"), then a --- line and the body.`;
+  const [first = '', ...rest] = body;
+  const key = first.trim();
+  const divider = rest.findIndex((line) => line.trim() === '---');
+  if (key === '' || divider === -1) return { ok: false, error: format };
+  const fields = new Map<string, string>();
+  for (const line of rest.slice(0, divider)) {
+    const match = /^\s*(kind|title|links)\s*:\s*(.*)$/.exec(line);
+    if (!match) return { ok: false, error: format };
+    fields.set(match[1]!, match[2]!.trim());
+  }
+  const nodeKind = fields.get('kind') ?? '';
+  const title = fields.get('title') ?? '';
+  if (!KG_KIND.test(nodeKind)) {
+    return { ok: false, error: `${format} kind is lower_snake_case, such as file or function.` };
+  }
+  if (title === '') return { ok: false, error: format };
+  const links: { relation: string; to: string }[] = [];
+  for (const part of (fields.get('links') ?? '').split(',')) {
+    const trimmed = part.trim();
+    if (trimmed === '') continue;
+    const [relation = '', ...target] = trimmed.split(/\s+/);
+    const to = target.join(' ');
+    if (!KG_KIND.test(relation) || to === '') {
+      return { ok: false, error: `${format} Each link is a lower_snake_case relation and a key.` };
+    }
+    links.push({ relation, to });
+  }
+  const text = rest
+    .slice(divider + 1)
+    .join('\n')
+    .trim();
+  return hostTool({ kind: 'host_tool', tool: 'kg.write', key, nodeKind, title, body: text, links });
 }
 
 /** One line: the id of the deployment to go back to, as the rollback plan named it. */

@@ -7,6 +7,7 @@ import {
   type IssueEventRecord,
   type IssueStatus,
   type NewIssue,
+  type Tier,
 } from '@page/contracts';
 import { sql, type Selectable, type Transaction } from 'kysely';
 import type { Database, Db, IssueEventsTable, IssuesTable } from '../db/database.ts';
@@ -199,6 +200,11 @@ export class IssuesService {
    * cancels the job it replaces. Throws TransitionError if the event does not apply, and
    * StaleRunError if a daemon event names a run other than the current one.
    */
+  /** The tier the issue's first fix starts at, as triage picked it. */
+  async setStartTier(id: string, tier: Tier): Promise<void> {
+    await this.db.updateTable('issues').set({ start_tier: tier }).where('id', '=', id).execute();
+  }
+
   async apply(id: string, event: IssueEvent, options: ApplyOptions = {}): Promise<Issue> {
     const moved = await this.db
       .transaction()
@@ -229,7 +235,7 @@ export class IssuesService {
   async applyIn(
     trx: Transaction<Database>,
     id: string,
-    event: IssueEvent,
+    requested: IssueEvent,
     { escalationNote, actor }: ApplyOptions = {},
   ): Promise<Moved> {
     const current = await trx
@@ -239,6 +245,11 @@ export class IssuesService {
       .forUpdate()
       .executeTakeFirst();
     if (!current) throw new IssueNotFoundError(id);
+    // A start without a tier starts where triage said to, and the event records which.
+    const event: IssueEvent =
+      requested.type === 'start_fix' && requested.tier === undefined && current.start_tier !== null
+        ? { ...requested, tier: current.start_tier }
+        : requested;
 
     const next = this.machine.apply(
       {
@@ -254,9 +265,12 @@ export class IssuesService {
       throw new StaleRunError(id, event.runId);
     }
 
+    // A retry enters the same tier again, with a new job.
     const enteredTier =
       next.status === 'fixing' &&
-      (current.status !== 'fixing' || current.current_tier !== next.currentTier);
+      (current.status !== 'fixing' ||
+        current.current_tier !== next.currentTier ||
+        event.type === 'retry');
     let cancelledRunId: string | undefined;
     if ((enteredTier || isTerminal(next.status)) && current.current_run_id) {
       await this.fixJobs.cancel(current.current_run_id, trx);

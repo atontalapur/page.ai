@@ -21,6 +21,10 @@ export type {
   OpsRollbackCall,
   OpsSetConfigCall,
   OpsToolCall,
+  KgReadCall,
+  KgSearchCall,
+  KgWriteCall,
+  KnowledgeToolCall,
   PushBranchCall,
   RunErr,
   RunOutcome,
@@ -98,3 +102,5 @@ export {
   SAFE_GIT,
 } from './github/host-tools.ts';
 export type { GitHubHostToolsOptions } from './github/host-tools.ts';
+export { formatNode, formatSearch, KnowledgeHostTools } from './knowledge/host-tools.ts';
+export type { KnowledgeHostToolsOptions } from './knowledge/host-tools.ts';

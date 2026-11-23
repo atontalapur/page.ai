@@ -1,5 +1,6 @@
 import { escalationNoteFixture, stepFixture } from '@page/contracts/fixtures';
 import { afterAll, describe, expect, it } from 'vitest';
+import { DecisionsService } from '../decisions/decisions.service.ts';
 import { createSchemaDeps } from '../db/test-utils.ts';
 import { IssuesService } from '../issues/issues.service.ts';
 import { NodeRuns } from './node-runs.ts';
@@ -12,7 +13,13 @@ const deps = await createSchemaDeps();
 afterAll(() => deps.close());
 
 const issues = new IssuesService(deps.db, deps.fixJobs, deps.logger);
-const runs = new RunsService(deps.db, issues, deps.jobs, deps.logger);
+const runs = new RunsService(
+  deps.db,
+  issues,
+  deps.jobs,
+  deps.logger,
+  new DecisionsService(deps.db, null, deps.logger),
+);
 const nodeRuns = new NodeRuns(deps.db);
 
 let n = 0;

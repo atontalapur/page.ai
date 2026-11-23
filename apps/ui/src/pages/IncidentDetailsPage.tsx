@@ -8,6 +8,7 @@ import { buttonVariants } from '@page/design-system/components/ui/button';
 import { SeverityBadge, StatusBadge } from '../components/issues/IssueBadges';
 import ActivityPanel from '../components/issues/ActivityPanel';
 import ApprovalRequests from '../components/issues/ApprovalRequests';
+import DecisionsPanel from '../components/issues/DecisionsPanel';
 import ReviewActions, { awaitsReview } from '../components/issues/ReviewActions';
 import RunsPanel from '../components/issues/RunsPanel';
 import TokenPrompt from '../components/issues/TokenPrompt';
@@ -132,6 +133,15 @@ export default function IncidentDetailsPage() {
             </CardHeader>
             <CardContent>
               <ActivityPanel issue={issue} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Decisions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DecisionsPanel issue={issue} />
             </CardContent>
           </Card>
 

@@ -17,12 +17,14 @@ import {
   newIssueSchema,
   type Issue,
   type IssueEvent,
+  type IssueDecision,
   type IssueEventRecord,
   type IssueRun,
   type IssueStatus,
   type NewIssue,
 } from '@page/contracts';
 import { z } from 'zod';
+import { DecisionsService } from '../decisions/decisions.service.ts';
 import type { Caller } from '../auth/api-tokens.ts';
 import { actorOf, CallerOf } from '../auth/caller.ts';
 import { Nodes } from '../gateway/nodes.ts';
@@ -62,6 +64,7 @@ export class IssuesController {
     private readonly runs: RunsService,
     private readonly nodes: Nodes,
     @Inject(FIX_JOB_QUEUE) private readonly fixJobs: FixJobQueue,
+    private readonly decisions: DecisionsService,
   ) {}
 
   /** Opens an issue, or counts a repeat of the open one with the same fingerprint. */
@@ -87,6 +90,13 @@ export class IssuesController {
   @Get(':id/events')
   events(@Param('id', { schema: issueId }) id: string): Promise<IssueEventRecord[]> {
     return asHttp(this.issues.events(id));
+  }
+
+  /** What jev decided about the issue, oldest first: triage, the starting tier, escalations. */
+  @Get(':id/decisions')
+  async decisionsOf(@Param('id', { schema: issueId }) id: string): Promise<IssueDecision[]> {
+    await asHttp(this.issues.get(id));
+    return this.decisions.list(id);
   }
 
   /** Every run, oldest first, with its steps, messages and diff. The run in progress is last. */

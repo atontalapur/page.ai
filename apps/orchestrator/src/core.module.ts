@@ -2,8 +2,20 @@ import { Global, Module, type DynamicModule } from '@nestjs/common';
 import { ApiTokens } from './auth/api-tokens.ts';
 import type { AppDeps } from './deps.ts';
 import { IssueUpdates } from './issues/issue-updates.ts';
+import { DecisionsService } from './decisions/decisions.service.ts';
 import { IssuesService } from './issues/issues.service.ts';
-import { CLASSIFIER, CONFIG, DB, FIX_JOB_QUEUE, JOB_QUEUES, LOGGER, PAGER } from './tokens.ts';
+import {
+  CLASSIFIER,
+  CONFIG,
+  DB,
+  DECIDER,
+  EMBEDDER,
+  FIX_JOB_QUEUE,
+  GITHUB,
+  JOB_QUEUES,
+  LOGGER,
+  PAGER,
+} from './tokens.ts';
 
 @Global()
 @Module({})
@@ -20,10 +32,14 @@ export class CoreModule {
         { provide: CONFIG, useValue: deps.config },
         { provide: PAGER, useValue: deps.pager },
         { provide: CLASSIFIER, useValue: deps.classifier },
+        { provide: DECIDER, useValue: deps.decider },
+        { provide: EMBEDDER, useValue: deps.embedder },
+        { provide: GITHUB, useValue: deps.github },
         // One instance, so HTTP and the UI socket count an address's wrong tokens together.
         { provide: ApiTokens, useValue: new ApiTokens(deps.config, deps.logger) },
         IssueUpdates,
         IssuesService,
+        DecisionsService,
       ],
       exports: [
         ApiTokens,
@@ -34,8 +50,12 @@ export class CoreModule {
         CONFIG,
         PAGER,
         CLASSIFIER,
+        DECIDER,
+        EMBEDDER,
+        GITHUB,
         IssueUpdates,
         IssuesService,
+        DecisionsService,
       ],
     };
   }

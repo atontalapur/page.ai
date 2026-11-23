@@ -1,3 +1,5 @@
+import { HashEmbedder, type Decider, type Embedder } from '@page/model-client';
+import type { GitHubApi } from '../github/github-api.ts';
 import { randomBytes } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import { Kysely, PGliteDialect, PostgresDialect } from 'kysely';
@@ -37,6 +39,9 @@ export const testConfig: Config = {
   // No build here, so tests serve only the API. The static tests pass their own.
   uiDistDir: '/nonexistent/ui/dist',
   debug: undefined,
+  jevModel: 'typesafe/jev-1.14',
+  embeddingModel: 'qwen/qwen3-embedding-8b',
+  github: undefined,
 };
 
 export interface TestDeps {
@@ -49,6 +54,9 @@ export interface TestDeps {
   config: Config;
   pager: Pager;
   classifier: TriageClassifier;
+  decider: Decider | null;
+  embedder: Embedder;
+  github: GitHubApi | null;
   close(): Promise<void>;
 }
 
@@ -89,6 +97,9 @@ async function start(db: Db, boss: PgBoss, close: () => Promise<void>): Promise<
       config: testConfig,
       pager: new FakePager(),
       classifier: new TriageClassifier(null, testConfig.triageTimeoutMs),
+      decider: null,
+      embedder: new HashEmbedder(),
+      github: null,
       async close() {
         await close();
         if (errors.length) throw new AggregateError(errors, 'pg-boss reported errors');

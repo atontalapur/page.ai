@@ -6,6 +6,8 @@ import { tokenWarnings } from './auth/api-tokens.ts';
 import { ConfigError, loadConfig, type Config } from './config.ts';
 import { createDb } from './db/database.ts';
 import { migrate } from './db/migrate.ts';
+import { RestGitHubApi } from './github/github-api.ts';
+import { buildDecider, buildEmbedder } from './models.ts';
 import { createLogger, NestPinoLogger } from './logger.ts';
 import { buildPager } from './notify/pager.ts';
 import { NotifyService } from './notify/notify.service.ts';
@@ -86,6 +88,9 @@ try {
       config,
       pager: buildPager(config),
       classifier: buildClassifier(config),
+      decider: buildDecider(config),
+      embedder: buildEmbedder(config),
+      github: config.github ? new RestGitHubApi(config.github.token, config.github.repo) : null,
     },
     new NestPinoLogger(logger),
   );

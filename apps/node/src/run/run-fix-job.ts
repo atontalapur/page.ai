@@ -22,6 +22,7 @@ import {
   StepLog,
   type AuditSink,
   type Deployer,
+  KnowledgeHostTools,
   type GitHub,
   type GitHubToolCall,
   type OpsApi,
@@ -70,6 +71,11 @@ export interface RunDeps {
    * never get them. Without it, every ops tool call is refused.
    */
   ops?: OpsApi;
+  /**
+   * Builds a run's knowledge-graph tools, which reach the orchestrator. With it, every tier
+   * gets kg.search, kg.read and kg.write; without it, the prompt leaves them out.
+   */
+  knowledge?: (run: { runId: string; signal: AbortSignal }) => KnowledgeHostTools;
   /**
    * Claims the live app for a Tier 3 run, so no other run or eval changes it meanwhile. While
    * someone else holds it, the run's ops calls are refused. Without it, nothing is claimed.
@@ -210,6 +216,7 @@ export async function runFixJob(
       runId,
       logger,
     });
+    const knowledgeTools = deps.knowledge?.({ runId, signal: stopped });
     if (deps.github !== undefined) {
       githubTools = new GitHubHostTools({
         github: deps.github,
@@ -219,6 +226,18 @@ export async function runFixJob(
         // The host tools send nothing to GitHub once the run is stopped.
         signal: stopped,
         ...(job.escalationNote === undefined ? {} : { escalationNote: job.escalationNote }),
+        // The run's knowledge written before this push now carries its commit.
+        ...(knowledgeTools === undefined
+          ? {}
+          : {
+              onPushed: async (sha: string) => {
+                const stamped = await knowledgeTools.commit(sha).catch((error: unknown) => {
+                  logger.warn({ err: error, sha }, 'could not record the knowledge commit');
+                  return 0;
+                });
+                if (stamped > 0) logger.info({ sha, stamped }, 'knowledge commit recorded');
+              },
+            }),
       });
     }
     // Built at Tier 3 only, once the run holds the app. The signal stops any further
@@ -233,7 +252,11 @@ export async function runFixJob(
         ...(claim.refusal === undefined ? {} : { refusal: claim.refusal }),
       });
     }
-    const hostTools = hostToolsFor(tier, { github: githubTools, ops: opsTools });
+    const hostTools = hostToolsFor(tier, {
+      github: githubTools,
+      ops: opsTools,
+      knowledge: knowledgeTools,
+    });
     // The prompt offers the rollback blocks only to a run that has the tool.
     const rollback = hostTools?.handles?.('ops.rollback') === true;
     // And says a person approves the run's changes to the live app only when one does: not
@@ -272,7 +295,13 @@ export async function runFixJob(
     let end: RunEnd;
     try {
       const agentRun = await runAgent(
-        { task: job.report, tier, rollback, personApproves },
+        {
+          task: job.report,
+          tier,
+          rollback,
+          personApproves,
+          knowledge: knowledgeTools !== undefined,
+        },
         {
           model: deps.model,
           execute: run,

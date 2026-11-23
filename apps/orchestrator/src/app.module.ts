@@ -7,8 +7,10 @@ import { MeController } from './auth/me.controller.ts';
 import type { AppDeps } from './deps.ts';
 import { DebugModule } from './debug/debug.module.ts';
 import { GatewayModule } from './gateway/gateway.module.ts';
+import { GitHubModule } from './github/github.module.ts';
 import { HealthController } from './health/health.controller.ts';
 import { IngestModule } from './ingest/ingest.module.ts';
+import { KnowledgeModule } from './knowledge/knowledge.module.ts';
 import { IssuesController } from './issues/issues.controller.ts';
 import { NotifyModule } from './notify/notify.module.ts';
 import { RunsModule } from './runs/runs.module.ts';
@@ -28,6 +30,8 @@ export class AppModule {
         NotifyModule,
         GatewayModule,
         DebugModule,
+        KnowledgeModule,
+        GitHubModule,
       ],
       controllers: [HealthController, IssuesController, MeController],
       providers: [{ provide: APP_GUARD, useClass: ApiTokenGuard }],

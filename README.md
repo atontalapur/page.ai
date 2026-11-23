@@ -80,6 +80,26 @@ demo app --errors--> PostHog --webhook--> orchestrator --call + SMS--> on-call (
 A Tier 1 agent can't push, so when its fix succeeds the daemon pushes it and opens the PR
 itself. Every successful code fix reaches a person as a PR to merge.
 
+The PR is where a fix is reviewed. Merging it approves the fix; requesting changes or
+closing it rejects the fix, and the review, its inline comments and the PR's conversation
+become the next tier's starting note. The dashboard's Approve and Reject remain only for a
+fix with no PR.
+
+`typesafe/jev-1.14`, a decisions model, classifies each issue and picks the tier its first
+fix starts at. When a fix scores under its tier's threshold, jev decides whether to retry
+that tier once, move up, or page a person. A run that hits a step, cost or time limit always
+moves up, and an answer under 0.5 confidence leaves the rules in charge. Each decision is
+shown on the incident.
+
+Every agent reads and writes a knowledge graph of the demo repo, kept in Postgres and
+reached only through the orchestrator's `kg.search`, `kg.read` and `kg.write` tools. Search
+embeds the query with `qwen/qwen3-embedding-8b`, ranks nodes by cosine similarity, and
+follows their edges one hop. A run writes to its own branch, `pageagents/<runId>`, read over
+`main`; a merged PR copies it onto `main`. Each change is a version with its run, author and
+commit, and the commit is recorded only once it is on the remote. Writes take no locks:
+each is a compare-and-swap on the node's version. The Knowledge page shows the graph
+Obsidian-style, and each node as a Notion-style page with its history.
+
 At every tier the toolkit blocks `sudo`, `curl`, `wget`, `docker`, force pushes, shell
 expansion and subshells, and writes outside the repo or under `.git/`, `.github/` or
 `node_modules/`. The sandbox has no network, 1 CPU and 1 GB of memory, and is killed after 15

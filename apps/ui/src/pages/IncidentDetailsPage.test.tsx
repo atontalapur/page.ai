@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import type { IssueRun, Run, Step } from '@page/contracts';
 
+import { runFixture } from '@page/contracts/fixtures';
+
 import IncidentDetailsPage from './IncidentDetailsPage';
 
 // jsdom can't run the highlighter; these stand in for its views.
@@ -328,6 +330,25 @@ describe('IncidentDetailsPage', () => {
       class: 'database',
       severity: 'critical',
       currentTier: 1,
+    });
+
+    it('sends review to the PR on GitHub when the fix has one', async () => {
+      const source = testSource([fixing, waiting]);
+      const run: IssueRun = {
+        ...runFixture,
+        issueId: waiting.id,
+        prUrl: 'https://github.com/o/page-demo/pull/7',
+        diff: null,
+        steps: [],
+        chats: [],
+      };
+      source.runs.set(waiting.id, [run]);
+      renderDetails(waiting.id, source);
+
+      const link = await screen.findByRole('link', { name: 'Review on GitHub' });
+      const review = screen.getByRole('region', { name: 'Review' });
+      expect(link.getAttribute('href')).toBe('https://github.com/o/page-demo/pull/7');
+      expect(within(review).queryByRole('button', { name: 'Approve' })).toBeNull();
     });
 
     it('shows Approve and Reject only while a fix waits for review', () => {

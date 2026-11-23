@@ -1,5 +1,6 @@
 import { notifyJobSchema } from '@page/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
+import { DecisionsService } from '../decisions/decisions.service.ts';
 import { createTestDeps } from '../db/test-utils.ts';
 import { IssuesService } from '../issues/issues.service.ts';
 import { createLogger } from '../logger.ts';
@@ -13,7 +14,14 @@ afterAll(() => deps.close());
 
 const issues = new IssuesService(deps.db, deps.fixJobs, deps.logger);
 const triageClassifier = new TriageClassifier(null, 1000);
-const triage = new TriageService(issues, deps.jobs, triageClassifier, deps.config, deps.logger);
+const triage = new TriageService(
+  issues,
+  deps.jobs,
+  triageClassifier,
+  deps.config,
+  deps.logger,
+  new DecisionsService(deps.db, null, deps.logger),
+);
 
 describe('TriageService', () => {
   it('moves a new issue to triaged and enqueues one notify job per phone', async () => {
@@ -58,7 +66,14 @@ describe('TriageService', () => {
       },
       1000,
     );
-    const logged = new TriageService(issues, deps.jobs, failing, deps.config, logger);
+    const logged = new TriageService(
+      issues,
+      deps.jobs,
+      failing,
+      deps.config,
+      logger,
+      new DecisionsService(deps.db, null, logger),
+    );
     const { issue } = await issues.report({ fingerprint: 'logged', title: 'Hydration failed' });
     await logged.handle({ v: 1, issueId: issue.id });
 
@@ -84,7 +99,14 @@ describe('TriageService', () => {
   it('queues a separate job for each phone, keyed by fingerprint and phone', async () => {
     const numbers = ['+15550000001', '+15550000002'];
     const config = { ...deps.config, notifyTo: numbers };
-    const twoPhones = new TriageService(issues, deps.jobs, triageClassifier, config, deps.logger);
+    const twoPhones = new TriageService(
+      issues,
+      deps.jobs,
+      triageClassifier,
+      config,
+      deps.logger,
+      new DecisionsService(deps.db, null, deps.logger),
+    );
     const { issue } = await issues.report({ fingerprint: 'two-phones', title: 'Boom' });
     await twoPhones.handle({ v: 1, issueId: issue.id });
 
@@ -98,7 +120,14 @@ describe('TriageService', () => {
 
   it('triages without paging when no numbers are configured', async () => {
     const config = { ...deps.config, notifyTo: [] };
-    const noPhones = new TriageService(issues, deps.jobs, triageClassifier, config, deps.logger);
+    const noPhones = new TriageService(
+      issues,
+      deps.jobs,
+      triageClassifier,
+      config,
+      deps.logger,
+      new DecisionsService(deps.db, null, deps.logger),
+    );
     const { issue } = await issues.report({ fingerprint: 'no-phones', title: 'Boom' });
     await noPhones.handle({ v: 1, issueId: issue.id });
 
@@ -115,7 +144,14 @@ describe('TriageService', () => {
 
   it('starts a Tier 1 fix with the report when AUTO_START_FIX is on', async () => {
     const config = { ...deps.config, autoStartFix: true };
-    const auto = new TriageService(issues, deps.jobs, triageClassifier, config, deps.logger);
+    const auto = new TriageService(
+      issues,
+      deps.jobs,
+      triageClassifier,
+      config,
+      deps.logger,
+      new DecisionsService(deps.db, null, deps.logger),
+    );
     const { issue } = await issues.report(
       { fingerprint: 'auto', title: 'RangeError: Invalid currency code : US' },
       'GET /\n\nRangeError: Invalid currency code : US',
@@ -144,7 +180,14 @@ describe('TriageService', () => {
     // Other tests in this file start fixes too, so the cap leaves room for exactly one more.
     const before = await issues.fixesStartedWithin(60 * 60 * 1000);
     const room = { ...deps.config, autoStartFix: true, autoStartFixMaxPerHour: before + 1 };
-    const oneLeft = new TriageService(issues, deps.jobs, triageClassifier, room, deps.logger);
+    const oneLeft = new TriageService(
+      issues,
+      deps.jobs,
+      triageClassifier,
+      room,
+      deps.logger,
+      new DecisionsService(deps.db, null, deps.logger),
+    );
 
     const { issue: first } = await issues.report({ fingerprint: 'cap-1', title: 'Boom' });
     await oneLeft.handle({ v: 1, issueId: first.id });
@@ -172,7 +215,14 @@ describe('TriageService', () => {
     const { issue } = await issues.report({ fingerprint: 'auto-retry', title: 'Boom' });
     await triage.handle({ v: 1, issueId: issue.id });
     const config = { ...deps.config, autoStartFix: true };
-    const auto = new TriageService(issues, deps.jobs, triageClassifier, config, deps.logger);
+    const auto = new TriageService(
+      issues,
+      deps.jobs,
+      triageClassifier,
+      config,
+      deps.logger,
+      new DecisionsService(deps.db, null, deps.logger),
+    );
     await auto.handle({ v: 1, issueId: issue.id });
     expect(await issues.get(issue.id)).toMatchObject({ status: 'fixing', currentTier: 1 });
   });

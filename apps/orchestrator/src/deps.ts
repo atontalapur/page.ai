@@ -1,3 +1,5 @@
+import type { Decider, Embedder } from '@page/model-client';
+import type { GitHubApi } from './github/github-api.ts';
 import type { Config } from './config.ts';
 import type { Db } from './db/database.ts';
 import type { Logger } from './logger.ts';
@@ -15,4 +17,10 @@ export interface AppDeps {
   config: Config;
   pager: Pager;
   classifier: TriageClassifier;
+  /** jev, for triage, the starting tier and escalation. Null falls back to the rules. */
+  decider: Decider | null;
+  /** Embeds knowledge-graph nodes and queries. */
+  embedder: Embedder;
+  /** The demo repo's PRs. Null when GITHUB_* is unset: the dashboard alone decides. */
+  github: GitHubApi | null;
 }

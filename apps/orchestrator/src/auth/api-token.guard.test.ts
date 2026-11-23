@@ -25,14 +25,22 @@ const routes = [
   { method: 'GET', url: '/debug' },
   { method: 'POST', url: '/debug/errors', payload: { kind: 'synthetic' } },
   { method: 'POST', url: '/debug/reset' },
+  { method: 'GET', url: `/issues/${id}/decisions` },
+  { method: 'GET', url: '/kg/branches' },
+  { method: 'GET', url: '/kg/graph' },
+  { method: 'GET', url: '/kg/node?key=file:x.ts' },
+  { method: 'POST', url: '/kg/search', payload: { query: 'cart' } },
+  { method: 'POST', url: '/kg/seed' },
 ] as const;
 
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 
 describe('API token', () => {
   it.each(routes)('$method $url returns 401 without the token or with a wrong one', async (r) => {
+    // An address per route, so the wrong tokens here stay under the per-address limit.
+    const remoteAddress = `10.0.0.${routes.indexOf(r) + 1}`;
     for (const headers of [{}, bearer('wrong'), { authorization: testConfig.apiToken ?? '' }]) {
-      const res = await app.inject({ ...r, headers });
+      const res = await app.inject({ ...r, headers, remoteAddress });
       expect(res.statusCode).toBe(401);
     }
   });
@@ -61,5 +69,30 @@ describe('API token', () => {
       payload: posthogWebhookFixture,
     });
     expect(withApiToken.statusCode).toBe(401);
+  });
+
+  it("takes only the node's secret on a run's knowledge routes", async () => {
+    const url = `/kg/runs/${id}/search`;
+    const payload = { query: 'cart' };
+    const withApiToken = await app.inject({
+      method: 'POST',
+      url,
+      headers: bearer(testConfig.apiToken ?? ''),
+      payload,
+    });
+    expect(withApiToken.statusCode).toBe(401);
+    // Past the guard: no issue has this run, so it is refused for that.
+    const withSecret = await app.inject({
+      method: 'POST',
+      url,
+      headers: bearer(testConfig.nodeSharedSecret ?? ''),
+      payload,
+    });
+    expect(withSecret.statusCode).toBe(403);
+  });
+
+  it('answers 404 on the GitHub webhook while GitHub is not set up', async () => {
+    const res = await app.inject({ method: 'POST', url: '/ingest/github', payload: {} });
+    expect(res.statusCode).toBe(404);
   });
 });

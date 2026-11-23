@@ -154,6 +154,19 @@ export function hostToolArgs(call: HostToolCall): Record<string, string> {
     case 'ops.restart':
     case 'ops.planRollback':
       return { tool: call.tool };
+    case 'kg.search':
+      return { tool: call.tool, query: call.query };
+    case 'kg.read':
+      return { tool: call.tool, key: call.key };
+    case 'kg.write':
+      return {
+        tool: call.tool,
+        key: call.key,
+        kind: call.nodeKind,
+        title: call.title,
+        body: call.body,
+        links: call.links.map((l) => `${l.relation} ${l.to}`).join(', '),
+      };
   }
 }
 

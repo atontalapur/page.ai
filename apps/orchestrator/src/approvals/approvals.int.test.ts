@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { approvalSchema, SYSTEM_DECIDERS, type Approval } from '@page/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
+import { DecisionsService } from '../decisions/decisions.service.ts';
 import { createSchemaDeps } from '../db/test-utils.ts';
 import { IssueUpdates } from '../issues/issue-updates.ts';
 import { IssuesService } from '../issues/issues.service.ts';
@@ -13,7 +14,13 @@ import { ApprovalsService } from './approvals.service.ts';
 const deps = await createSchemaDeps();
 const updates = new IssueUpdates(deps.logger);
 const issues = new IssuesService(deps.db, deps.fixJobs, deps.logger, updates);
-const runs = new RunsService(deps.db, issues, deps.jobs, deps.logger);
+const runs = new RunsService(
+  deps.db,
+  issues,
+  deps.jobs,
+  deps.logger,
+  new DecisionsService(deps.db, null, deps.logger),
+);
 const approvals = new ApprovalsService(deps.db, runs, updates, deps.logger);
 approvals.onModuleInit();
 const heard: Approval[] = [];

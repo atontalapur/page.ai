@@ -263,3 +263,13 @@ describe('formatErrorPrompt', () => {
     expect(text).not.toContain('Expected exactly 1 action');
   });
 });
+
+describe('the knowledge graph in the prompts', () => {
+  it('adds its blocks and section only when the run has it', () => {
+    expect(systemPrompt(1, false, true)).toContain('page_kg_search');
+    expect(systemPrompt(1, false, true)).toContain('page_kg_write');
+    expect(systemPrompt(1)).not.toContain('page_kg');
+    expect(instancePrompt({ task: 'x', knowledge: true })).toContain('## The knowledge graph');
+    expect(instancePrompt({ task: 'x' })).not.toContain('knowledge graph');
+  });
+});

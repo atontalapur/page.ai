@@ -10,6 +10,7 @@ import type {
 import {
   FakeDeployer,
   FakeGitHub,
+  KnowledgeHostTools,
   FakeOps,
   FakeRunner,
   InMemoryAuditSink,
@@ -611,6 +612,38 @@ describe('runFixJob', () => {
         status: 'succeeded',
         prUrl: 'https://github.com/page-demo/shop/pull/1',
       });
+    });
+
+    it('gives the run the knowledge graph, and records its commit once GitHub has the push', async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      const commits: string[] = [];
+      const knowledge = ({ runId, signal }: { runId: string; signal: AbortSignal }) =>
+        new KnowledgeHostTools({
+          orchestratorUrl: 'https://orch.example.com',
+          secret: 'node-secret',
+          runId,
+          signal,
+          fetch: (_url, init) => {
+            commits.push((JSON.parse(init.body as string) as { sha: string }).sha);
+            return Promise.resolve(Response.json({ stamped: 1 }));
+          },
+        });
+      const prompts: string[] = [];
+      const inner = new ScriptedModel([submitReply()]);
+      const { deps } = setup([], workspace, {
+        github,
+        knowledge,
+        model: {
+          complete: (messages) => {
+            prompts.push(messages.map((m) => m.content).join('\n'));
+            return inner.complete();
+          },
+        },
+      });
+      await runFixJob(claim(), deps);
+
+      expect(prompts[0]).toContain('page_kg_search');
+      expect(commits).toEqual([github.head(`pageagents/${job.runId}`)]);
     });
 
     it('opens no PR for a Tier 1 fix that scored under the threshold', async () => {

@@ -5,6 +5,7 @@ import DashboardPage from '../pages/DashboardPage';
 import IncidentsPage from '../pages/IncidentsPage';
 import IncidentDetailsPage from '../pages/IncidentDetailsPage';
 import DebuggingPage from '../pages/DebuggingPage';
+import KnowledgePage from '../pages/KnowledgePage';
 import AgentsPage from '../pages/AgentsPage';
 import AgentWorkspacePage from '../pages/AgentWorkspacePage';
 import { IssuesProvider } from '../context/IssuesContext';
@@ -34,6 +35,7 @@ export default function App() {
 
             <Route path="/agents/:id" element={<AgentWorkspacePage />} />
 
+            <Route path="/knowledge" element={<KnowledgePage />} />
             <Route path="/debug" element={<DebuggingPage />} />
 
             <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />

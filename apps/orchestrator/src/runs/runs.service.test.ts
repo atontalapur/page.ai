@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Tier } from '@page/contracts';
 import { confidenceFixture, escalationNoteFixture } from '@page/contracts/fixtures';
 import { afterAll, describe, expect, it } from 'vitest';
+import { DecisionsService } from '../decisions/decisions.service.ts';
 import { createTestDeps } from '../db/test-utils.ts';
 import { IssueNotFoundError, IssuesService } from '../issues/issues.service.ts';
 import { transition, type IssueState } from '../issues/transitions.ts';
@@ -14,7 +15,13 @@ const deps = await createTestDeps();
 afterAll(() => deps.close());
 
 const issues = new IssuesService(deps.db, deps.fixJobs, deps.logger);
-const runs = new RunsService(deps.db, issues, deps.jobs, deps.logger);
+const runs = new RunsService(
+  deps.db,
+  issues,
+  deps.jobs,
+  deps.logger,
+  new DecisionsService(deps.db, null, deps.logger),
+);
 
 const report = 'GET /\n\nRangeError: Invalid currency code : US';
 let n = 0;
@@ -273,6 +280,7 @@ describe('RunsService', () => {
       new IssuesService(deps.db, deps.fixJobs, logger),
       deps.jobs,
       logger,
+      new DecisionsService(deps.db, null, logger),
     );
     const { issue, job } = await fixing();
 
@@ -289,7 +297,13 @@ describe('RunsService', () => {
   it('logs and drops a result for an issue that does not exist', async () => {
     const lines: unknown[] = [];
     const logger = createLogger('info', { write: (line: string) => lines.push(JSON.parse(line)) });
-    const logged = new RunsService(deps.db, issues, deps.jobs, logger);
+    const logged = new RunsService(
+      deps.db,
+      issues,
+      deps.jobs,
+      logger,
+      new DecisionsService(deps.db, null, logger),
+    );
     const { job } = await fixing();
     const orphan = finished({ ...job, issueId: randomUUID() });
     expect(await logged.record(orphan)).toEqual({ kind: 'no_issue' });

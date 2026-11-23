@@ -5,6 +5,7 @@ import {
   FakeGitHub,
   FakeOps,
   HttpOps,
+  KnowledgeHostTools,
   PostgresAuditSink,
   RailwayDeployer,
   RestGitHub,
@@ -27,7 +28,7 @@ import { autoApprovals, LinkApprovals, type Approvals } from './run/approvals.ts
 import { closeChat, RunInbox } from './run/inbox.ts';
 import { liveAppLock, type OpsLock } from './run/ops-lock.ts';
 import { PgBossRunResults, type RunResults } from './run/results.ts';
-import { runFixJob } from './run/run-fix-job.ts';
+import { runFixJob, type RunDeps } from './run/run-fix-job.ts';
 import { DockerSandboxes } from './sandbox/docker-sandboxes.ts';
 import { FakeSandboxes, fakeWorkspace } from './sandbox/fake-sandboxes.ts';
 import { LocalSandboxes } from './sandbox/local-sandboxes.ts';
@@ -55,6 +56,8 @@ export interface Adapters {
    * refused.
    */
   approvals?: Approvals;
+  /** Builds a run's knowledge-graph tools. Without it, runs get none. */
+  knowledge?: RunDeps['knowledge'];
   /** Closes connections the adapters opened, after the daemon stops claiming jobs. */
   close(): Promise<void>;
 }
@@ -72,8 +75,20 @@ export interface Daemon {
  * `run_ended`, since the orchestrator only sends it to the daemon it last heard the run from.
  */
 export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
-  const { jobs, sandboxes, sink, link, results, model, github, ops, opsLock, deployer, approvals } =
-    adapters;
+  const {
+    jobs,
+    sandboxes,
+    sink,
+    link,
+    results,
+    model,
+    github,
+    ops,
+    opsLock,
+    deployer,
+    approvals,
+    knowledge,
+  } = adapters;
   // Each run's kill switch and inbox, with a logger that carries its issueId, runId and tier.
   const runs = new Map<string, { kill: AbortController; inbox: RunInbox; logger: Logger }>();
   // The link has no `off`, so the handlers go on once however often start() runs.
@@ -128,6 +143,7 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
               github,
               ...withOps(ops, opsLock, deployer),
               ...(approvals === undefined ? {} : { approvals }),
+              ...(knowledge === undefined ? {} : { knowledge }),
               logger,
             },
             entry.kill.signal,
@@ -193,6 +209,18 @@ export async function createAdapters(config: NodeConfig, logger: Logger): Promis
       deployerFor(config, logger),
     ),
     approvals: approvalsFor(config, link, logger),
+    // The orchestrator's knowledge routes, with the secret the link already sends.
+    ...(fake
+      ? {}
+      : {
+          knowledge: ({ runId, signal }: { runId: string; signal: AbortSignal }) =>
+            new KnowledgeHostTools({
+              orchestratorUrl: config.ORCHESTRATOR_URL,
+              secret: config.NODE_SHARED_SECRET,
+              runId,
+              signal,
+            }),
+        }),
     async close() {
       const results = await Promise.allSettled([
         link.close(),

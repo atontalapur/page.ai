@@ -95,11 +95,39 @@ export type OpsToolCall =
   | OpsPlanRollbackCall
   | OpsRollbackCall;
 
+/** Vector search over the knowledge graph, then one hop along its edges. */
+export interface KgSearchCall {
+  kind: 'host_tool';
+  tool: 'kg.search';
+  query: string;
+}
+
+/** One node of the knowledge graph, with its links. */
+export interface KgReadCall {
+  kind: 'host_tool';
+  tool: 'kg.read';
+  key: string;
+}
+
+/** Writes a node to the run's branch of the knowledge graph, and links it to others. */
+export interface KgWriteCall {
+  kind: 'host_tool';
+  tool: 'kg.write';
+  key: string;
+  nodeKind: string;
+  title: string;
+  body: string;
+  links: { relation: string; to: string }[];
+}
+
+/** The knowledge graph, through the orchestrator, at every tier. */
+export type KnowledgeToolCall = KgSearchCall | KgReadCall | KgWriteCall;
+
 /**
  * A tool the daemon runs on the host, not in the sandbox, because it needs the network or a
  * token. The tier policy decides which tiers may call each one.
  */
-export type HostToolCall = GitHubToolCall | OpsToolCall;
+export type HostToolCall = GitHubToolCall | OpsToolCall | KnowledgeToolCall;
 
 export type HostToolName = HostToolCall['tool'];
 

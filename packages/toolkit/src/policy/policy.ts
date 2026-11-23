@@ -187,6 +187,10 @@ export const HOST_TOOL_TIERS: Readonly<Record<HostToolName, Tier>> = {
   'ops.restart': 3,
   'ops.planRollback': 3,
   'ops.rollback': 3,
+  // What the agents learn about the repo is shared by every tier.
+  'kg.search': 1,
+  'kg.read': 1,
+  'kg.write': 1,
 };
 
 /** Whether `tool` may run at `tier`. An unknown tool name is refused. */
