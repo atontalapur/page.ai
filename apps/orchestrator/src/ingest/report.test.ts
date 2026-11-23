@@ -322,22 +322,22 @@ describe('report helpers', () => {
     expect(maskEmails('import @page/contracts, @ 5, a@')).toBe('import @page/contracts, @ 5, a@');
   });
 
+  // The bound is per call. A CI runner busy with every other package's tests can slow one
+  // call past it, so a slow call gets up to two more tries; a pattern that backtracks is
+  // slow on every try. The test's own timeout leaves room for those tries.
   it('masks in linear time on a long run with no @', () => {
     const long = 'a'.repeat(200_000);
     const dense = ['a@', '@a', '.@.', 'a%40', '𠮷@'].map((unit) => unit.repeat(50_000));
     for (const text of [long, `${long}@`, `@${long}`, `${'a.'.repeat(100_000)}`, ...dense]) {
-      // The fastest of three tries. A CI runner busy with every other package's tests can
-      // slow one try past the bound; a pattern that backtracks makes all three slow.
-      const fastest = Math.min(
-        ...[0, 1, 2].map(() => {
-          const started = performance.now();
-          maskEmails(text);
-          return performance.now() - started;
-        }),
-      );
+      let fastest = Infinity;
+      for (let tries = 0; tries < 3 && fastest >= 500; tries++) {
+        const started = performance.now();
+        maskEmails(text);
+        fastest = Math.min(fastest, performance.now() - started);
+      }
       expect(fastest).toBeLessThan(500);
     }
-  });
+  }, 20_000);
 
   it('masks a long message or path in linear time', () => {
     // Unbounded, the email pattern took about 14 s on 80,000 of these.
