@@ -63,6 +63,8 @@ export function recordingDeps(deps: AgentDeps): Recording & { deps: AgentDeps } 
         return t;
       },
       ...(deps.signal === undefined ? {} : { signal: deps.signal }),
+      // A message from the on-call person lands in a turn's `sent`, so replay checks it too.
+      ...(deps.inbox === undefined ? {} : { inbox: deps.inbox }),
     },
   };
 }

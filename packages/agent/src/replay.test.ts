@@ -35,4 +35,27 @@ describe('recorded transcripts', () => {
     });
     expect(replay.remaining()).toBe(0);
   });
+
+  // The daemon gives every run an inbox, empty until someone on call asks. A recorded eval
+  // run must replay through it untouched: same prompts, same calls, same end.
+  it.each(files)('%s replays the same with an empty inbox', async (file) => {
+    const transcript = load(file);
+    const replay = replayDeps(transcript);
+    let takes = 0;
+    const inbox = {
+      take: () => {
+        takes += 1;
+        return [];
+      },
+      answer: () => {
+        throw new Error('nothing was asked');
+      },
+    };
+    const run = await runAgent(transcript.task, { ...replay.deps, inbox }, transcript.config);
+
+    expect(run.exitStatus).toBe(transcript.exitStatus);
+    expect(run.modelCalls).toBe(transcript.modelCalls);
+    expect(takes).toBe(transcript.modelCalls);
+    expect(replay.remaining()).toBe(0);
+  });
 });
