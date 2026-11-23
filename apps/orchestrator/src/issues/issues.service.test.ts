@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { IssueEvent } from '@page/contracts';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestDeps } from '../db/test-utils.ts';
@@ -107,7 +108,9 @@ describe('IssuesService', () => {
 
   it('fills in the report on a repeat when the issue had none', async () => {
     const { issue } = await service.report({ fingerprint: `fp-${++n}`, title: 'Boom' });
+    expect(await service.storedReport(issue.id)).toBeNull();
     await service.report({ fingerprint: `fp-${n}`, title: 'Boom' }, 'GET /\n\nError: Boom');
+    expect(await service.storedReport(issue.id)).toBe('GET /\n\nError: Boom');
     await service.apply(issue.id, triage);
     await service.apply(issue.id, { type: 'start_fix' });
     expect((await liveJob(issue.id)).data.report).toBe('GET /\n\nError: Boom');
@@ -185,6 +188,8 @@ describe('IssuesService', () => {
   it('keeps a recurring issue at the top of the list', async () => {
     const { issue: old } = await report();
     await report();
+    // PGlite's now() counts whole milliseconds, so a repeat in the same one would tie.
+    await sleep(5);
     await service.report({ fingerprint: `fp-${n - 1}`, title: 'TypeError in /api/cart' });
     expect((await service.list())[0]?.id).toBe(old.id);
   });
@@ -258,6 +263,7 @@ describe('IssuesService', () => {
     const id = '00000000-0000-4000-8000-000000000000';
     await expect(service.get(id)).rejects.toThrow(IssueNotFoundError);
     await expect(service.events(id)).rejects.toThrow(IssueNotFoundError);
+    await expect(service.storedReport(id)).rejects.toThrow(IssueNotFoundError);
     await expect(service.apply(id, { type: 'kill' })).rejects.toThrow(IssueNotFoundError);
   });
 });

@@ -2,6 +2,7 @@ import { notifyJobSchema } from '@page/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createTestDeps } from '../db/test-utils.ts';
 import { IssuesService } from '../issues/issues.service.ts';
+import { createLogger } from '../logger.ts';
 import { FIX_QUEUE, type FixJob } from '../queue/fix-jobs.ts';
 import { NOTIFY_QUEUE } from '../queue/queues.ts';
 import { TriageClassifier } from './classify.ts';
@@ -35,6 +36,49 @@ describe('TriageService', () => {
     expect(payload.message).toContain('medium frontend');
     expect(payload.message).toContain(`/issues/${issue.id}`);
     expect(jobs[0]?.singletonKey).toBe('hydrate:+15550000001');
+  });
+
+  it('classifies from the stored report, not only the title', async () => {
+    const { issue } = await issues.report(
+      { fingerprint: 'from-report', title: 'TypeError: x is undefined' },
+      'GET /cart (route /cart, render)\n\nTypeError: x is undefined',
+    );
+    await triage.handle({ v: 1, issueId: issue.id });
+    // The title alone reads as backend-api; the request line says a page broke.
+    expect(await issues.get(issue.id)).toMatchObject({ class: 'frontend', severity: 'medium' });
+  });
+
+  it('logs which path classified the issue, and why the model fell back', async () => {
+    const lines: unknown[] = [];
+    const logger = createLogger('info', { write: (line: string) => lines.push(JSON.parse(line)) });
+    const failing = new TriageClassifier(
+      {
+        complete: () =>
+          Promise.resolve({ ok: false, error: { kind: 'auth', status: 401, message: 'No auth' } }),
+      },
+      1000,
+    );
+    const logged = new TriageService(issues, deps.jobs, failing, deps.config, logger);
+    const { issue } = await issues.report({ fingerprint: 'logged', title: 'Hydration failed' });
+    await logged.handle({ v: 1, issueId: issue.id });
+
+    expect(lines).toContainEqual(
+      expect.objectContaining({
+        level: 40,
+        issueId: issue.id,
+        fallback: 'auth 401: No auth',
+        msg: 'triage model failed, rules classified the issue',
+      }),
+    );
+    expect(lines).toContainEqual(
+      expect.objectContaining({
+        issueId: issue.id,
+        class: 'frontend',
+        issueSeverity: 'medium',
+        by: 'rules',
+        msg: 'issue triaged',
+      }),
+    );
   });
 
   it('queues a separate job for each phone, keyed by fingerprint and phone', async () => {
@@ -81,7 +125,8 @@ describe('TriageService', () => {
     await auto.handle({ v: 1, issueId: issue.id });
 
     const fixing = await issues.get(issue.id);
-    expect(fixing).toMatchObject({ status: 'fixing', currentTier: 1, class: 'backend-api' });
+    // `GET /` is a page, so the rules file scenario 001's error as frontend, as it says.
+    expect(fixing).toMatchObject({ status: 'fixing', currentTier: 1, class: 'frontend' });
     const jobs = await deps.boss.findJobs<FixJob>(FIX_QUEUE, { data: { issueId: issue.id } });
     expect(jobs.map((job) => job.data)).toEqual([
       expect.objectContaining({

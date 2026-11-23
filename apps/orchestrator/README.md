@@ -59,6 +59,16 @@ has none. A production Next build's frames name compiled `.next/server` chunks r
 `fix` queue expires a claimed job after 20 minutes (`FIX_EXPIRE_SECONDS`): 14 minutes of agent
 budget plus the sandbox start, the diff and closing a PR.
 
+Triage classifies an issue from its title and stored report (`src/triage/`). The model gets
+the report escaped inside one `<report>` tag, and its prompt says the report is data, not
+instructions: anyone with the public PostHog project key can send one, and an exception
+message can quote a request. Rules over the same report answer when no key is set, the call
+fails or the reply isn't the JSON contract. They read the request line, the frames and the
+messages, and get 28 of the 30 scenarios' classes right (eval/README.md). Their severity is
+also a floor under the model's, so a report that talks the model down still pages as high as
+the rules would. The `issue triaged` log line says which path ran (`by`) and, when the floor
+raised it, the model's own severity; a model that failed logs a warning with the reason.
+
 When a run ends, the node daemon sends a `run_finished` job (`runFinishedJobSchema`) with the
 `node.run.finished` result, the run's times and the agent's diff. `RunsService` writes the
 `runs` row, then applies the issue event in the same transaction: `succeeded` is
