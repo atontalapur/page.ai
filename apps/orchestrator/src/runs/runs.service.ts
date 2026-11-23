@@ -251,9 +251,9 @@ export class RunsService {
     return this.committed(recorded);
   }
 
-  /** Logs the issue change a committed transaction made, so a rollback never shows up. */
+  /** Hands the committed issue change to afterCommit, so a rollback never shows up. */
   private committed(recorded: Recorded): Recorded {
-    if (recorded.moved) this.issues.logMoved(recorded.moved);
+    if (recorded.moved) this.issues.afterCommit(recorded.moved);
     return recorded;
   }
 }

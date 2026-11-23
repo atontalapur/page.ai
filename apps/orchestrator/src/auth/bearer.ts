@@ -12,10 +12,16 @@ export function bearerAuthorized(
   authorization: string | undefined,
   secret: string | undefined,
 ): boolean {
-  if (!secret) return false;
   const match = /^Bearer (.+)$/.exec(authorization ?? '');
-  const token = match?.[1];
-  if (!token) return false;
+  return tokenAuthorized(match?.[1], secret);
+}
+
+/**
+ * The secret itself, for a caller that can't send headers: a browser's Socket.IO handshake
+ * carries it as `auth.token`. The same rules as bearerAuthorized.
+ */
+export function tokenAuthorized(token: unknown, secret: string | undefined): boolean {
+  if (!secret || typeof token !== 'string' || !token) return false;
   return timingSafeEqual(digest(token), digest(secret));
 }
 

@@ -7,7 +7,7 @@ through Kysely, moves them through a state machine, and queues fix jobs on pg-bo
 ## Modules
 
 `AppModule` serves `/health`, `/issues` and `/ingest/posthog`, and imports seven feature modules.
-Ingest, triage, runs and notify are wired. The other three are still stubs.
+Ingest, triage, runs, notify and the gateway are wired. Tiers and approvals are still stubs.
 
 | Module            | Owns                                                                       |
 | ----------------- | -------------------------------------------------------------------------- |
@@ -17,7 +17,7 @@ Ingest, triage, runs and notify are wired. The other three are still stubs.
 | `TiersModule`     | Escalation after a run: up a tier, or to failed past Tier 3. Stub.         |
 | `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions. Stub.        |
 | `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone   |
-| `GatewayModule`   | Socket.IO events to and from the UI and node daemons (#34). Stub.          |
+| `GatewayModule`   | Socket.IO for the UI: `issue.updated` on every issue change (#34)          |
 
 ## Issue lifecycle
 
@@ -126,6 +126,18 @@ Bodies are validated against the zod contracts (400). `POST /issues/:id/events` 
 400 for `patch_ready`, `ops_fixed`, `escalate` and `fail`: run outcomes reach an issue only
 through the `run_finished` queue, which also writes the `runs` and `escalations` rows. Unknown ids return 404. Events the current status doesn't allow return 409. `GET /issues`
 returns at most 200 issues, most recently updated first; a repeat report counts as an update.
+
+## Live events
+
+`UiGateway` serves Socket.IO on the HTTP port, under `/socket.io/`, in the `/ui` namespace
+(`UI_NAMESPACE` in `@page/contracts`). The handshake sends the API token as `auth.token`, since
+a browser can't set headers on a WebSocket. Without it, or with a wrong one, the connection is
+refused with `connect_error` `unauthorized`. Each connected tab gets `issue.updated` (`{ v: 1,
+issue }`, `serverToUiEvents` in contracts) whenever an issue is opened, repeated or moved,
+whether by ingest, triage, an API event or a run result. The payload is checked against its
+contract before it goes out. IssuesService publishes the issue after the transaction commits
+(`report`, and `afterCommit` for every status change), so a rolled-back change is never sent.
+Events go only to tabs on the instance that made the change, which is fine with one instance.
 
 ## Run locally
 

@@ -1,5 +1,6 @@
 import { Global, Module, type DynamicModule } from '@nestjs/common';
 import type { AppDeps } from './deps.ts';
+import { IssueUpdates } from './issues/issue-updates.ts';
 import { IssuesService } from './issues/issues.service.ts';
 import { CLASSIFIER, CONFIG, DB, FIX_JOB_QUEUE, JOB_QUEUES, LOGGER, PAGER } from './tokens.ts';
 
@@ -18,9 +19,20 @@ export class CoreModule {
         { provide: CONFIG, useValue: deps.config },
         { provide: PAGER, useValue: deps.pager },
         { provide: CLASSIFIER, useValue: deps.classifier },
+        IssueUpdates,
         IssuesService,
       ],
-      exports: [DB, FIX_JOB_QUEUE, JOB_QUEUES, LOGGER, CONFIG, PAGER, CLASSIFIER, IssuesService],
+      exports: [
+        DB,
+        FIX_JOB_QUEUE,
+        JOB_QUEUES,
+        LOGGER,
+        CONFIG,
+        PAGER,
+        CLASSIFIER,
+        IssueUpdates,
+        IssuesService,
+      ],
     };
   }
 }

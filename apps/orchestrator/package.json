@@ -22,13 +22,17 @@
     "@types/pg": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
+    "socket.io-client": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
   "dependencies": {
+    "@fastify/static": "^10.1.12",
     "@nestjs/common": "^12.5.0",
     "@nestjs/core": "^12.5.0",
     "@nestjs/platform-fastify": "^12.5.0",
+    "@nestjs/platform-socket.io": "^12.6.0",
+    "@nestjs/websockets": "^12.6.0",
     "@page/contracts": "workspace:*",
     "@page/db-migrations": "workspace:*",
     "@page/model-client": "workspace:*",
@@ -38,6 +42,7 @@
     "pino": "catalog:",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "socket.io": "catalog:",
     "zod": "catalog:"
   }
 }
