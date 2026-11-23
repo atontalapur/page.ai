@@ -1,123 +1,274 @@
 import { useEffect, useState } from 'react';
 import type { Issue, IssueRun, Step } from '@page/contracts';
 import { Badge } from '@page/design-system/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
 
 import { useIssues } from '../../context/IssuesContext';
 import { runStatusLabels, shortId } from '../../lib/issueLabels';
+import {
+  PHASE_BLURBS,
+  commandLabel,
+  editOf,
+  formatDuration,
+  outputNotes,
+  phasesOf,
+  runFigures,
+  shortPath,
+  stepResult,
+  type StepTone,
+} from '../../lib/runSteps';
 import { runStatusStyles } from '../../lib/statusStyles';
+import AgentText from './AgentText';
+import { EditView, PatchView, type DiffStyle } from './CodeDiff';
 
 // Steps reach the database as the agent works but send no event, so a fixing issue's runs
 // are reloaded on this interval as well as on every issue change.
 export const RUNS_POLL_MS = 5_000;
 
-/**
- * A step is written before its command runs and completed after, so the running run's last
- * step with no exit code and no output yet is still going, not timed out.
- */
-function stepResult(step: Step, running: boolean): { label: string; failed: boolean } {
-  if (!step.allowed) return { label: 'Refused', failed: true };
-  if (step.exitCode === null && running && step.outputTrimmed === '') {
-    return { label: 'Running', failed: false };
-  }
-  if (step.exitCode === null) return { label: 'Timed out', failed: true };
-  if (step.exitCode === 0) return { label: 'OK', failed: false };
-  return { label: `Exit ${step.exitCode}`, failed: true };
-}
+// Reasoning longer than this is cut to its opening lines until the reader asks for it.
+const LONG_THOUGHT_CHARS = 360;
 
-// A thought longer than this shows its start, with the rest behind a toggle.
-const THOUGHT_PREVIEW_CHARS = 280;
+const toneText: Record<StepTone | 'muted', string> = {
+  ok: 'text-green-700 dark:text-green-400',
+  bad: 'text-red-700 dark:text-red-400',
+  refused: 'text-amber-700 dark:text-amber-400',
+  running: 'text-purple-700 dark:text-purple-300',
+  muted: 'text-muted-foreground',
+};
+
+const clock = (at: string) =>
+  new Date(at).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
 
 function Thought({ text }: { text: string }) {
-  const style = 'whitespace-pre-wrap break-words text-sm text-muted-foreground';
-  if (text.length <= THOUGHT_PREVIEW_CHARS) return <p className={style}>{text}</p>;
+  const [open, setOpen] = useState(false);
+  const long = text.length > LONG_THOUGHT_CHARS;
+  const clamped = long && !open;
   return (
-    <details>
-      <summary className={`cursor-pointer ${style}`}>
-        {text.slice(0, THOUGHT_PREVIEW_CHARS).trimEnd()}...
-      </summary>
-      <p className={style}>{text.slice(THOUGHT_PREVIEW_CHARS).trimStart()}</p>
-    </details>
-  );
-}
-
-const time = (at: string | null) => (at ? new Date(at).toLocaleTimeString() : undefined);
-
-function StepRow({ step, running }: { step: Step; running: boolean }) {
-  const { label, failed } = stepResult(step, running);
-  return (
-    <li className="space-y-1 border-b py-2 last:border-b-0">
-      {step.thought && <Thought text={step.thought} />}
-      <div className="flex items-start justify-between gap-3">
-        <code className="min-w-0 break-words font-mono text-xs">
-          <span className="text-muted-foreground">
-            {step.seq} {step.kind === 'exec' ? '$' : step.kind}{' '}
-          </span>
-          {step.input}
-        </code>
-        <span
-          className={`shrink-0 text-xs ${failed ? 'text-red-700 dark:text-red-400' : 'text-muted-foreground'}`}
+    <div className="space-y-1">
+      <AgentText
+        text={text}
+        className={`max-w-prose space-y-2 text-sm leading-relaxed ${
+          clamped
+            ? 'max-h-32 overflow-hidden [mask-image:linear-gradient(#000_60%,transparent)]'
+            : ''
+        }`}
+      />
+      {long && (
+        <button
+          type="button"
+          className="text-xs font-medium text-primary hover:underline"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
         >
-          {label}
-        </span>
-      </div>
-      {step.outputTrimmed !== '' && (
-        <details>
-          <summary className="cursor-pointer text-xs text-muted-foreground">Output</summary>
-          <pre className="mt-1 max-h-64 overflow-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap break-words">
-            {step.outputTrimmed}
-          </pre>
-        </details>
+          {open ? 'Show less' : 'Show all of it'}
+        </button>
       )}
-    </li>
+    </div>
   );
 }
 
-function RunCard({ run, open }: { run: IssueRun; open: boolean }) {
-  const started = time(run.startedAt);
-  const finished = time(run.finishedAt);
+function StepItem({ step, running }: { step: Step; running: boolean }) {
+  const { label, tone } = stepResult(step, running);
+  const edit = editOf(step);
+  const named = commandLabel(step.input);
   return (
-    <details open={open} className="rounded-lg border p-3">
-      <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-sm">
-        <span className="font-medium">Tier {run.tier}</span>
-        <Badge variant="outline" className={runStatusStyles[run.status]}>
-          {runStatusLabels[run.status]}
-        </Badge>
-        <span className="font-mono text-xs text-muted-foreground">{shortId(run.id)}</span>
-        <span className="text-xs text-muted-foreground">
-          {run.steps.length} {run.steps.length === 1 ? 'step' : 'steps'}
-          {started && ` · started ${started}`}
-          {finished && ` · finished ${finished}`}
-        </span>
-      </summary>
-      <div className="mt-3 space-y-3">
-        {run.prUrl && (
-          <a href={run.prUrl} target="_blank" rel="noreferrer" className="text-sm underline">
-            Pull request
-          </a>
-        )}
-        {run.steps.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No steps yet.</p>
+    <li className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2">
+      <span className="pt-0.5 text-right font-mono text-xs tabular-nums text-muted-foreground">
+        {step.seq}
+      </span>
+      <div className="min-w-0 space-y-2">
+        {step.thought && <Thought text={step.thought} />}
+        {edit ? (
+          <div className="overflow-hidden rounded-md border">
+            <div className="flex items-center justify-between gap-2 border-b bg-muted/50 px-3 py-1 text-xs">
+              <span className="truncate font-mono">{shortPath(edit.path)}</span>
+              <span className={`shrink-0 font-medium ${toneText[tone]}`}>Edit · {label}</span>
+            </div>
+            <EditView {...edit} />
+          </div>
         ) : (
-          <ol aria-label={`Tier ${run.tier} steps`}>
-            {run.steps.map((step) => (
-              <StepRow
-                key={step.seq}
-                step={step}
-                running={run.status === 'running' && step === run.steps.at(-1)}
-              />
-            ))}
-          </ol>
+          <div className="flex min-w-0 items-center gap-3 rounded-md border bg-muted/30 px-3 py-1">
+            <code className="min-w-0 flex-1 truncate font-mono text-xs" title={step.input}>
+              {named ? (
+                <>
+                  <span className="font-medium text-primary">{named.verb}</span>{' '}
+                  <span className="text-muted-foreground">{named.target}</span>
+                </>
+              ) : (
+                <span className="text-muted-foreground">$ {step.input}</span>
+              )}
+            </code>
+            <span className={`shrink-0 text-xs font-medium ${toneText[tone]}`}>{label}</span>
+          </div>
         )}
-        {run.diff && (
-          <details open>
-            <summary className="cursor-pointer text-sm font-medium">Patch</summary>
-            <pre className="mt-1 max-h-96 overflow-auto rounded bg-muted p-2 text-xs">
-              {run.diff}
+        {outputNotes(step).map((note) => (
+          <p key={note.text} className={`text-xs ${toneText[note.tone]}`}>
+            {note.text}
+          </p>
+        ))}
+        {!edit && step.allowed && step.outputTrimmed !== '' && (
+          <details>
+            <summary className="w-fit cursor-pointer text-xs text-muted-foreground">Output</summary>
+            <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 text-xs">
+              {step.outputTrimmed}
             </pre>
           </details>
         )}
       </div>
-    </details>
+    </li>
+  );
+}
+
+function Figure({ label, value, note }: { label: string; value: string; note?: string }) {
+  return (
+    <div className="space-y-0.5 bg-card px-4 py-3">
+      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="text-lg font-semibold tabular-nums">
+        {value}
+        {note && <span className="ml-1 text-xs font-normal text-muted-foreground">{note}</span>}
+      </dd>
+    </div>
+  );
+}
+
+function PatchCard({ diff }: { diff: string }) {
+  const [style, setStyle] = useState<DiffStyle>('unified');
+  const lines = diff.split('\n');
+  const file = lines.find((l) => l.startsWith('+++ '))?.replace(/^\+\+\+ b\//, '') ?? '';
+  const added = lines.filter((l) => l.startsWith('+') && !l.startsWith('+++')).length;
+  const removed = lines.filter((l) => l.startsWith('-') && !l.startsWith('---')).length;
+  return (
+    <Card className="gap-0 overflow-hidden py-0">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b py-3">
+        <div className="min-w-0">
+          <CardTitle className="text-sm">Patch</CardTitle>
+          <p className="truncate text-xs text-muted-foreground">
+            <span className="font-mono">{shortPath(file)}</span>{' '}
+            <span className="text-green-700 dark:text-green-400">+{added}</span>{' '}
+            <span className="text-red-700 dark:text-red-400">−{removed}</span>
+          </p>
+        </div>
+        <div
+          className="inline-flex overflow-hidden rounded-md border"
+          role="group"
+          aria-label="Diff layout"
+        >
+          {(['unified', 'split'] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={style === option}
+              onClick={() => setStyle(option)}
+              className={`px-3 py-1 text-xs capitalize ${
+                style === option ? 'bg-muted font-medium' : 'text-muted-foreground'
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      </CardHeader>
+      <CardContent className="overflow-x-auto px-0">
+        <PatchView patch={diff} diffStyle={style} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function RunReview({ run }: { run: IssueRun }) {
+  const figures = runFigures(run);
+  const running = run.status === 'running';
+  const last = run.steps.at(-1);
+  return (
+    <div className="space-y-4">
+      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-4">
+        <Figure
+          label={running ? 'Running for' : 'Time to finish'}
+          value={figures.durationMs === null ? '—' : formatDuration(figures.durationMs)}
+        />
+        <Figure
+          label="Steps"
+          value={String(figures.steps)}
+          note={`${figures.withThought} with reasoning`}
+        />
+        <Figure
+          label="Edits"
+          value={String(figures.edits)}
+          note={`in ${figures.files} ${figures.files === 1 ? 'file' : 'files'}`}
+        />
+        <Figure label="Refused" value={String(figures.refused)} note="by policy" />
+      </dl>
+
+      {run.prUrl && (
+        <a
+          href={run.prUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm font-medium underline"
+        >
+          Open the pull request
+        </a>
+      )}
+      {run.diff && <PatchCard diff={run.diff} />}
+
+      <Card className="gap-0 py-0">
+        <CardHeader className="border-b py-3">
+          <CardTitle className="text-sm">How the agent got there</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            {run.steps.length === 0
+              ? 'No steps yet.'
+              : `${run.steps.length} steps in the agent's own words, each run as an unprivileged user in the sandbox`}
+          </p>
+        </CardHeader>
+        <CardContent className="divide-y px-0">
+          {phasesOf(run.steps).map((group) => {
+            const from = Date.parse(group.steps[0]!.createdAt);
+            const to = Date.parse(group.steps.at(-1)!.createdAt);
+            return (
+              <section
+                key={`${group.phase}-${group.steps[0]!.seq}`}
+                aria-label={`${group.phase}, from step ${group.steps[0]!.seq}`}
+                className="grid gap-3 px-4 py-4 md:grid-cols-[8rem_minmax(0,1fr)] md:gap-4"
+              >
+                <div className="space-y-0.5">
+                  <h4 className="text-sm font-semibold">{group.phase}</h4>
+                  <p className="text-xs text-muted-foreground">{PHASE_BLURBS[group.phase]}</p>
+                  <p className="text-xs tabular-nums text-muted-foreground">
+                    {group.steps.length} {group.steps.length === 1 ? 'step' : 'steps'} ·{' '}
+                    {formatDuration(Math.max(to - from, 1000))}
+                  </p>
+                </div>
+                <ol className="min-w-0 space-y-4" aria-label={`Tier ${run.tier} steps`}>
+                  {group.steps.map((step) => (
+                    <StepItem key={step.seq} step={step} running={running && step === last} />
+                  ))}
+                </ol>
+              </section>
+            );
+          })}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function RunHeading({ run }: { run: IssueRun }) {
+  return (
+    <span className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="font-semibold">Tier {run.tier}</span>
+      <Badge variant="outline" className={runStatusStyles[run.status]}>
+        {runStatusLabels[run.status]}
+      </Badge>
+      <span className="font-mono text-xs text-muted-foreground">{shortId(run.id)}</span>
+      {run.startedAt && (
+        <span className="text-xs text-muted-foreground">started {clock(run.startedAt)}</span>
+      )}
+    </span>
   );
 }
 
@@ -156,11 +307,29 @@ export default function RunsPanel({ issue }: { issue: Issue }) {
       <p className="text-sm text-muted-foreground">No agent has worked on this incident yet.</p>
     );
   }
+  const latest = runs.at(-1)!;
+  const earlier = runs.slice(0, -1).reverse();
   return (
-    <div className="space-y-3">
-      {runs.map((run, i) => (
-        <RunCard key={run.id} run={run} open={i === runs.length - 1} />
-      ))}
+    <div className="space-y-6">
+      <div className="space-y-3">
+        <RunHeading run={latest} />
+        <RunReview run={latest} />
+      </div>
+      {earlier.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-muted-foreground">Earlier runs</h3>
+          {earlier.map((run) => (
+            <details key={run.id} className="rounded-lg border p-3">
+              <summary className="cursor-pointer">
+                <RunHeading run={run} />
+              </summary>
+              <div className="mt-3">
+                <RunReview run={run} />
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

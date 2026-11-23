@@ -1,9 +1,11 @@
 import {
+  issueEventRecordSchema,
   issueRunSchema,
   issueSchema,
   UI_NAMESPACE,
   type Issue,
   type IssueEvent,
+  type IssueEventRecord,
   type IssueRun,
   type ServerToUiEvents,
   type SocketRefusal,
@@ -15,6 +17,7 @@ import { parseIssueUpdated, type IssueFeed, type IssueSource } from './source';
 
 const issueList = issueSchema.array();
 const runList = issueRunSchema.array();
+const eventList = issueEventRecordSchema.array();
 
 // The server counts handshakes per minute; one that refuses for that is waited out.
 const RATE_LIMIT_RETRY_MS = 60_000;
@@ -112,6 +115,17 @@ export function serverSource(token: string): IssueSource {
       throw new Error(
         typeof message === 'string' ? message : `The orchestrator answered ${res.status}.`,
       );
+    },
+
+    async fetchEvents(id: string): Promise<IssueEventRecord[] | undefined> {
+      try {
+        const res = await get(`/issues/${encodeURIComponent(id)}/events`);
+        if (!res.ok) return undefined;
+        const events = eventList.safeParse(await res.json());
+        return events.success ? events.data : undefined;
+      } catch {
+        return undefined;
+      }
     },
 
     async fetchRuns(id: string): Promise<IssueRun[] | undefined> {

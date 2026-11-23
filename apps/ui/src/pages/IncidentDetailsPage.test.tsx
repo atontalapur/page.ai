@@ -4,6 +4,18 @@ import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import type { IssueRun, Step } from '@page/contracts';
 
 import IncidentDetailsPage from './IncidentDetailsPage';
+
+// jsdom can't run the highlighter; these stand in for its views.
+vi.mock('@pierre/diffs/react', () => ({
+  PatchDiff: ({ patch }: { patch: string }) => <pre data-testid="patch-diff">{patch}</pre>,
+  MultiFileDiff: ({
+    oldFile,
+    newFile,
+  }: {
+    oldFile: { contents: string };
+    newFile: { contents: string };
+  }) => <pre data-testid="edit-diff">{`${oldFile.contents} -> ${newFile.contents}`}</pre>,
+}));
 import { RUNS_POLL_MS } from '../components/issues/RunsPanel';
 import { issue, renderWithIssues, testSource, type TestSource } from '../test-utils';
 
@@ -97,41 +109,91 @@ describe('IncidentDetailsPage', () => {
     expect(screen.getByText('Untriaged', { selector: '[data-slot="badge"]' })).toBeTruthy();
   });
 
-  it('lists each run with its steps, their results, the patch and the PR', async () => {
+  it('shows the latest run: figures, the patch, and its steps by phase with their results', async () => {
     const source = testSource([fixing, fresh]);
     source.runs.set(fixing.id, [
       run(1, 'escalated', {
+        steps: [step(0, 'pnpm --filter @page/demo-app test', { exitCode: 1 })],
+      }),
+      run(2, 'succeeded', {
+        startedAt: '2026-11-22T09:00:00.000Z',
+        finishedAt: '2026-11-22T09:02:27.000Z',
         prUrl: 'https://github.com/o/page-demo/pull/7',
-        diff: '--- a/src/shop/products.ts\n+++ b/src/shop/products.ts',
+        diff: 'diff --git a/apps/demo-app/src/shop/products.ts b/apps/demo-app/src/shop/products.ts\n--- a/apps/demo-app/src/shop/products.ts\n+++ b/apps/demo-app/src/shop/products.ts\n@@ -1 +1 @@\n-old\n+new',
         steps: [
-          step(0, 'pnpm test', { exitCode: 1, outputTrimmed: '1 failed' }),
-          step(1, 'curl x', { allowed: false, exitCode: null }),
+          step(0, 'cat -n apps/demo-app/src/shop/products.ts'),
+          step(1, 'cat x/[slug]', {
+            allowed: false,
+            exitCode: null,
+            outputTrimmed: 'refused: unquoted glob characters are not allowed',
+          }),
+          step(2, 'pnpm --filter @page/demo-app exec vitest run src/shop/products.test.ts', {
+            exitCode: 1,
+            outputTrimmed:
+              'error: operator does not exist: text = integer\n Tests  1 failed | 1 passed (2)',
+          }),
+          step(
+            3,
+            JSON.stringify({
+              path: 'apps/demo-app/src/shop/products.ts',
+              oldText: 'old',
+              newText: 'new',
+            }),
+            {
+              kind: 'edit',
+            },
+          ),
+          step(4, 'pnpm --filter @page/demo-app test', {
+            outputTrimmed: ' Tests  124 passed (124)',
+          }),
         ],
       }),
-      run(2, 'running', { steps: [step(0, 'cat src/shop/products.ts')] }),
     ]);
     renderDetails(fixing.id, source);
 
-    expect(await screen.findByText('pnpm test')).toBeTruthy();
-    expect(screen.getByText('Escalated')).toBeTruthy();
-    expect(screen.getByText('Running')).toBeTruthy();
-    expect(screen.getByText('Exit 1')).toBeTruthy();
-    expect(screen.getByText('Refused')).toBeTruthy();
-    expect(screen.getByText('1 failed')).toBeTruthy();
-    expect(screen.getByText(/\+\+\+ b\/src\/shop\/products\.ts/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Pull request' }).getAttribute('href')).toBe(
+    const tier2 = await screen.findAllByRole('list', { name: 'Tier 2 steps' });
+    const steps = within(tier2[0]!.closest('section')!.parentElement!);
+    expect(steps.getByText('Read')).toBeTruthy();
+    expect(steps.getByText('Refused')).toBeTruthy();
+    expect(steps.getByText('Policy: unquoted glob characters are not allowed')).toBeTruthy();
+    expect(steps.getByText('Exit 1')).toBeTruthy();
+    expect(steps.getByText('Tests 1 failed | 1 passed (2)', { selector: 'p' })).toBeTruthy();
+    expect(
+      steps.getByText('error: operator does not exist: text = integer', { selector: 'p' }),
+    ).toBeTruthy();
+    expect(steps.getByText('Tests 124 passed (124)', { selector: 'p' })).toBeTruthy();
+    expect(
+      screen
+        .getAllByRole('region')
+        .map((r) => r.getAttribute('aria-label'))
+        .filter(Boolean),
+    ).toEqual(
+      expect.arrayContaining([
+        'Explore, from step 0',
+        'Reproduce, from step 2',
+        'Fix, from step 3',
+        'Verify, from step 4',
+      ]),
+    );
+
+    // The patch and the edit render through @pierre/diffs (mocked here).
+    expect((await screen.findByTestId('patch-diff')).textContent).toContain('+new');
+    expect((await screen.findByTestId('edit-diff')).textContent).toBe('old -> new');
+    expect(screen.getByText('2m 27s')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open the pull request' }).getAttribute('href')).toBe(
       'https://github.com/o/page-demo/pull/7',
     );
-    expect(screen.getByText('cat src/shop/products.ts')).toBeTruthy();
+    // The earlier run is there, collapsed.
+    expect(screen.getByText('Earlier runs')).toBeTruthy();
   });
 
-  it("shows the model's thought above the step it asked for, and the start of a long one", async () => {
+  it("leads each step with the agent's reasoning, and cuts a long one short until asked", async () => {
     const long = `Read the query first. ${'The id column is an integer. '.repeat(20)}`;
     const source = testSource([fixing, fresh]);
     source.runs.set(fixing.id, [
       run(1, 'running', {
         steps: [
-          step(0, 'cat -n src/shop/products.ts', { thought: 'Find the lookup that throws.' }),
+          step(0, 'cat -n src/shop/products.ts', { thought: 'Find the `getProduct` lookup.' }),
           step(1, 'pnpm test', { thought: long }),
           step(2, 'ls'),
         ],
@@ -139,8 +201,13 @@ describe('IncidentDetailsPage', () => {
     ]);
     renderDetails(fixing.id, source);
 
-    expect(await screen.findByText('Find the lookup that throws.')).toBeTruthy();
-    expect(screen.getByText(/^Read the query first\..*\.\.\.$/s)).toBeTruthy();
+    expect((await screen.findByText('getProduct')).tagName).toBe('CODE');
+    const more = screen.getByRole('button', { name: 'Show all of it' });
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(more);
+    expect(screen.getByRole('button', { name: 'Show less' }).getAttribute('aria-expanded')).toBe(
+      'true',
+    );
   });
 
   it("shows the running run's last step as running until it has an outcome", async () => {
@@ -155,38 +222,60 @@ describe('IncidentDetailsPage', () => {
     ]);
     renderDetails(fixing.id, source);
 
-    const tier2 = within(await screen.findByRole('list', { name: 'Tier 2 steps' }));
-    expect(tier2.getByText('Running')).toBeTruthy();
-    expect(tier2.queryByText('Timed out')).toBeNull();
+    const [tier2] = await screen.findAllByRole('list', { name: 'Tier 2 steps' });
+    const latest = within(tier2!.closest('section')!.parentElement!);
+    expect(latest.getAllByText('Running').length).toBeGreaterThan(0);
+    expect(latest.queryByText('Timed out')).toBeNull();
     // A finished run's step with no exit code did time out.
-    expect(
-      within(screen.getByRole('list', { name: 'Tier 1 steps' })).getByText('Timed out'),
-    ).toBeTruthy();
-  });
-
-  it('says so when no agent has worked on the incident', async () => {
-    renderDetails(fresh.id);
-    expect(await screen.findByText('No agent has worked on this incident yet.')).toBeTruthy();
+    const tier1 = screen.getByRole('list', { name: 'Tier 1 steps' });
+    expect(within(tier1).getByText('Timed out')).toBeTruthy();
   });
 
   it('reloads the runs while the issue is fixing, for steps that send no event', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const source = testSource([fixing, fresh]);
-      source.runs.set(fixing.id, [run(1, 'running', { steps: [step(0, 'ls')] })]);
+      source.runs.set(fixing.id, [run(1, 'running', { steps: [step(0, 'ls -la')] })]);
       renderDetails(fixing.id, source);
-      expect(await screen.findByText('ls')).toBeTruthy();
+      expect(await screen.findByText('$ ls -la')).toBeTruthy();
 
       source.runs.set(fixing.id, [
-        run(1, 'running', { steps: [step(0, 'ls'), step(1, 'git diff')] }),
+        run(1, 'running', { steps: [step(0, 'ls -la'), step(1, 'git diff')] }),
       ]);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(RUNS_POLL_MS);
       });
-      expect(screen.getByText('git diff')).toBeTruthy();
+      expect(screen.getByText('$ git diff')).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('lists what happened to the issue in the activity panel', async () => {
+    const source = testSource([fixing, fresh]);
+    const at = (m: number) => `2026-11-22T09:0${m}:00.000Z`;
+    const record = (id: string, event: object, currentTier: 1 | 2 | null, m: number) => ({
+      id,
+      issueId: fixing.id,
+      event,
+      fromStatus: 'new',
+      toStatus: 'triaged',
+      currentTier,
+      createdAt: at(m),
+    });
+    source.events.set(fixing.id, [
+      record('1', { type: 'triage', class: 'database', severity: 'critical' }, null, 1),
+      record('2', { type: 'start_fix' }, 1, 2),
+      record('3', { type: 'escalate', runId: fixing.id, reason: 'tests still fail' }, 2, 3),
+    ] as never);
+    renderDetails(fixing.id, source);
+
+    const activity = within(await screen.findByRole('list', { name: 'Activity' }));
+    expect(await activity.findByText('Escalated to Tier 2')).toBeTruthy();
+    expect(activity.getByText('Error reported')).toBeTruthy();
+    expect(activity.getByText('Database, Critical')).toBeTruthy();
+    expect(activity.getByText('Tier 1 fix started')).toBeTruthy();
+    expect(activity.getByText('tests still fail')).toBeTruthy();
   });
 
   describe('review', () => {

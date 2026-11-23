@@ -1,4 +1,10 @@
-import { serverToUiEvents, type Issue, type IssueEvent, type IssueRun } from '@page/contracts';
+import {
+  serverToUiEvents,
+  type Issue,
+  type IssueEvent,
+  type IssueEventRecord,
+  type IssueRun,
+} from '@page/contracts';
 
 /**
  * Where a source stands. `needs_token` means the server refused the token, or there is none
@@ -22,6 +28,8 @@ export interface IssueSource {
   fetchIssue(id: string): Promise<Issue | undefined>;
   /** An issue's runs with their steps, oldest first, or undefined when they can't be loaded. */
   fetchRuns(id: string): Promise<IssueRun[] | undefined>;
+  /** An issue's applied events, oldest first, or undefined when they can't be loaded. */
+  fetchEvents(id: string): Promise<IssueEventRecord[] | undefined>;
   /**
    * Applies a reviewer's event, such as `approve`, and returns the issue it left. Rejects
    * with a message to show when the server refuses it.

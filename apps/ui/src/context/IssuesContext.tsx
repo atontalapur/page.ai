@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { Issue, IssueEvent, IssueRun } from '@page/contracts';
+import type { Issue, IssueEvent, IssueEventRecord, IssueRun } from '@page/contracts';
 
 import { mockSource } from '../live/mock-source';
 import { serverPresent, serverSource } from '../live/server-source';
@@ -28,6 +28,7 @@ interface IssuesContextType {
   getIssue: (id: string) => Issue | undefined;
   fetchIssue: (id: string) => Promise<Issue | undefined>;
   fetchRuns: (id: string) => Promise<IssueRun[] | undefined>;
+  fetchEvents: (id: string) => Promise<IssueEventRecord[] | undefined>;
   /** Applies a reviewer's event and stores the issue it left. Rejects with the reason it failed. */
   applyEvent: (id: string, event: IssueEvent) => Promise<Issue>;
   submitToken: (token: string) => void;
@@ -137,6 +138,11 @@ export function IssuesProvider({
     [active],
   );
 
+  const fetchEvents = useCallback(
+    (id: string) => active?.fetchEvents(id) ?? Promise.resolve(undefined),
+    [active],
+  );
+
   const applyEvent = useCallback(
     async (id: string, event: IssueEvent) => {
       if (!active) throw new Error('Not connected to the orchestrator.');
@@ -160,6 +166,7 @@ export function IssuesProvider({
       getIssue,
       fetchIssue,
       fetchRuns,
+      fetchEvents,
       applyEvent,
       submitToken,
     }),
@@ -171,6 +178,7 @@ export function IssuesProvider({
       getIssue,
       fetchIssue,
       fetchRuns,
+      fetchEvents,
       applyEvent,
       submitToken,
     ],
