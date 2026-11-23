@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/co
 import { buttonVariants } from '@page/design-system/components/ui/button';
 
 import { SeverityBadge, StatusBadge } from '../components/issues/IssueBadges';
+import RunsPanel from '../components/issues/RunsPanel';
 import TokenPrompt from '../components/issues/TokenPrompt';
 import { useIssues } from '../context/IssuesContext';
 import { classLabel, shortId, tierLabel } from '../lib/issueLabels';
@@ -115,10 +116,7 @@ export default function IncidentDetailsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Runs for this incident will show here, with their steps and diffs, once the dashboard
-              receives run events.
-            </p>
+            <RunsPanel issue={issue} />
           </CardContent>
         </Card>
 

@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, screen, within } from '@testing-library/react';
+import type { IssueRun, Step } from '@page/contracts';
 
 import IncidentDetailsPage from './IncidentDetailsPage';
+import { RUNS_POLL_MS } from '../components/issues/RunsPanel';
 import { issue, renderWithIssues, testSource, type TestSource } from '../test-utils';
 
 afterEach(() => {
@@ -18,6 +20,40 @@ const fixing = issue(1, {
   currentTier: 2,
 });
 const fresh = issue(2, { status: 'new', class: null, severity: null, currentTier: null });
+
+function run(
+  tier: 1 | 2 | 3,
+  status: IssueRun['status'],
+  fields: Partial<IssueRun> = {},
+): IssueRun {
+  return {
+    id: `${tier}0000000-2222-4222-8222-222222222222`,
+    issueId: fixing.id,
+    tier,
+    status,
+    startedAt: '2026-11-22T09:00:00.000Z',
+    finishedAt: null,
+    prUrl: null,
+    confidence: null,
+    diff: null,
+    steps: [],
+    ...fields,
+  };
+}
+
+function step(seq: number, input: string, fields: Partial<Step> = {}): Step {
+  return {
+    runId: '10000000-2222-4222-8222-222222222222',
+    seq,
+    kind: 'exec',
+    input,
+    outputTrimmed: '',
+    exitCode: 0,
+    allowed: true,
+    createdAt: '2026-11-22T09:00:00.000Z',
+    ...fields,
+  };
+}
 
 function renderDetails(id: string, source: TestSource = testSource([fixing, fresh])) {
   renderWithIssues(<IncidentDetailsPage />, source, {
@@ -60,10 +96,57 @@ describe('IncidentDetailsPage', () => {
     expect(screen.getByText('Untriaged', { selector: '[data-slot="badge"]' })).toBeTruthy();
   });
 
-  it('keeps a placeholder for agent runs', () => {
-    renderDetails(fixing.id);
+  it('lists each run with its steps, their results, the patch and the PR', async () => {
+    const source = testSource([fixing, fresh]);
+    source.runs.set(fixing.id, [
+      run(1, 'escalated', {
+        prUrl: 'https://github.com/o/page-demo/pull/7',
+        diff: '--- a/src/shop/products.ts\n+++ b/src/shop/products.ts',
+        steps: [
+          step(0, 'pnpm test', { exitCode: 1, outputTrimmed: '1 failed' }),
+          step(1, 'curl x', { allowed: false, exitCode: null }),
+        ],
+      }),
+      run(2, 'running', { steps: [step(0, 'cat src/shop/products.ts')] }),
+    ]);
+    renderDetails(fixing.id, source);
 
-    expect(screen.getByText('Agent Runs')).toBeTruthy();
+    expect(await screen.findByText('pnpm test')).toBeTruthy();
+    expect(screen.getByText('Escalated')).toBeTruthy();
+    expect(screen.getByText('Running')).toBeTruthy();
+    expect(screen.getByText('Exit 1')).toBeTruthy();
+    expect(screen.getByText('Refused')).toBeTruthy();
+    expect(screen.getByText('1 failed')).toBeTruthy();
+    expect(screen.getByText(/\+\+\+ b\/src\/shop\/products\.ts/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Pull request' }).getAttribute('href')).toBe(
+      'https://github.com/o/page-demo/pull/7',
+    );
+    expect(screen.getByText('cat src/shop/products.ts')).toBeTruthy();
+  });
+
+  it('says so when no agent has worked on the incident', async () => {
+    renderDetails(fresh.id);
+    expect(await screen.findByText('No agent has worked on this incident yet.')).toBeTruthy();
+  });
+
+  it('reloads the runs while the issue is fixing, for steps that send no event', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const source = testSource([fixing, fresh]);
+      source.runs.set(fixing.id, [run(1, 'running', { steps: [step(0, 'ls')] })]);
+      renderDetails(fixing.id, source);
+      expect(await screen.findByText('ls')).toBeTruthy();
+
+      source.runs.set(fixing.id, [
+        run(1, 'running', { steps: [step(0, 'ls'), step(1, 'git diff')] }),
+      ]);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(RUNS_POLL_MS);
+      });
+      expect(screen.getByText('git diff')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('updates live from issue.updated', () => {

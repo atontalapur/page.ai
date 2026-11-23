@@ -181,5 +181,7 @@ export function mockSource({
     tick,
     push,
     fetchIssue: (id) => Promise.resolve(issues.get(id)),
+    // The mock plays issues only; its fixes have no runs to show.
+    fetchRuns: () => Promise.resolve([]),
   };
 }

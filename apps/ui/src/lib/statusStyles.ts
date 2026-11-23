@@ -1,4 +1,4 @@
-import type { IssueStatus, Severity } from '@page/contracts';
+import type { IssueStatus, Run, Severity } from '@page/contracts';
 
 import type { AgentStatus } from '../data/mockAgents';
 
@@ -36,6 +36,15 @@ export const issueStatusStyles: Record<IssueStatus, string> = {
   pr_open: amber,
   awaiting_approval: amber,
   resolved: green,
+  failed: red,
+  killed: gray,
+};
+
+export const runStatusStyles: Record<Run['status'], string> = {
+  queued: blue,
+  running: purple,
+  succeeded: green,
+  escalated: amber,
   failed: red,
   killed: gray,
 };

@@ -174,6 +174,33 @@ describe('serverSource', () => {
     fetchMock.mockRejectedValueOnce(new TypeError('network'));
     expect(await source.fetchIssue(issueFixture.id)).toBeUndefined();
   });
+
+  it("fetches an issue's runs with the token, and finds nothing for a 404 or a bad body", async () => {
+    const source = serverSource('s3cret');
+    const run = {
+      id: '10000000-2222-4222-8222-222222222222',
+      issueId: issueFixture.id,
+      tier: 1,
+      status: 'running',
+      startedAt: '2026-11-22T09:00:00.000Z',
+      finishedAt: null,
+      prUrl: null,
+      confidence: null,
+      diff: null,
+      steps: [],
+    };
+
+    fetchMock.mockResolvedValueOnce(json([run]));
+    expect(await source.fetchRuns(issueFixture.id)).toEqual([run]);
+    expect(fetchMock).toHaveBeenLastCalledWith(`/issues/${issueFixture.id}/runs`, {
+      headers: { authorization: 'Bearer s3cret', accept: 'application/json' },
+    });
+
+    fetchMock.mockResolvedValueOnce(json({ statusCode: 404 }, 404));
+    expect(await source.fetchRuns(issueFixture.id)).toBeUndefined();
+    fetchMock.mockResolvedValueOnce(json([{ ...run, status: 'nope' }]));
+    expect(await source.fetchRuns(issueFixture.id)).toBeUndefined();
+  });
 });
 
 describe('serverPresent', () => {

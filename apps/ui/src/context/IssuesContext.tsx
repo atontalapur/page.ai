@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { Issue } from '@page/contracts';
+import type { Issue, IssueRun } from '@page/contracts';
 
 import { mockSource } from '../live/mock-source';
 import { serverPresent, serverSource } from '../live/server-source';
@@ -27,6 +27,7 @@ interface IssuesContextType {
   tokenRefused: boolean;
   getIssue: (id: string) => Issue | undefined;
   fetchIssue: (id: string) => Promise<Issue | undefined>;
+  fetchRuns: (id: string) => Promise<IssueRun[] | undefined>;
   submitToken: (token: string) => void;
 }
 
@@ -129,9 +130,14 @@ export function IssuesProvider({
     [active],
   );
 
+  const fetchRuns = useCallback(
+    (id: string) => active?.fetchRuns(id) ?? Promise.resolve(undefined),
+    [active],
+  );
+
   const value = useMemo(
-    () => ({ issues, status, loaded, tokenRefused, getIssue, fetchIssue, submitToken }),
-    [issues, status, loaded, tokenRefused, getIssue, fetchIssue, submitToken],
+    () => ({ issues, status, loaded, tokenRefused, getIssue, fetchIssue, fetchRuns, submitToken }),
+    [issues, status, loaded, tokenRefused, getIssue, fetchIssue, fetchRuns, submitToken],
   );
 
   return <IssuesContext.Provider value={value}>{children}</IssuesContext.Provider>;

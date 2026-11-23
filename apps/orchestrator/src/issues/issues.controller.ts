@@ -17,10 +17,12 @@ import {
   type Issue,
   type IssueEvent,
   type IssueEventRecord,
+  type IssueRun,
   type IssueStatus,
   type NewIssue,
 } from '@page/contracts';
 import { z } from 'zod';
+import { RunsService } from '../runs/runs.service.ts';
 import { IssueNotFoundError, IssuesService } from './issues.service.ts';
 import { TransitionError } from './transitions.ts';
 
@@ -49,7 +51,10 @@ async function asHttp<T>(work: Promise<T>): Promise<T> {
 
 @Controller('issues')
 export class IssuesController {
-  constructor(private readonly issues: IssuesService) {}
+  constructor(
+    private readonly issues: IssuesService,
+    private readonly runs: RunsService,
+  ) {}
 
   /** Opens an issue, or counts a repeat of the open one with the same fingerprint. */
   @Post()
@@ -74,6 +79,12 @@ export class IssuesController {
   @Get(':id/events')
   events(@Param('id', { schema: issueId }) id: string): Promise<IssueEventRecord[]> {
     return asHttp(this.issues.events(id));
+  }
+
+  /** Every run, oldest first, with its steps and diff. The run in progress is last. */
+  @Get(':id/runs')
+  runsOf(@Param('id', { schema: issueId }) id: string): Promise<IssueRun[]> {
+    return asHttp(this.runs.forIssue(id));
   }
 
   /**

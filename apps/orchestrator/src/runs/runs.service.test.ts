@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { escalationNoteFixture } from '@page/contracts/fixtures';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createTestDeps } from '../db/test-utils.ts';
-import { IssuesService } from '../issues/issues.service.ts';
+import { IssueNotFoundError, IssuesService } from '../issues/issues.service.ts';
 import { createLogger } from '../logger.ts';
 import { FIX_FAILED_QUEUE, FIX_QUEUE, type FixJob } from '../queue/fix-jobs.ts';
 import { RUN_FINISHED_QUEUE } from '../queue/queues.ts';
@@ -367,6 +367,76 @@ describe('RunsService.recordFailedResult', () => {
 
     const orphan = finished({ ...job, issueId: randomUUID() });
     expect(await runs.recordFailedResult(orphan, 'x')).toEqual({ kind: 'no_issue' });
+  });
+});
+
+describe('RunsService.forIssue', () => {
+  /** Writes steps the way the daemon does, before its run has a row. */
+  async function stepsFor(runId: string, inputs: string[]) {
+    await deps.db
+      .insertInto('steps')
+      .values(
+        inputs.map((input, seq) => ({
+          run_id: runId,
+          seq,
+          kind: 'exec' as const,
+          input,
+          output_trimmed: `out ${seq}`,
+          exit_code: 0,
+          allowed: true,
+        })),
+      )
+      .execute();
+  }
+
+  it('throws for an unknown issue', async () => {
+    await expect(runs.forIssue(randomUUID())).rejects.toBeInstanceOf(IssueNotFoundError);
+  });
+
+  it('shows the run in hand as queued, then running with its steps in order', async () => {
+    const { issue, job } = await fixing();
+    expect(await runs.forIssue(issue.id)).toEqual([
+      expect.objectContaining({ id: job.runId, tier: 1, status: 'queued', steps: [] }),
+    ]);
+
+    await stepsFor(job.runId, ['ls', 'cat a.ts']);
+    const [run] = await runs.forIssue(issue.id);
+    expect(run).toMatchObject({ status: 'running', finishedAt: null, diff: null });
+    expect(run?.steps.map((step) => [step.seq, step.input])).toEqual([
+      [0, 'ls'],
+      [1, 'cat a.ts'],
+    ]);
+    expect(run?.startedAt).toBe(run?.steps[0]?.createdAt);
+  });
+
+  it("serves a finished run's row, diff and steps, and the next tier's run after it", async () => {
+    const { issue, job } = await fixing();
+    await stepsFor(job.runId, ['pnpm test']);
+    await runs.record(finished(job, escalation));
+    const next = await liveJob(issue.id);
+    await stepsFor(next.runId, ['git diff']);
+
+    const [first, second] = await runs.forIssue(issue.id);
+    expect(first).toMatchObject({
+      id: job.runId,
+      tier: 1,
+      status: 'escalated',
+      startedAt: at,
+      finishedAt: later,
+    });
+    expect(first?.steps.map((step) => step.input)).toEqual(['pnpm test']);
+    expect(second).toMatchObject({ id: next.runId, tier: 2, status: 'running' });
+    expect(second?.steps.map((step) => step.input)).toEqual(['git diff']);
+  });
+
+  it('keeps the submitted diff and shows no run in hand once the patch waits on a human', async () => {
+    const { issue, job } = await fixing();
+    const diff = '--- a/src/shop/products.ts\n+++ b/src/shop/products.ts\n';
+    await runs.record({ ...finished(job), diff });
+
+    const served = await runs.forIssue(issue.id);
+    expect(served).toHaveLength(1);
+    expect(served[0]).toMatchObject({ status: 'succeeded', diff });
   });
 });
 

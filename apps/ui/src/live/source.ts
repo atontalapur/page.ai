@@ -1,4 +1,4 @@
-import { serverToUiEvents, type Issue } from '@page/contracts';
+import { serverToUiEvents, type Issue, type IssueRun } from '@page/contracts';
 
 /**
  * Where a source stands. `needs_token` means the server refused the token, or there is none
@@ -20,6 +20,8 @@ export interface IssueSource {
   start(feed: IssueFeed): () => void;
   /** One issue by id, for a detail page whose issue isn't in the list. */
   fetchIssue(id: string): Promise<Issue | undefined>;
+  /** An issue's runs with their steps, oldest first, or undefined when they can't be loaded. */
+  fetchRuns(id: string): Promise<IssueRun[] | undefined>;
 }
 
 /**

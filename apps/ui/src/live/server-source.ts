@@ -1,7 +1,9 @@
 import {
+  issueRunSchema,
   issueSchema,
   UI_NAMESPACE,
   type Issue,
+  type IssueRun,
   type ServerToUiEvents,
   type SocketRefusal,
   type UiToServerEvents,
@@ -11,6 +13,7 @@ import { io, type Socket } from 'socket.io-client';
 import { parseIssueUpdated, type IssueFeed, type IssueSource } from './source';
 
 const issueList = issueSchema.array();
+const runList = issueRunSchema.array();
 
 // The server counts handshakes per minute; one that refuses for that is waited out.
 const RATE_LIMIT_RETRY_MS = 60_000;
@@ -84,6 +87,17 @@ export function serverSource(token: string): IssueSource {
         if (!res.ok) return undefined;
         const issue = issueSchema.safeParse(await res.json());
         return issue.success ? issue.data : undefined;
+      } catch {
+        return undefined;
+      }
+    },
+
+    async fetchRuns(id: string): Promise<IssueRun[] | undefined> {
+      try {
+        const res = await get(`/issues/${encodeURIComponent(id)}/runs`);
+        if (!res.ok) return undefined;
+        const runs = runList.safeParse(await res.json());
+        return runs.success ? runs.data : undefined;
       } catch {
         return undefined;
       }
