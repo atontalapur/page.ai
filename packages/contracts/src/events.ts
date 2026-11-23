@@ -12,6 +12,7 @@ import {
   stepSchema,
 } from './db.ts';
 import { escalationNoteSchema } from './escalation.ts';
+import { nodeSummarySchema } from './nodes.ts';
 
 // Socket.IO events, one map per direction. Every payload carries a literal `v`; a breaking
 // change bumps it, and a receiver rejects a `v` it does not know.
@@ -94,6 +95,9 @@ export const serverToUiEvents = {
   'approval.requested': z.strictObject({ v, approval: approvalSchema }),
   // Sent to every tab once an approval is decided, so none keeps showing it as pending.
   'approval.updated': z.strictObject({ v, approval: decidedApprovalSchema }),
+  // A node daemon connected, disconnected, took a run or let one go. Carries the daemon as
+  // GET /nodes lists it, so a tab replaces its copy.
+  'node.updated': z.strictObject({ v, node: nodeSummarySchema }),
 };
 
 export const uiToServerEvents = {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { nodeNameSchema } from './nodes.ts';
 
 // Env schemas, parsed once at boot (#24). A shared base plus one extension per app.
 // `z.object` drops the unrelated vars `process.env` carries.
@@ -189,6 +190,9 @@ export const nodeConfigSchema = envSchema(
   baseConfigSchema
     .extend({
       ORCHESTRATOR_URL: z.url(),
+      // What the agents page calls this daemon. Sent in the socket handshake. Unset, the
+      // daemon goes by its hostname, which on Railway changes with each deploy.
+      NODE_NAME: nodeNameSchema.optional(),
       // Must match the orchestrator's, which creates the `fix` queue there.
       PGBOSS_SCHEMA: z
         .string()
