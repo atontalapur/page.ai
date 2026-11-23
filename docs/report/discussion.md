@@ -1,0 +1,150 @@
+# Discussion and limitations
+
+This section reads the [Results](evaluation-method.md#results) against the question the
+evaluation asks, lists what the system can't do yet and the risks it carries, and names the
+next steps the sources already point to. It describes `main` at `1bcf5e1` (2026-11-23).
+
+## What the results show
+
+On the code bugs, extra privilege bought no fixes. Each configuration fixed 51 of 54 dev runs.
+On the held-out set, tier1-only and the ladder fixed 9 of 9 and tier3-start 8 of 9. The ladder
+matched the tier3-start fix rate on both sets (1.00 x on dev, 1.13 x on held-out) while
+granting a higher tier to 2 of 54 dev runs and to none of the 9 held-out runs. Every
+configuration stayed under a cent per fixed bug, so on this model cost doesn't separate them.
+The rate of refused commands was about the same at every tier, so starting at Tier 3 didn't
+make the agent try more blocked commands.
+
+The ops set is the first where a lower tier can't fix the bug, so climbing decides the result.
+tier1-only fixed 0 of 6, tier3-start 5 of 6 and the ladder 3 of 6, which misses the 0.8 bar
+(0.60 x). The ladder fixed 030 every time, after running out of steps at Tier 1 and Tier 2 and
+climbing. It missed 029 every time: a lower tier traced the 500 to the setting, wrote a code
+patch with a test, and submitted. Climbing was also slow and costly here. The ladder's fixes
+took a median of 822 seconds against tier3-start's 27, and cost $0.1296 per fixed bug against
+$0.0080.
+
+The results show two ways the ladder goes wrong, and they pull in opposite directions:
+
+- A confident wrong patch at a lower tier neither climbs nor pages. This hit 2 of 54 dev
+  ladder runs (013, 014) and all 3 ladder runs of 029. In a deploy, that patch goes to a person
+  for approval as if it were a fix.
+- A run that has fixed the bug keeps going until a limit. Three dev runs did this (one false
+  page, two false escalations), and so did tier3-start's held-out run of 020, which hit the
+  wall clock.
+
+Most dev misses came from the model, not the tiers. Of the 9 dev misses, 6 ended on
+`format_errors`, where the model's replies stopped parsing as actions. Before the dev run, the
+gpt-oss-20b pilot fixed 0 of 9 because the model sent the action tags through its tool-call
+channel instead of its reply ([Amendment 2](eval-prereg.md)).
+
+## What the results don't show
+
+Every reported run came before confidence escalation. The ladder that runs today also climbs
+on a submitted patch that scores under its tier's threshold, so it is not the ladder that was
+measured. The results files don't keep the steps the score reads, so the recorded runs can't
+be scored after the fact. Whether the score would have caught 013, 014 or 029 is not known.
+#174 notes that the 029 patches came with a test, so the score may not have caught them.
+
+The held-out set doesn't test climbing, since the ladder never climbed there, and it says
+nothing about ops bugs, since 024 was skipped. No run has used the rollback tool. The four
+held-out bugs expected at Tier 2 were all fixed at Tier 1, because the check scores only the
+patch, and Tier 2 adds pushing a branch and opening a PR, which the eval sends to an in-memory
+GitHub. So the eval doesn't measure the PR path. Outside the eval, a Tier 2 dry run opened
+page-demo#4 with only the fix line in its diff (#115), and the first staging end-to-end run
+fixed 016 three times at Tier 1 ([eval/README.md](../../eval/README.md)).
+
+No result includes a person. The eval approves every gated ops call at once (`evalApprove`),
+so ops times leave out the wait for approval, up to 3 minutes a call. A typical settings fix
+needs two approved calls, the change and the restart (#176).
+
+The threats in [evaluation-method.md](evaluation-method.md#threats-to-validity) apply to all of
+this: small N, bugs and checks written by the team that wrote the agent, one demo app, model
+nondeterminism, checks that test only the reported behavior, and a compose stand-in for Railway
+on the ops set. The ops set is 2 bugs and 18 runs, and its Tier 3 prompt differed from the one
+the dev and held-out runs saw.
+
+## What the system can't do yet
+
+- Nobody can query a run while it works. The project plan has "approval, query and kill" on the
+  dashboard for week 7. The contracts define `run.chat`, but no daemon handles it, and the
+  orchestrator drops it ([orchestrator README](../../apps/orchestrator/README.md)).
+- The rollback tool has run only against a fake deployer. Its Railway GraphQL fields are checked
+  against Railway's docs and a faked fetch (#172).
+- The node daemon on Railway is built (`SANDBOX_RUNTIME=local`, #163), but that PR left "deploy
+  as a Railway service and run a staging fix end to end" unchecked, and the staging run on record
+  used a daemon on a local machine. On Railway the sandbox also loses its network block and its
+  per-run CPU and memory limits ([ADR 0001](../adr/0001-sandbox-network-policy.md)).
+- A fix that adds a dependency can't be tested in the sandbox until the image is rebuilt, since
+  the sandbox has no network.
+- A push copies whole files from the sandbox to the demo repo, so the two have to start from the
+  same tree. If they drift, a PR can undo `main`'s side of any file the agent touched
+  ([docs/demo-repo.md](../demo-repo.md)).
+- On a Twilio trial account the call plays Twilio's sample speech and the text is its alert
+  template, so neither names the issue ([docs/twilio.md](../twilio.md)).
+
+## Risks
+
+### Untrusted reports
+
+The agent's task is built from a production error, and an outside user can shape that error
+(#174). The stored report drops bodies, headers, cookies, query values and email addresses, and
+ingest masks the input a `JSON.parse` error quotes ([docs/posthog.md](../posthog.md)). The
+exception message and the request line still reach the model, so a report can carry text
+written to steer the agent. What bounds such a run is the rest of the design: no network and no
+secrets in the Docker sandbox, the tier policy in `execute()`, a person's approval before any
+Tier 3 change to the live app, and no merge tool at Tier 2. Two gaps remain. At Tier 2,
+whatever the model writes goes into a public PR. On the local runtime, a command can reach the
+internet. The confidence score reads only exit codes, summary lines and paths, never the report
+or the diff as instructions, but the tests it counts are ones the agent can write or edit
+(#174). The eval's reports are captured from real runs of the broken app, so it doesn't test a
+hostile one.
+
+### Approval identity
+
+Every dashboard tab shares one API token. The name a person gives before approving is a label,
+not a login: anyone with the token can connect under any name, and the record keeps that name
+([orchestrator README](../../apps/orchestrator/README.md)). It tells honest teammates apart and
+does nothing more. The demo repo has a similar gap. Agent PRs are authored with the owner's
+token, so its ruleset requires no approval, and a leaked token is write access to `main`
+([docs/demo-repo.md](../demo-repo.md)).
+
+### One orchestrator instance
+
+Live events, daemon tracking and approval deadlines live in one orchestrator process, so it runs
+as a single instance ([README](../../README.md#status)). Rate limits are counted in memory per
+instance too. A second instance would split the dashboard's live view, though a kill sent on
+one would still reach the daemon on its next event, since that check reads the database (#173).
+The node's claim on the live app has a gap of its own: an eval on another machine doesn't see it.
+
+### Rollback and the live app
+
+A rollback replaces the whole live build, and it is the one Tier 3 change that a failed run
+keeps rather than undoes. It has never run against Railway. If someone deploys while a rollback
+waits, the wait reports on that deployment instead (#172). 024, the only scenario whose fix is a
+rollback, is held out and was never run.
+
+### Uncalibrated confidence
+
+The confidence threshold (0.3 at every tier) and the weights (0.5, 0.3, 0.2) are a judgment
+call, not fitted. At 0.3 a code fix escalates only when nothing passed after its last edit, so
+the score fires on missing evidence rather than weak evidence. That keeps working fixes from
+climbing for no reason, and also means a wrong patch with a passing test of the agent's own
+lands. The score doesn't check that the patch touches the code in the report's stack, or that
+the reported error is gone (#174). [Amendment 5](eval-prereg.md) sets out a dev-only run to
+pick each tier's threshold. `pnpm eval:tune` now prints its tables and the rule's pick (#182),
+but at `1bcf5e1` the run itself has not reported.
+
+## Next steps
+
+1. Run Amendment 5. Phase 1 scores tier1-only and tier3-start on the dev bugs, phase 2 picks a
+   threshold per tier by its rule, and phase 3 plays the ladder at that threshold. That run is
+   the first to measure the ladder that is deployed, including whether the score catches the
+   confident wrong patch.
+2. If the failing fixes score as high as the passing ones, change the scorer under a later
+   amendment. #174 names what it lacks: a check that the patch touches the code in the stack, and
+   one that the reported error is gone.
+3. Make the first live rollback check `ops.planRollback` against staging, which only lists
+   deployments, before anyone relies on `ops.rollback` (#172).
+4. Run a staging fix through a daemon deployed on Railway, the step #163 left open.
+5. Give approvals real identity, and move the demo repo to a bot account or a GitHub App with one
+   required approval, which [docs/demo-repo.md](../demo-repo.md) says would close the token gap.
+6. Build querying a run from the dashboard, the one week 7 dashboard item that isn't built.
