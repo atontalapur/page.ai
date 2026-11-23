@@ -1,3 +1,4 @@
+import { nodeFixQueue } from '@page/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createTestDeps } from '../db/test-utils.ts';
 import {
@@ -31,6 +32,27 @@ describe('fix job queue', () => {
       retryLimit: 0,
     });
     expect(FIX_EXPIRE_SECONDS).toBeGreaterThan(14 * 60 + 60);
+  });
+
+  it("queues a fix started on a named agent in that agent's queue, and cancels it there", async () => {
+    const issueId = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
+    // As the events route does, before the transaction that sends the job.
+    await deps.fixJobs.prepare('box-1');
+    const job = await deps.db
+      .transaction()
+      .execute((trx) =>
+        deps.fixJobs.send({ issueId, fingerprint: 'fp-node', tier: 1, report, node: 'box-1' }, trx),
+      );
+    const queue = nodeFixQueue('box-1');
+    expect(await deps.boss.getQueue(queue)).toMatchObject({
+      expireInSeconds: FIX_EXPIRE_SECONDS,
+      deadLetter: FIX_FAILED_QUEUE,
+    });
+    expect((await deps.boss.findJobs(queue, { id: job!.runId }))[0]?.state).toBe('created');
+    expect(await deps.boss.findJobs(FIX_QUEUE, { id: job!.runId })).toEqual([]);
+
+    await deps.db.transaction().execute((trx) => deps.fixJobs.cancel(job!.runId, trx));
+    expect((await deps.boss.findJobs(queue, { id: job!.runId }))[0]?.state).toBe('cancelled');
   });
 
   it('dead letters a failed job but not a cancelled one', async () => {

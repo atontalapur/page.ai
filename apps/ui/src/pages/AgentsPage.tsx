@@ -15,6 +15,7 @@ import { Input } from '@page/design-system/components/ui/input';
 import { Button } from '@page/design-system/components/ui/button';
 
 import { AgentStatusBadge, LastStep, RunStatusBadge } from '../components/agents/AgentBadges';
+import StopRunButton from '../components/agents/StopRunButton';
 import StartFixDialog from '../components/agents/StartFixDialog';
 import TokenPrompt from '../components/issues/TokenPrompt';
 import { useAgents, useIssues } from '../context/IssuesContext';
@@ -73,6 +74,7 @@ function AgentCard({ agent }: { agent: NodeSummary }) {
                 </span>
               </div>
               <LastStep run={run} />
+              <StopRunButton issueId={run.issueId} />
             </div>
           ))
         )}
