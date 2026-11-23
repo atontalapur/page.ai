@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { KeyRound } from 'lucide-react';
+import { KeyMinimalisticIcon } from '@solar-icons/react/linear';
 
 import { Button } from '@page/design-system/components/ui/button';
 import {
@@ -35,7 +35,7 @@ export default function TokenPrompt() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <KeyRound className="size-5" />
+          <KeyMinimalisticIcon className="size-5" />
           Connect to the orchestrator
         </CardTitle>
         <CardDescription>

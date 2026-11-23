@@ -13,6 +13,7 @@
  *   slate  - grays: backgrounds, borders, text
  *   indigo - brand: primary actions, focus, charts
  *   red    - destructive
+ *   blue, violet, amber, green - status
  */
 @import '@radix-ui/colors/slate.css';
 @import '@radix-ui/colors/slate-dark.css';
@@ -26,6 +27,24 @@
 @import '@radix-ui/colors/red-dark.css';
 @import '@radix-ui/colors/red-alpha.css';
 @import '@radix-ui/colors/red-dark-alpha.css';
+/* Status colors: blue for new, violet for work in progress, amber for waiting on a
+   person, green for done. Use steps a3/a4 for tinted fills and 11 for text on them. */
+@import '@radix-ui/colors/blue.css';
+@import '@radix-ui/colors/blue-dark.css';
+@import '@radix-ui/colors/blue-alpha.css';
+@import '@radix-ui/colors/blue-dark-alpha.css';
+@import '@radix-ui/colors/violet.css';
+@import '@radix-ui/colors/violet-dark.css';
+@import '@radix-ui/colors/violet-alpha.css';
+@import '@radix-ui/colors/violet-dark-alpha.css';
+@import '@radix-ui/colors/amber.css';
+@import '@radix-ui/colors/amber-dark.css';
+@import '@radix-ui/colors/amber-alpha.css';
+@import '@radix-ui/colors/amber-dark-alpha.css';
+@import '@radix-ui/colors/green.css';
+@import '@radix-ui/colors/green-dark.css';
+@import '@radix-ui/colors/green-alpha.css';
+@import '@radix-ui/colors/green-dark-alpha.css';
 @import '@radix-ui/colors/black-alpha.css';
 @import '@radix-ui/colors/white-alpha.css';
 
@@ -119,6 +138,102 @@
   --color-red-a10: var(--red-a10);
   --color-red-a11: var(--red-a11);
   --color-red-a12: var(--red-a12);
+  --color-blue-1: var(--blue-1);
+  --color-blue-2: var(--blue-2);
+  --color-blue-3: var(--blue-3);
+  --color-blue-4: var(--blue-4);
+  --color-blue-5: var(--blue-5);
+  --color-blue-6: var(--blue-6);
+  --color-blue-7: var(--blue-7);
+  --color-blue-8: var(--blue-8);
+  --color-blue-9: var(--blue-9);
+  --color-blue-10: var(--blue-10);
+  --color-blue-11: var(--blue-11);
+  --color-blue-12: var(--blue-12);
+  --color-violet-1: var(--violet-1);
+  --color-violet-2: var(--violet-2);
+  --color-violet-3: var(--violet-3);
+  --color-violet-4: var(--violet-4);
+  --color-violet-5: var(--violet-5);
+  --color-violet-6: var(--violet-6);
+  --color-violet-7: var(--violet-7);
+  --color-violet-8: var(--violet-8);
+  --color-violet-9: var(--violet-9);
+  --color-violet-10: var(--violet-10);
+  --color-violet-11: var(--violet-11);
+  --color-violet-12: var(--violet-12);
+  --color-amber-1: var(--amber-1);
+  --color-amber-2: var(--amber-2);
+  --color-amber-3: var(--amber-3);
+  --color-amber-4: var(--amber-4);
+  --color-amber-5: var(--amber-5);
+  --color-amber-6: var(--amber-6);
+  --color-amber-7: var(--amber-7);
+  --color-amber-8: var(--amber-8);
+  --color-amber-9: var(--amber-9);
+  --color-amber-10: var(--amber-10);
+  --color-amber-11: var(--amber-11);
+  --color-amber-12: var(--amber-12);
+  --color-green-1: var(--green-1);
+  --color-green-2: var(--green-2);
+  --color-green-3: var(--green-3);
+  --color-green-4: var(--green-4);
+  --color-green-5: var(--green-5);
+  --color-green-6: var(--green-6);
+  --color-green-7: var(--green-7);
+  --color-green-8: var(--green-8);
+  --color-green-9: var(--green-9);
+  --color-green-10: var(--green-10);
+  --color-green-11: var(--green-11);
+  --color-green-12: var(--green-12);
+  --color-blue-a1: var(--blue-a1);
+  --color-blue-a2: var(--blue-a2);
+  --color-blue-a3: var(--blue-a3);
+  --color-blue-a4: var(--blue-a4);
+  --color-blue-a5: var(--blue-a5);
+  --color-blue-a6: var(--blue-a6);
+  --color-blue-a7: var(--blue-a7);
+  --color-blue-a8: var(--blue-a8);
+  --color-blue-a9: var(--blue-a9);
+  --color-blue-a10: var(--blue-a10);
+  --color-blue-a11: var(--blue-a11);
+  --color-blue-a12: var(--blue-a12);
+  --color-violet-a1: var(--violet-a1);
+  --color-violet-a2: var(--violet-a2);
+  --color-violet-a3: var(--violet-a3);
+  --color-violet-a4: var(--violet-a4);
+  --color-violet-a5: var(--violet-a5);
+  --color-violet-a6: var(--violet-a6);
+  --color-violet-a7: var(--violet-a7);
+  --color-violet-a8: var(--violet-a8);
+  --color-violet-a9: var(--violet-a9);
+  --color-violet-a10: var(--violet-a10);
+  --color-violet-a11: var(--violet-a11);
+  --color-violet-a12: var(--violet-a12);
+  --color-amber-a1: var(--amber-a1);
+  --color-amber-a2: var(--amber-a2);
+  --color-amber-a3: var(--amber-a3);
+  --color-amber-a4: var(--amber-a4);
+  --color-amber-a5: var(--amber-a5);
+  --color-amber-a6: var(--amber-a6);
+  --color-amber-a7: var(--amber-a7);
+  --color-amber-a8: var(--amber-a8);
+  --color-amber-a9: var(--amber-a9);
+  --color-amber-a10: var(--amber-a10);
+  --color-amber-a11: var(--amber-a11);
+  --color-amber-a12: var(--amber-a12);
+  --color-green-a1: var(--green-a1);
+  --color-green-a2: var(--green-a2);
+  --color-green-a3: var(--green-a3);
+  --color-green-a4: var(--green-a4);
+  --color-green-a5: var(--green-a5);
+  --color-green-a6: var(--green-a6);
+  --color-green-a7: var(--green-a7);
+  --color-green-a8: var(--green-a8);
+  --color-green-a9: var(--green-a9);
+  --color-green-a10: var(--green-a10);
+  --color-green-a11: var(--green-a11);
+  --color-green-a12: var(--green-a12);
   --color-black-a1: var(--black-a1);
   --color-black-a2: var(--black-a2);
   --color-black-a3: var(--black-a3);
@@ -183,6 +298,8 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  --shadow-soft: var(--soft-shadow);
 }
 
 /*
@@ -190,9 +307,11 @@
  * (normal, hover, pressed), 6-8 borders, 9-10 solid fills, 11-12 text.
  */
 :root {
-  --radius: 0.45rem;
+  --radius: 0.75rem;
 
-  --background: var(--slate-1);
+  /* The page sits on slate-2 and cards on slate-1, so surfaces separate by tone and a
+     soft shadow instead of hard lines. */
+  --background: var(--slate-2);
   --foreground: var(--slate-12);
   --card: var(--slate-1);
   --card-foreground: var(--slate-12);
@@ -200,16 +319,19 @@
   --popover-foreground: var(--slate-12);
   --primary: var(--indigo-9);
   --primary-foreground: var(--color-white);
-  --secondary: var(--slate-3);
+  --secondary: var(--slate-a3);
   --secondary-foreground: var(--slate-12);
-  --muted: var(--slate-3);
+  --muted: var(--slate-a3);
   --muted-foreground: var(--slate-11);
-  --accent: var(--slate-4);
+  --accent: var(--slate-a3);
   --accent-foreground: var(--slate-12);
   --destructive: var(--red-9);
-  --border: var(--slate-6);
-  --input: var(--slate-7);
-  --ring: var(--indigo-8);
+  /* Alpha borders recede into whatever surface they sit on. */
+  --border: var(--slate-a4);
+  --input: var(--slate-a6);
+  --ring: var(--indigo-a7);
+  --soft-shadow:
+    0 0 0 1px var(--slate-a3), 0 1px 2px var(--slate-a2), 0 4px 12px -2px var(--slate-a3);
 
   --chart-1: var(--indigo-6);
   --chart-2: var(--indigo-8);
@@ -217,20 +339,27 @@
   --chart-4: var(--indigo-10);
   --chart-5: var(--indigo-11);
 
+  /* The sidebar shares the page's tone; the active item lifts out as a card. */
   --sidebar: var(--slate-2);
-  --sidebar-foreground: var(--slate-12);
+  --sidebar-foreground: var(--slate-11);
   --sidebar-primary: var(--indigo-9);
   --sidebar-primary-foreground: var(--color-white);
-  --sidebar-accent: var(--slate-4);
+  --sidebar-accent: var(--slate-a3);
   --sidebar-accent-foreground: var(--slate-12);
-  --sidebar-border: var(--slate-6);
-  --sidebar-ring: var(--indigo-8);
+  --sidebar-border: transparent;
+  --sidebar-ring: var(--indigo-a7);
 }
 
-/* Dark scales already flip; only raise surfaces a step so cards and menus read as elevated. */
+/* Dark scales already flip. Surfaces rise a step as they come forward, and borders turn
+   solid: alpha white on dark glows instead of receding. */
 .dark {
+  --background: var(--slate-1);
   --card: var(--slate-2);
-  --popover: var(--slate-2);
+  --popover: var(--slate-3);
+  --sidebar: var(--slate-1);
+  --border: var(--slate-4);
+  --input: var(--slate-6);
+  --soft-shadow: 0 0 0 1px var(--slate-4), 0 4px 12px -2px var(--black-a6);
 }
 
 @layer base {

@@ -3,18 +3,18 @@ import { Badge } from '@page/design-system/components/ui/badge';
 import { useIssuesStatus, type IssuesStatus } from '../../context/IssuesContext';
 
 const states: Record<IssuesStatus, { label: string; dot: string; title: string }> = {
-  detecting: { label: 'Connecting', dot: 'bg-gray-400', title: 'Looking for the orchestrator' },
-  connecting: { label: 'Connecting', dot: 'bg-gray-400', title: 'Connecting to the orchestrator' },
-  live: { label: 'Live', dot: 'bg-green-500', title: 'Issues update as they change' },
+  detecting: { label: 'Connecting', dot: 'bg-slate-9', title: 'Looking for the orchestrator' },
+  connecting: { label: 'Connecting', dot: 'bg-slate-9', title: 'Connecting to the orchestrator' },
+  live: { label: 'Live', dot: 'bg-green-9', title: 'Issues update as they change' },
   reconnecting: {
     label: 'Reconnecting',
-    dot: 'bg-amber-500',
+    dot: 'bg-amber-9',
     title: 'Lost the orchestrator; retrying. The list reloads once it is back.',
   },
-  needs_token: { label: 'Token needed', dot: 'bg-red-500', title: 'Enter the API token' },
+  needs_token: { label: 'Token needed', dot: 'bg-red-9', title: 'Enter the API token' },
   mock: {
     label: 'Mock data',
-    dot: 'bg-blue-500',
+    dot: 'bg-blue-9',
     title: 'No orchestrator is connected, so the issues are made up',
   },
 };

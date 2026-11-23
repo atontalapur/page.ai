@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Search } from 'lucide-react';
+import { DangerTriangleIcon, MagnifierIcon } from '@solar-icons/react/linear';
 import { ISSUE_STATUSES, SEVERITIES } from '@page/contracts';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
@@ -108,12 +108,12 @@ export default function IncidentsPage() {
                 {filteredIssues.length} incidents found
               </p>
             </div>
-            <AlertTriangle className="size-5 text-muted-foreground" />
+            <DangerTriangleIcon className="size-5 text-muted-foreground" />
           </div>
 
           <div className="flex flex-col gap-3 md:flex-row">
             <div className="relative min-w-0 flex-1">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <MagnifierIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search incidents..."
                 value={search}

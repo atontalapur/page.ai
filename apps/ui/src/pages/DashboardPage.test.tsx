@@ -83,10 +83,10 @@ describe('DashboardPage', () => {
     const critical = screen.getAllByText('Critical');
     expect(critical.length).toBeGreaterThan(0);
     for (const badge of critical) {
-      expect(badge.className).toContain('bg-red-100');
-      expect(badge.className).toContain('dark:border-red-900');
+      expect(badge.className).toContain('bg-red-a3');
+      expect(badge.className).toContain('text-red-11');
     }
-    expect(screen.getAllByText('Fixing')[0]!.className).toContain('dark:border-purple-900');
+    expect(screen.getAllByText('Fixing')[0]!.className).toContain('bg-violet-a3');
   });
 
   it('updates a recent incident live', () => {

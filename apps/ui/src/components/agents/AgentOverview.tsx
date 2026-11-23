@@ -37,12 +37,9 @@ export default function AgentOverview({ agents }: AgentOverviewProps) {
 
       <CardContent className="space-y-6">
         <div className="grid grid-cols-3 gap-2 sm:gap-4">
-          <div
-            data-testid="running-count"
-            className="rounded-lg border border-green-200 bg-green-50 p-3 text-center dark:border-green-900 dark:bg-green-950/40"
-          >
-            <p className="text-2xl font-bold text-green-700 dark:text-green-400">{runningAgents}</p>
-            <p className="text-xs text-green-700 dark:text-green-300 sm:text-sm">Running</p>
+          <div data-testid="running-count" className="rounded-xl bg-green-a2 p-3 text-center">
+            <p className="text-2xl font-bold text-green-11">{runningAgents}</p>
+            <p className="text-xs text-green-11 sm:text-sm">Running</p>
           </div>
 
           <div data-testid="idle-count" className="rounded-lg border bg-muted/50 p-3 text-center">
@@ -50,12 +47,9 @@ export default function AgentOverview({ agents }: AgentOverviewProps) {
             <p className="text-xs text-muted-foreground sm:text-sm">Idle</p>
           </div>
 
-          <div
-            data-testid="failed-count"
-            className="rounded-lg border border-red-200 bg-red-50 p-3 text-center dark:border-red-900 dark:bg-red-950/40"
-          >
-            <p className="text-2xl font-bold text-red-700 dark:text-red-400">{failedAgents}</p>
-            <p className="text-xs text-red-700 dark:text-red-300 sm:text-sm">Failed</p>
+          <div data-testid="failed-count" className="rounded-xl bg-red-a2 p-3 text-center">
+            <p className="text-2xl font-bold text-red-11">{failedAgents}</p>
+            <p className="text-xs text-red-11 sm:text-sm">Failed</p>
           </div>
         </div>
 

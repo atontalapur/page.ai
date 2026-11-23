@@ -496,9 +496,9 @@ importers:
       '@pierre/diffs':
         specifier: 1.6.4
         version: 1.6.4(@shikijs/themes@4.6.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      lucide-react:
-        specifier: 'catalog:'
-        version: 1.73.0(@types/react@19.3.0)(react@19.3.1)
+      '@solar-icons/react':
+        specifier: 2.7.0
+        version: 2.7.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react:
         specifier: 'catalog:'
         version: 19.3.1
@@ -711,6 +711,9 @@ importers:
       '@shadcn/react':
         specifier: ^0.3.1
         version: 0.3.1(@types/react@19.3.0)(react@19.3.1)
+      '@solar-icons/react':
+        specifier: 2.7.0
+        version: 2.7.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -2161,6 +2164,17 @@ packages:
 
   '@socket.io/component-emitter@3.1.2':
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
+
+  '@solar-icons/react@2.7.0':
+    resolution: {integrity: sha512-O7OQtQnVQpzoIieNgd4YwAW0t4ob21RXz9dbBRiJIlKACxDH73cnroUHB4Hm3VFDvje9TYgBd2Jy17VQghak2Q==}
+    engines: {node: '>=16'}
+    peerDependencies:
+      '@types/react': '>= 16.8'
+      react: '>= 16.8'
+      react-dom: '>= 16.8'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -6374,6 +6388,13 @@ snapshots:
   '@sindresorhus/merge-streams@4.0.0': {}
 
   '@socket.io/component-emitter@3.1.2': {}
+
+  '@solar-icons/react@2.7.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    optionalDependencies:
+      '@types/react': 19.3.0
 
   '@standard-schema/spec@1.1.0': {}
 

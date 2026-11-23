@@ -71,9 +71,9 @@ function PlainDiff({ lines }: { lines: string[] }) {
             line.startsWith('@@')
               ? 'text-muted-foreground'
               : line.startsWith('+')
-                ? 'bg-green-100 dark:bg-green-950'
+                ? 'bg-green-a3'
                 : line.startsWith('-')
-                  ? 'bg-red-100 dark:bg-red-950'
+                  ? 'bg-red-a3'
                   : ''
           }`}
         >

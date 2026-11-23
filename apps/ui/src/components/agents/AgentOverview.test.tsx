@@ -81,8 +81,8 @@ describe('AgentOverview', () => {
     const runningBadges = screen.getAllByText('Running');
     const idleBadges = screen.getAllByText('Idle');
 
-    expect(runningBadges.some((element) => element.className.includes('bg-green-100'))).toBe(true);
+    expect(runningBadges.some((element) => element.className.includes('bg-green-a3'))).toBe(true);
 
-    expect(idleBadges.some((element) => element.className.includes('bg-gray-100'))).toBe(true);
+    expect(idleBadges.some((element) => element.className.includes('bg-slate-a3'))).toBe(true);
   });
 });

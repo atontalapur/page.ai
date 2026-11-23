@@ -32,7 +32,7 @@
     "@page/contracts": "workspace:*",
     "@page/design-system": "workspace:*",
     "@pierre/diffs": "1.6.4",
-    "lucide-react": "catalog:",
+    "@solar-icons/react": "2.7.0",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router-dom": "^7.18.6",

@@ -29,10 +29,10 @@ export const RUNS_POLL_MS = 5_000;
 const LONG_THOUGHT_CHARS = 360;
 
 const toneText: Record<StepTone | 'muted', string> = {
-  ok: 'text-green-700 dark:text-green-400',
-  bad: 'text-red-700 dark:text-red-400',
-  refused: 'text-amber-700 dark:text-amber-400',
-  running: 'text-purple-700 dark:text-purple-300',
+  ok: 'text-green-11',
+  bad: 'text-red-11',
+  refused: 'text-amber-11',
+  running: 'text-violet-11',
   muted: 'text-muted-foreground',
 };
 
@@ -149,8 +149,8 @@ function PatchCard({ diff }: { diff: string }) {
           <CardTitle className="text-sm">Patch</CardTitle>
           <p className="truncate text-xs text-muted-foreground">
             <span className="font-mono">{shortPath(file)}</span>{' '}
-            <span className="text-green-700 dark:text-green-400">+{added}</span>{' '}
-            <span className="text-red-700 dark:text-red-400">−{removed}</span>
+            <span className="text-green-11">+{added}</span>{' '}
+            <span className="text-red-11">−{removed}</span>
           </p>
         </div>
         <div

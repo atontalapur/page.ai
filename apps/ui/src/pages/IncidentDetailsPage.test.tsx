@@ -98,7 +98,7 @@ describe('IncidentDetailsPage', () => {
 
     const badges = Array.from(document.querySelectorAll('[data-slot="badge"]'));
     expect(badges.map((badge) => badge.textContent)).toEqual(['Critical', 'Fixing']);
-    for (const badge of badges) expect(badge.className).toMatch(/dark:bg-\w+-950/);
+    for (const badge of badges) expect(badge.className).toMatch(/bg-\w+-a3 text-\w+-11/);
   });
 
   it('shows an untriaged issue as such', () => {

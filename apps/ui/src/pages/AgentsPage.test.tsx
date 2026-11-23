@@ -112,7 +112,7 @@ describe('AgentsPage', () => {
     expect(screen.getByText('No agents match your search or filters.')).toBeTruthy();
   });
 
-  it('gives agent status badges dark mode variants', () => {
+  it('tints agent status badges with Radix steps, which follow the theme', () => {
     renderAgentsPage();
 
     const badges = Array.from(document.querySelectorAll('[data-slot="badge"]'));
@@ -120,7 +120,7 @@ describe('AgentsPage', () => {
     expect(badges).toHaveLength(mockAgents.length);
 
     for (const badge of badges) {
-      expect(badge.className).toMatch(/dark:bg-\w+-(800|950)/);
+      expect(badge.className).toMatch(/bg-\w+-a3 text-\w+-11/);
     }
   });
 
