@@ -4,7 +4,9 @@ import { runAgent } from './agent.ts';
 import type { AgentTask } from './prompts.ts';
 import { fakeExecute, ScriptedModel, submit } from './test-utils.ts';
 
-// The recorded eval results, and the calibration runs on the dev set, used these prompts. An
+// The prompts an auto-approved run sees. The recorded eval results, and the calibration runs
+// on the dev set, used the task prompt before the command notes of 2026-11-23 (the system
+// prompts are unchanged); see the note in docs/report/eval-prereg.md. An
 // eval run approves every gated ops call at once (evalApprove in eval/src/approve.ts), and so
 // does a daemon with AUTO_APPROVE_OPS, so neither may see a word about a person approving.
 //
@@ -14,22 +16,22 @@ import { fakeExecute, ScriptedModel, submit } from './test-utils.ts';
 const PINNED = {
   1: {
     system: '25740044faedb99e33ef0d80b397dbe44fc82d352f33362ca22fd427a1a375e0',
-    instance: 'ed58f29e25ff0e292cecccca95010a325bf3be2a75a573d0dd3d52dd01b8f23f',
+    instance: 'f1fa86dd220b55c7f3da26e7ee2c245ba261f060baaf18dafd668feb3c298cea',
   },
   2: {
     system: 'b33e10d1f05a4cd3cb727ebe008d413a1f923dca5c1c0cae1f0e2f4c5f363a0c',
-    instance: '015ee7ceec7755945d3cc7d83477c6be07bddfd2d3f289145cfac6d1bd8c77da',
+    instance: 'ca577de93c89cc945bdb8da295441f93bc53b0ae1e02a58da877f161284496a9',
   },
   3: {
     system: 'd30586ac13c3bed867a2a89574adc8d684ec023c12e167ff1ceba24aac397291',
-    instance: '14df37fc1dfe712313c1f3dada75b1c30bbca650643a0e20252e39bd26b45d72',
+    instance: '45c9e8fbef4513f08dd17fc780b4cbcbf182a1e0e169dc126681d61989ed1b7d',
   },
 } as const;
 
 // A Tier 3 run on a node with a deployer and AUTO_APPROVE_OPS. The eval has no deployer.
 const PINNED_ROLLBACK = {
   system: 'ddcd48bf7007cbad26a45dfd24b192b2e275c8cd21507e8011cb701de163d21b',
-  instance: 'feed5d0e5f9f4383fb2d1d4f8c5cf95834947caa112526358556946e3c4da4e5',
+  instance: '20aa53e74edfebd7c546c70fe9a225d07dabed4081be89f5d414a967b48f05e6',
 };
 
 const report = 'POST /api/checkout returns 500: TypeError: Cannot read properties of undefined';
