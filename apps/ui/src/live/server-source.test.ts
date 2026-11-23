@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
+  answeredChatFixture,
   decidedApprovalFixture,
   issueFixture,
+  pendingChatFixture,
   nodeRunFixture,
   nodeSummaryFixture,
   pendingApprovalFixture,
@@ -23,11 +25,14 @@ class FakeSocket {
   closed = false;
   auth: unknown;
   emitted: [string, unknown][] = [];
+  connected = false;
   on(event: string, handler: Handler) {
     this.handlers.set(event, handler);
     return this;
   }
   fire(event: string, arg?: unknown) {
+    if (event === 'connect') this.connected = true;
+    if (event === 'disconnect') this.connected = false;
     this.handlers.get(event)?.(arg);
   }
   emit(event: string, payload: unknown) {
@@ -55,7 +60,7 @@ const io = vi.fn<(url: string, options: unknown) => FakeSocket>(() => {
 });
 vi.mock('socket.io-client', () => ({ io: (url: string, options: unknown) => io(url, options) }));
 
-const { serverPresent, serverSource } = await import('./server-source');
+const { ASK_TIMEOUT_MS, serverPresent, serverSource } = await import('./server-source');
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -470,6 +475,71 @@ describe('serverSource approvals', () => {
     expect(await source.fetchSession!()).toBeUndefined();
     fetchMock.mockRejectedValueOnce(new TypeError('network'));
     expect(await source.fetchSession!()).toBeUndefined();
+  });
+});
+
+describe('askAgent', () => {
+  const { runId, message } = pendingChatFixture;
+
+  function connected() {
+    const source = serverSource('s3cret', 'Arjun');
+    const record = recorder();
+    const stop = source.start(record.feed);
+    const socket = sockets.at(-1)!;
+    socket.fire('connect');
+    return { source, record, socket, stop };
+  }
+
+  it('sends the message, and resolves once the server says it went out', async () => {
+    const { source, socket, record } = connected();
+    const asked = source.askAgent(runId, `  ${message} `);
+    expect(socket.emitted).toEqual([['run.chat', { v: 1, runId, message: `  ${message} ` }]]);
+    // Another tab's message on the same run doesn't settle this one.
+    socket.fire('run.chat.asked', { v: 1, chat: { ...pendingChatFixture, message: 'other' } });
+    socket.fire('run.chat.asked', { v: 1, chat: pendingChatFixture });
+    expect(await asked).toBeUndefined();
+    // Both reach the store as run events, like the answer that follows.
+    socket.fire('run.chat.reply', { v: 1, chat: answeredChatFixture });
+    expect(record.runs.map((e) => e.event)).toEqual([
+      'run.chat.asked',
+      'run.chat.asked',
+      'run.chat.reply',
+    ]);
+  });
+
+  it('resolves with why the server turned it away', async () => {
+    const { source, socket } = connected();
+    const asked = source.askAgent(runId, message);
+    // One for another run, or one that breaks the contract, changes nothing.
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    socket.fire('run.chat.refused', { v: 1, runId: issueFixture.id, reason: 'no_daemon' });
+    socket.fire('run.chat.refused', { v: 1, runId, reason: 'bored' });
+    socket.fire('run.chat.refused', { v: 1, runId, reason: 'too_many' });
+    expect(await asked).toBe('too_many');
+  });
+
+  it('says offline without sending while the socket is down, or once it drops', async () => {
+    const source = serverSource('s3cret', 'Arjun');
+    expect(await source.askAgent(runId, message)).toBe('offline');
+    const { source: live, socket, stop } = connected();
+    const dropped = live.askAgent(runId, message);
+    socket.fire('disconnect');
+    expect(await dropped).toBe('offline');
+    expect(await live.askAgent(runId, message)).toBe('offline');
+    socket.fire('connect');
+    const stopped = live.askAgent(runId, message);
+    stop();
+    expect(await stopped).toBe('offline');
+  });
+
+  it('gives up when the server says nothing in time, or a second message replaces it', async () => {
+    vi.useFakeTimers();
+    const { source } = connected();
+    const first = source.askAgent(runId, 'one');
+    const second = source.askAgent(runId, 'two');
+    expect(await first).toBe('timeout');
+    await vi.advanceTimersByTimeAsync(ASK_TIMEOUT_MS);
+    expect(await second).toBe('timeout');
   });
 });
 

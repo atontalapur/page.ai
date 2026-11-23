@@ -20,8 +20,16 @@ function useTimeLeft(at: string): number {
   return Date.parse(at) - now;
 }
 
-function NameForm({ onSave }: { onSave: (name: string) => void }) {
+/** Asks for the name the server records this tab's decisions and messages under. */
+export function NameForm({
+  onSave,
+  hint = 'Your decision is recorded under this name.',
+}: {
+  onSave: (name: string) => void;
+  hint?: string;
+}) {
   const [name, setName] = useState('');
+  const id = useId();
   const valid = approverNameSchema.safeParse(name).success;
 
   function save(e: FormEvent) {
@@ -33,17 +41,17 @@ function NameForm({ onSave }: { onSave: (name: string) => void }) {
   return (
     <form onSubmit={save} className="flex flex-col gap-2 sm:flex-row sm:items-end">
       <div className="min-w-0 flex-1 space-y-1">
-        <Label htmlFor="approver-name">Your name</Label>
+        <Label htmlFor={id}>Your name</Label>
         <Input
-          id="approver-name"
+          id={id}
           value={name}
           maxLength={40}
           autoComplete="name"
           onChange={(e) => setName(e.target.value)}
-          aria-describedby="approver-name-hint"
+          aria-describedby={`${id}-hint`}
         />
-        <p id="approver-name-hint" className="text-xs text-muted-foreground">
-          Your decision is recorded under this name. Letters, digits, spaces and .&apos;_- only.
+        <p id={`${id}-hint`} className="text-xs text-muted-foreground">
+          {hint} Letters, digits, spaces and .&apos;_- only.
         </p>
       </div>
       <Button type="submit" variant="outline" disabled={!valid}>

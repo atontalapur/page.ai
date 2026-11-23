@@ -20,6 +20,7 @@ import {
   parseNodeUpdated,
   parseRunEvent,
   type ApprovalDecision,
+  type AskFailure,
   type FeedStatus,
   type IssueFeed,
   type IssueSource,
@@ -104,6 +105,10 @@ export interface TestSource extends IssueSource {
   names: string[];
   /** Delivers a raw `approval.requested` or `approval.updated` payload, parsed first. */
   sendApproval(event: 'approval.requested' | 'approval.updated', payload: unknown): void;
+  /** Every message askAgent was given, in order. */
+  asks: { runId: string; message: string }[];
+  /** What askAgent answers: undefined (sent) unless a test sets a failure. */
+  askFailure?: AskFailure;
 }
 
 /** `source`, answering GET /me with `session`, as a server source does. */
@@ -128,6 +133,7 @@ export function testSource(
   const approvals = new Map<string, Approval[]>();
   const decisions: { approvalId: string; decision: ApprovalDecision }[] = [];
   const names: string[] = [];
+  const asks: { runId: string; message: string }[] = [];
   const source: TestSource = {
     extra,
     runs,
@@ -139,6 +145,11 @@ export function testSource(
     approvals,
     decisions,
     names,
+    asks,
+    askAgent(runId, message) {
+      asks.push({ runId, message });
+      return Promise.resolve(source.askFailure);
+    },
     fetchApprovals: (id) => Promise.resolve(approvals.get(id) ?? []),
     decideApproval(approvalId, decision) {
       decisions.push({ approvalId, decision });

@@ -1,12 +1,15 @@
-import { useState } from 'react';
-import type { Issue, IssueRun, Step } from '@page/contracts';
+import { Fragment, useState } from 'react';
+import type { Issue, IssueRun, RunChat, Step } from '@page/contracts';
 import { Badge } from '@page/design-system/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
 
+import { isFinished } from '../../live/runs';
 import { useIssueRuns } from '../../live/useLiveRuns';
 import { runStatusLabels, shortId } from '../../lib/issueLabels';
+import { chatsAfterSteps } from '../../lib/runChat';
 import {
   PHASE_BLURBS,
+  clockTime,
   commandLabel,
   editOf,
   formatDuration,
@@ -20,6 +23,7 @@ import {
 import { runStatusStyles } from '../../lib/statusStyles';
 import AgentText from './AgentText';
 import { EditView, PatchView, type DiffStyle } from './CodeDiff';
+import { AskAgent, ChatItem } from './RunChat';
 
 // Reasoning longer than this is cut to its opening lines until the reader asks for it.
 const LONG_THOUGHT_CHARS = 360;
@@ -31,14 +35,6 @@ const toneText: Record<StepTone | 'muted', string> = {
   running: 'text-violet-11',
   muted: 'text-muted-foreground',
 };
-
-const clock = (at: string) =>
-  new Date(at).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
 
 function Thought({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
@@ -176,11 +172,26 @@ function PatchCard({ diff }: { diff: string }) {
   );
 }
 
-/** A run's figures, its PR and patch, and its steps grouped by phase. */
-export function RunReview({ run }: { run: IssueRun }) {
+function ChatList({ chats, label }: { chats: RunChat[] | undefined; label: string }) {
+  if (!chats?.length) return null;
+  return (
+    <ol className="min-w-0 space-y-4 px-4 py-4" aria-label={label}>
+      {chats.map((chat) => (
+        <ChatItem key={chat.id} chat={chat} />
+      ))}
+    </ol>
+  );
+}
+
+/**
+ * A run's figures, its PR and patch, and its steps grouped by phase, with each message people
+ * sent it after the step it followed. `ask` adds the box to send the agent one.
+ */
+export function RunReview({ run, ask = false }: { run: IssueRun; ask?: boolean }) {
   const figures = runFigures(run);
   const running = run.status === 'running';
   const last = run.steps.at(-1);
+  const chatsAfter = chatsAfterSteps(run.steps, run.chats);
   return (
     <div className="space-y-4">
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-4">
@@ -223,6 +234,7 @@ export function RunReview({ run }: { run: IssueRun }) {
           </p>
         </CardHeader>
         <CardContent className="divide-y px-0">
+          <ChatList chats={chatsAfter.get(-1)} label="Messages before the first step" />
           {phasesOf(run.steps).map((group) => {
             const from = Date.parse(group.steps[0]!.createdAt);
             const to = Date.parse(group.steps.at(-1)!.createdAt);
@@ -242,13 +254,19 @@ export function RunReview({ run }: { run: IssueRun }) {
                 </div>
                 <ol className="min-w-0 space-y-4" aria-label={`Tier ${run.tier} steps`}>
                   {group.steps.map((step) => (
-                    <StepItem key={step.seq} step={step} running={running && step === last} />
+                    <Fragment key={step.seq}>
+                      <StepItem step={step} running={running && step === last} />
+                      {chatsAfter.get(step.seq)?.map((chat) => (
+                        <ChatItem key={chat.id} chat={chat} />
+                      ))}
+                    </Fragment>
                   ))}
                 </ol>
               </section>
             );
           })}
         </CardContent>
+        {ask && <AskAgent run={run} />}
       </Card>
     </div>
   );
@@ -268,15 +286,17 @@ export function RunHeading({
       </Badge>
       <span className="font-mono text-xs text-muted-foreground">{shortId(run.id)}</span>
       {run.startedAt && (
-        <span className="text-xs text-muted-foreground">started {clock(run.startedAt)}</span>
+        <span className="text-xs text-muted-foreground">started {clockTime(run.startedAt)}</span>
       )}
     </span>
   );
 }
 
 /**
- * The agent's runs on `issue`, newest open. Steps arrive as the daemon sends them, and the
- * runs are loaded again whenever the issue changes and after a reconnect.
+ * The agent's runs on `issue`, newest open. Steps and messages arrive as they happen, and the
+ * runs are loaded again whenever the issue changes and after a reconnect. The newest run has
+ * the box to ask the agent while it is in progress, and keeps it, shut, once it has ended if
+ * anyone talked to it.
  */
 export default function RunsPanel({ issue }: { issue: Issue }) {
   const { runs, failed } = useIssueRuns(issue.id, issue.updatedAt);
@@ -299,7 +319,7 @@ export default function RunsPanel({ issue }: { issue: Issue }) {
     <div className="space-y-6">
       <div className="space-y-3">
         <RunHeading run={latest} />
-        <RunReview run={latest} />
+        <RunReview run={latest} ask={!isFinished(latest) || latest.chats.length > 0} />
       </div>
       {earlier.length > 0 && (
         <div className="space-y-2">

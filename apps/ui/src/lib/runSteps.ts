@@ -133,6 +133,15 @@ export function runFigures(run: IssueRun) {
   };
 }
 
+/** A time of day as a run's timeline shows it: 24-hour, to the second. */
+export const clockTime = (at: string) =>
+  new Date(at).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
 export function formatDuration(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
