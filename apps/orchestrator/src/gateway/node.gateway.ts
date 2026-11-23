@@ -182,8 +182,7 @@ export class NodeGateway
     if (event === 'node.holding') {
       const { runIds } = payload as NodePayload<'node.holding'>;
       this.nodes.heartbeats(socket);
-      const changed = new Set(runIds.flatMap((id) => this.nodes.hold(id, socket)));
-      for (const name of changed) this.announce(name);
+      for (const name of this.nodes.syncHolding(runIds, socket)) this.announce(name);
       return;
     }
     const runId = runIdOf(payload as NodePayload<Exclude<NodeEvent, 'node.holding'>>);

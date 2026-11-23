@@ -427,6 +427,25 @@ describe('Nodes', () => {
     await expect.poll(() => registry.holder(second.runId)).toBeUndefined();
     expect(registry.list().map((entry) => entry.id)).not.toContain(other.id);
   });
+
+  it('drops a run a later node.holding no longer names', async () => {
+    const first = await fixing();
+    const second = await fixing();
+    const node = await namedDaemon('holding-node');
+    node.emit('node.step', { v: 1, step: step(first.runId, 0) });
+    node.emit('node.step', { v: 1, step: step(second.runId, 0) });
+    await expect
+      .poll(() => [...registry.state('holding-node').runIds].sort())
+      .toEqual([first.runId, second.runId].sort());
+
+    node.emit('node.holding', { v: 1, runIds: [second.runId] });
+    await expect.poll(() => registry.state('holding-node').runIds).toEqual([second.runId]);
+
+    node.emit('node.holding', { v: 1, runIds: [] });
+    await expect.poll(() => registry.state('holding-node').runIds).toEqual([]);
+    expect(registry.holder(first.runId)).toBeUndefined();
+    expect(registry.holder(second.runId)).toBeUndefined();
+  });
 });
 
 describe('kills', () => {

@@ -24,6 +24,7 @@ import {
   agentStatus,
   agentStatusLabels,
   byActivity,
+  inProgress,
   lastRunLine,
   presence,
   type AgentStatus,
@@ -50,13 +51,13 @@ function AgentCard({ agent }: { agent: NodeSummary }) {
       </CardHeader>
 
       <CardContent className="flex flex-1 flex-col gap-4">
-        {agent.current.length === 0 ? (
+        {inProgress(agent).length === 0 ? (
           <div className="rounded-md bg-muted/50 p-3">
             <p className="text-sm font-medium">No run in progress</p>
             <p className="mt-1 text-xs text-muted-foreground">{lastRunLine(agent)}</p>
           </div>
         ) : (
-          agent.current.map((run) => (
+          inProgress(agent).map((run) => (
             <div key={run.id} className="space-y-2 rounded-md bg-muted/50 p-3">
               <Link
                 to={`/incidents/${run.issueId}`}

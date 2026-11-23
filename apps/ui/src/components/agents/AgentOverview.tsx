@@ -2,12 +2,12 @@ import { Link } from 'react-router-dom';
 import type { NodeSummary } from '@page/contracts';
 import { Card, CardHeader, CardTitle, CardContent } from '@page/design-system/components/ui/card';
 
-import { agentStatus, byActivity, type AgentStatus } from '../../lib/agents';
+import { agentStatus, byActivity, inProgress, type AgentStatus } from '../../lib/agents';
 import { AgentStatusBadge } from './AgentBadges';
 
 /** What an agent is doing, in a few words. */
 function doing(node: NodeSummary): string {
-  const [run] = node.current;
+  const [run] = inProgress(node);
   if (run) return `Tier ${run.tier} on ${run.issueTitle}`;
   return node.connected ? 'Waiting for a fix job' : 'Not connected';
 }

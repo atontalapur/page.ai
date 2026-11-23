@@ -24,9 +24,10 @@ import { AgentStatusBadge, LastStep, RunStatusBadge } from '../components/agents
 import StartFixDialog from '../components/agents/StartFixDialog';
 import StopRunButton from '../components/agents/StopRunButton';
 import { RunHeading, RunReview } from '../components/issues/RunsPanel';
+import { ChatScroller } from '../components/issues/threadMotion';
 import TokenPrompt from '../components/issues/TokenPrompt';
 import { useAgents, useIssues } from '../context/IssuesContext';
-import { agentStatus, lastRunLine, presence } from '../lib/agents';
+import { agentStatus, inProgress, lastRunLine, presence } from '../lib/agents';
 import { shortId } from '../lib/issueLabels';
 import { useIssueRuns, useNodeRuns } from '../live/useLiveRuns';
 
@@ -66,11 +67,13 @@ function CurrentRun({ run }: { run: NodeRun }) {
         </p>
         <StopRunButton issueId={run.issueId} />
       </div>
-      <RunHeading run={full ?? run} />
       {full ? (
-        <RunReview run={full} />
+        <ChatScroller label="Agent thread">
+          <RunReview run={full} />
+        </ChatScroller>
       ) : (
         <div className="space-y-2">
+          <RunHeading run={run} />
           <p className="text-sm text-muted-foreground">
             {runs === undefined && !failed ? 'Loading the run...' : 'Could not load its steps.'}
           </p>
@@ -164,7 +167,8 @@ export default function AgentWorkspacePage() {
     );
   }
 
-  const [current] = node.current;
+  const active = inProgress(node);
+  const [current] = active;
   const summary = [
     { label: 'Connection', value: presence(node) },
     { label: 'Last run', value: lastRunLine(node) },
@@ -228,14 +232,14 @@ export default function AgentWorkspacePage() {
           <PulseIcon className="size-5" />
           Current run
         </h3>
-        {node.current.length === 0 ? (
+        {active.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {node.connected
               ? 'No run in progress. The agent claims the next fix job that is queued.'
               : 'The agent is offline, so it is not running anything.'}
           </p>
         ) : (
-          node.current.map((run) => <CurrentRun key={run.id} run={run} />)
+          active.map((run) => <CurrentRun key={run.id} run={run} />)
         )}
       </section>
 

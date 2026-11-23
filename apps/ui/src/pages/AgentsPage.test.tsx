@@ -200,6 +200,26 @@ describe('AgentsPage', () => {
     );
   });
 
+  it('leaves a finished run off the card, so it cannot be killed again', () => {
+    const stuck = daemon('railway-staging', {
+      current: [
+        nodeRun(1, fixing, { status: 'escalated', stepCount: 38 }),
+        nodeRun(2, fixing, { tier: 2, status: 'killed', stepCount: 17 }),
+      ],
+      lastRunAt: '2026-11-22T09:00:00.000Z',
+    });
+    renderAgents(testSource([fixing], 'live', [stuck]));
+
+    const agent = card('railway-staging');
+    expect(agent.getByText('Idle', { selector: '[data-slot="badge"]' })).toBeTruthy();
+    expect(agent.getByText('No run in progress')).toBeTruthy();
+    expect(agent.queryByRole('button', { name: 'Stop run' })).toBeNull();
+    expect(agent.queryByText('Escalated')).toBeNull();
+    expect(agent.queryByText('Killed')).toBeNull();
+    expect(metric('Running').getByText('0')).toBeTruthy();
+    expect(metric('Idle').getByText('1')).toBeTruthy();
+  });
+
   it('keeps the run going when the stop is cancelled', () => {
     const source = renderAgents();
 

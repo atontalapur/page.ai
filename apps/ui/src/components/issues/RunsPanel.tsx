@@ -1,20 +1,18 @@
-import { Fragment, useState } from 'react';
-import type { Issue, IssueRun, RunChat, Step } from '@page/contracts';
+import { Fragment, useEffect, useState } from 'react';
+import type { Issue, IssueEventRecord, IssueRun, Step } from '@page/contracts';
 import { Badge } from '@page/design-system/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
 
+import { useIssues } from '../../context/IssuesContext';
 import { isFinished } from '../../live/runs';
 import { useIssueRuns } from '../../live/useLiveRuns';
 import { runStatusLabels, shortId } from '../../lib/issueLabels';
 import { chatsAfterSteps } from '../../lib/runChat';
 import {
-  PHASE_BLURBS,
   clockTime,
   commandLabel,
   editOf,
   formatDuration,
   outputNotes,
-  phasesOf,
   runFigures,
   shortPath,
   stepResult,
@@ -26,6 +24,7 @@ import LiveTail from './LiveTail';
 import { Terminal, ToolCallCard } from './ToolCall';
 import { EditView, PatchView, type DiffStyle } from './CodeDiff';
 import { AskAgent, ChatItem } from './RunChat';
+import { ChatScroller, Enter } from './threadMotion';
 
 // Reasoning longer than this is cut to its opening lines until the reader asks for it.
 const LONG_THOUGHT_CHARS = 360;
@@ -76,49 +75,39 @@ function StepItem({ step, running }: { step: Step; running: boolean }) {
   const edit = editOf(step);
   const named = commandLabel(step.input);
   return (
-    <li className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2">
-      <span className="pt-0.5 text-right font-mono text-xs tabular-nums text-muted-foreground">
-        {step.seq}
-      </span>
-      <div className="min-w-0 space-y-2">
-        {step.thought && <Thought text={step.thought} />}
-        {edit ? (
-          <div className="overflow-hidden rounded-md border">
-            <div className="flex items-center justify-between gap-2 border-b bg-muted/50 px-3 py-1 text-xs">
-              <span className="truncate font-mono">{shortPath(edit.path)}</span>
-              <span className={`shrink-0 font-medium ${toneText[tone]}`}>Edit · {label}</span>
+    <Enter item>
+      <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2">
+        <span className="pt-0.5 text-right font-mono text-xs tabular-nums text-muted-foreground">
+          {step.seq}
+        </span>
+        <div className="min-w-0 space-y-2">
+          {step.thought && <Thought text={step.thought} />}
+          {edit ? (
+            <div className="overflow-hidden rounded-md border">
+              <div className="flex items-center justify-between gap-2 border-b bg-muted/50 px-3 py-1 text-xs">
+                <span className="truncate font-mono">{shortPath(edit.path)}</span>
+                <span className={`shrink-0 font-medium ${toneText[tone]}`}>Edit · {label}</span>
+              </div>
+              <EditView {...edit} />
             </div>
-            <EditView {...edit} />
-          </div>
-        ) : step.kind === 'host_tool' ? (
-          <ToolCallCard step={step} label={label} toneClass={toneText[tone]} />
-        ) : (
-          <Terminal
-            command={named ? `${named.verb} ${named.target}` : step.input}
-            output={step.allowed ? step.outputTrimmed : ''}
-            label={label}
-            toneClass={toneText[tone]}
-          />
-        )}
-        {outputNotes(step).map((note) => (
-          <p key={note.text} className={`text-xs ${toneText[note.tone]}`}>
-            {note.text}
-          </p>
-        ))}
+          ) : step.kind === 'host_tool' ? (
+            <ToolCallCard step={step} label={label} toneClass={toneText[tone]} />
+          ) : (
+            <Terminal
+              command={named ? `${named.verb} ${named.target}` : step.input}
+              output={step.allowed ? step.outputTrimmed : ''}
+              label={label}
+              toneClass={toneText[tone]}
+            />
+          )}
+          {outputNotes(step).map((note) => (
+            <p key={note.text} className={`text-xs ${toneText[note.tone]}`}>
+              {note.text}
+            </p>
+          ))}
+        </div>
       </div>
-    </li>
-  );
-}
-
-function Figure({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div className="space-y-0.5 bg-card px-4 py-3">
-      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt>
-      <dd className="text-lg font-semibold tabular-nums">
-        {value}
-        {note && <span className="ml-1 text-xs font-normal text-muted-foreground">{note}</span>}
-      </dd>
-    </div>
+    </Enter>
   );
 }
 
@@ -129,82 +118,86 @@ function PatchCard({ diff }: { diff: string }) {
   const added = lines.filter((l) => l.startsWith('+') && !l.startsWith('+++')).length;
   const removed = lines.filter((l) => l.startsWith('-') && !l.startsWith('---')).length;
   return (
-    <Card className="gap-0 overflow-hidden py-0">
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b py-3">
-        <div className="min-w-0">
-          <CardTitle className="text-sm">Patch</CardTitle>
-          <p className="truncate text-xs text-muted-foreground">
-            <span className="font-mono">{shortPath(file)}</span>{' '}
-            <span className="text-green-11">+{added}</span>{' '}
-            <span className="text-red-11">−{removed}</span>
-          </p>
-        </div>
-        <div
-          className="inline-flex overflow-hidden rounded-md border"
-          role="group"
-          aria-label="Diff layout"
-        >
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-xs text-muted-foreground">
+          Patch · <span className="font-mono">{shortPath(file)}</span>{' '}
+          <span className="text-green-11">+{added}</span>{' '}
+          <span className="text-red-11">−{removed}</span>
+        </p>
+        <div className="inline-flex gap-1" role="group" aria-label="Diff layout">
           {(['unified', 'split'] as const).map((option) => (
             <button
               key={option}
               type="button"
               aria-pressed={style === option}
               onClick={() => setStyle(option)}
-              className={`px-3 py-1 text-xs capitalize ${
-                style === option ? 'bg-muted font-medium' : 'text-muted-foreground'
+              className={`px-2 py-0.5 text-xs capitalize ${
+                style === option ? 'font-medium text-foreground' : 'text-muted-foreground'
               }`}
             >
               {option}
             </button>
           ))}
         </div>
-      </CardHeader>
-      <CardContent className="overflow-x-auto px-0">
+      </div>
+      <div className="overflow-x-auto">
         <PatchView patch={diff} diffStyle={style} />
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
-function ChatList({ chats, label }: { chats: RunChat[] | undefined; label: string }) {
-  if (!chats?.length) return null;
+/** A one-line marker in the thread: a tier hand-off, not a card. */
+function Marker({ title, detail }: { title: string; detail?: string }) {
   return (
-    <ol className="min-w-0 space-y-4 px-4 py-4" aria-label={label}>
-      {chats.map((chat) => (
-        <ChatItem key={chat.id} chat={chat} />
-      ))}
-    </ol>
+    <Enter>
+      <p className="flex items-baseline gap-3 text-xs text-muted-foreground" role="status">
+        <span className="h-px flex-1 bg-border" aria-hidden />
+        <span className="max-w-[36rem] text-center">
+          <span className="font-medium text-foreground">{title}</span>
+          {detail && <span className="mt-0.5 block">{detail}</span>}
+        </span>
+        <span className="h-px flex-1 bg-border" aria-hidden />
+      </p>
+    </Enter>
   );
+}
+
+function figureLine(run: IssueRun): string {
+  const figures = runFigures(run);
+  const time =
+    figures.durationMs === null
+      ? run.status === 'running'
+        ? 'in progress'
+        : null
+      : formatDuration(figures.durationMs);
+  const files = `${figures.files} ${figures.files === 1 ? 'file' : 'files'}`;
+  return [
+    time,
+    `${figures.steps} ${figures.steps === 1 ? 'step' : 'steps'}`,
+    `${figures.edits} ${figures.edits === 1 ? 'edit' : 'edits'} in ${files}`,
+    figures.refused > 0 ? `${figures.refused} refused` : null,
+  ]
+    .filter((part) => part !== null)
+    .join(' · ');
 }
 
 /**
- * A run's figures, its PR and patch, and its steps grouped by phase, with each message people
- * sent it after the step it followed. `ask` adds the box to send the agent one.
+ * One tier in the thread: its heading, steps and the messages that followed them, in order.
+ * `handoff` is the escalation reason shown after a tier that handed the fix up.
  */
-export function RunReview({ run, ask = false }: { run: IssueRun; ask?: boolean }) {
-  const figures = runFigures(run);
+export function RunReview({ run, handoff }: { run: IssueRun; handoff?: string }) {
   const running = run.status === 'running';
   const last = run.steps.at(-1);
   const chatsAfter = chatsAfterSteps(run.steps, run.chats);
+  const before = chatsAfter.get(-1);
   return (
-    <div className="space-y-4">
-      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-4">
-        <Figure
-          label={running ? 'Running for' : 'Time to finish'}
-          value={figures.durationMs === null ? '—' : formatDuration(figures.durationMs)}
-        />
-        <Figure
-          label="Steps"
-          value={String(figures.steps)}
-          note={`${figures.withThought} with reasoning`}
-        />
-        <Figure
-          label="Edits"
-          value={String(figures.edits)}
-          note={`in ${figures.files} ${figures.files === 1 ? 'file' : 'files'}`}
-        />
-        <Figure label="Refused" value={String(figures.refused)} note="by policy" />
-      </dl>
+    <section aria-label={`Tier ${run.tier}`} className="space-y-4">
+      <div className="space-y-1">
+        <RunHeading run={run} />
+        <p className="text-xs text-muted-foreground">{figureLine(run)}</p>
+      </div>
 
       {run.prUrl && (
         <a
@@ -218,54 +211,34 @@ export function RunReview({ run, ask = false }: { run: IssueRun; ask?: boolean }
       )}
       {run.diff && <PatchCard diff={run.diff} />}
 
-      <Card className="gap-0 py-0">
-        <CardHeader className="border-b py-3">
-          <CardTitle className="text-sm">How the agent got there</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            {run.steps.length === 0
-              ? 'No steps yet.'
-              : `${run.steps.length} steps in the agent's own words, each run as an unprivileged user in the sandbox`}
-          </p>
-        </CardHeader>
-        <CardContent className="divide-y px-0">
-          <ChatList chats={chatsAfter.get(-1)} label="Messages before the first step" />
-          {phasesOf(run.steps).map((group) => {
-            const from = Date.parse(group.steps[0]!.createdAt);
-            const to = Date.parse(group.steps.at(-1)!.createdAt);
-            return (
-              <section
-                key={`${group.phase}-${group.steps[0]!.seq}`}
-                aria-label={`${group.phase}, from step ${group.steps[0]!.seq}`}
-                className="grid gap-3 px-4 py-4 md:grid-cols-[8rem_minmax(0,1fr)] md:gap-4"
-              >
-                <div className="space-y-0.5">
-                  <h4 className="text-sm font-semibold">{group.phase}</h4>
-                  <p className="text-xs text-muted-foreground">{PHASE_BLURBS[group.phase]}</p>
-                  <p className="text-xs tabular-nums text-muted-foreground">
-                    {group.steps.length} {group.steps.length === 1 ? 'step' : 'steps'} ·{' '}
-                    {formatDuration(Math.max(to - from, 1000))}
-                  </p>
-                </div>
-                <ol className="min-w-0 space-y-4" aria-label={`Tier ${run.tier} steps`}>
-                  {group.steps.map((step) => (
-                    <Fragment key={step.seq}>
-                      <StepItem step={step} running={running && step === last} />
-                      {chatsAfter.get(step.seq)?.map((chat) => (
-                        <ChatItem key={chat.id} chat={chat} />
-                      ))}
-                    </Fragment>
-                  ))}
-                </ol>
-              </section>
-            );
-          })}
-          {running && <LiveTail runId={run.id} />}
-        </CardContent>
-        {/* Keyed by run, so a draft or an error never carries over to the next one. */}
-        {ask && <AskAgent key={run.id} run={run} />}
-      </Card>
-    </div>
+      <div role="list" className="min-w-0 space-y-4" aria-label={`Tier ${run.tier} steps`}>
+        {before?.map((chat) => (
+          <ChatItem key={chat.id} chat={chat} />
+        ))}
+        {run.steps.map((step) => (
+          <Fragment key={step.seq}>
+            <StepItem step={step} running={running && step === last} />
+            {chatsAfter.get(step.seq)?.map((chat) => (
+              <ChatItem key={chat.id} chat={chat} />
+            ))}
+          </Fragment>
+        ))}
+      </div>
+      {running && <LiveTail runId={run.id} />}
+      {handoff !== undefined && (
+        <Marker title="Escalated to the next tier" detail={handoff === '' ? undefined : handoff} />
+      )}
+    </section>
   );
+}
+
+/** The reason a run handed the fix up, when the issue's events recorded one. */
+function handoffReason(run: IssueRun, events: readonly IssueEventRecord[]): string | undefined {
+  if (run.status !== 'escalated') return undefined;
+  const found = events.find(
+    (record) => record.event.type === 'escalate' && record.event.runId === run.id,
+  );
+  return found && found.event.type === 'escalate' ? found.event.reason : '';
 }
 
 /** A run's tier, status, short id and start time, on one line. */
@@ -288,14 +261,30 @@ export function RunHeading({
   );
 }
 
+function useHandoffs(issueId: string, key: string): IssueEventRecord[] {
+  const { fetchEvents } = useIssues();
+  const [events, setEvents] = useState<IssueEventRecord[]>([]);
+  useEffect(() => {
+    let live = true;
+    void fetchEvents(issueId).then((loaded) => {
+      if (live && loaded) setEvents(loaded);
+    });
+    return () => {
+      live = false;
+    };
+  }, [fetchEvents, issueId, key]);
+  return events;
+}
+
 /**
- * The agent's runs on `issue`, newest open. Steps and messages arrive as they happen, and the
- * runs are loaded again whenever the issue changes and after a reconnect. The newest run has
- * the box to ask the agent while it is in progress, and keeps it, shut, once it has ended if
- * anyone talked to it.
+ * The agent's runs on `issue`, oldest first, as one thread. Tiers, escalations and messages
+ * sit in that order. Steps arrive as they happen, and the runs load again whenever the issue
+ * changes and after a reconnect. The newest run can be asked while it is in progress, and
+ * keeps the box, shut, once it has ended if anyone talked to it.
  */
 export default function RunsPanel({ issue }: { issue: Issue }) {
   const { runs, failed } = useIssueRuns(issue.id, issue.updatedAt);
+  const events = useHandoffs(issue.id, issue.updatedAt);
 
   if (runs === undefined) {
     return (
@@ -310,28 +299,16 @@ export default function RunsPanel({ issue }: { issue: Issue }) {
     );
   }
   const latest = runs.at(-1)!;
-  const earlier = runs.slice(0, -1).reverse();
+  const ask = !isFinished(latest) || latest.chats.length > 0;
   return (
-    <div className="space-y-6">
-      <div className="space-y-3">
-        <RunHeading run={latest} />
-        <RunReview run={latest} ask={!isFinished(latest) || latest.chats.length > 0} />
-      </div>
-      {earlier.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-muted-foreground">Earlier runs</h3>
-          {earlier.map((run) => (
-            <details key={run.id} className="rounded-md border p-3">
-              <summary className="cursor-pointer">
-                <RunHeading run={run} />
-              </summary>
-              <div className="mt-3">
-                <RunReview run={run} />
-              </div>
-            </details>
-          ))}
-        </div>
-      )}
+    <div className="space-y-4">
+      <ChatScroller label="Agent thread">
+        {runs.map((run) => (
+          <RunReview key={run.id} run={run} handoff={handoffReason(run, events)} />
+        ))}
+      </ChatScroller>
+      {/* Keyed by run, so a draft or an error never carries over to the next one. */}
+      {ask && <AskAgent key={latest.id} run={latest} />}
     </div>
   );
 }

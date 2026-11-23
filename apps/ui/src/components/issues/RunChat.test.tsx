@@ -146,10 +146,14 @@ describe('the conversation on a run', () => {
         ],
       }),
     ]);
-    const early = await screen.findByRole('list', { name: 'Messages before the first step' });
-    expect(within(early).getByText('Start with the config.')).toBeTruthy();
+    const steps = await screen.findByRole('list', { name: 'Tier 1 steps' });
+    const order = within(steps)
+      .getAllByRole('listitem')
+      .map((li) => li.getAttribute('aria-label') ?? li.querySelector('[title]')?.textContent);
+    expect(order[0]).toBe('Message from Dana');
+    expect(within(steps).getByText('Start with the config.')).toBeTruthy();
     expect(
-      within(early).getByText('Not read: too many messages were already waiting for the agent.'),
+      within(steps).getByText('Not read: too many messages were already waiting for the agent.'),
     ).toBeTruthy();
     expect(screen.getByText('The agent read this and did not answer.')).toBeTruthy();
   });

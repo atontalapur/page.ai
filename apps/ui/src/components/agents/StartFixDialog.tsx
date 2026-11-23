@@ -13,6 +13,7 @@ import { Label } from '@page/design-system/components/ui/label';
 import { NativeSelect, NativeSelectOption } from '@page/design-system/components/ui/native-select';
 
 import { useAgents, useIssues } from '../../context/IssuesContext';
+import { inProgress } from '../../lib/agents';
 import { classLabel, severityLabel, shortId } from '../../lib/issueLabels';
 
 interface StartFixDialogProps {
@@ -125,7 +126,7 @@ export default function StartFixDialog({ open, onClose, agent }: StartFixDialogP
               </NativeSelectOption>
               {connected.map((n) => (
                 <NativeSelectOption key={n.name} value={n.name}>
-                  {n.name} · {n.current.length > 0 ? 'busy, it waits for this one' : 'idle'}
+                  {n.name} · {inProgress(n).length > 0 ? 'busy, it waits for this one' : 'idle'}
                 </NativeSelectOption>
               ))}
             </NativeSelect>

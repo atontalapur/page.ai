@@ -1,4 +1,6 @@
-import type { NodeSummary } from '@page/contracts';
+import type { NodeRun, NodeSummary } from '@page/contracts';
+
+import { isFinished } from '../live/runs';
 
 /**
  * An agent is a node daemon. It is running while it holds a run, idle while it is connected
@@ -14,9 +16,17 @@ export const agentStatusLabels: Record<AgentStatus, string> = {
   offline: 'Offline',
 };
 
+/**
+ * The runs this daemon is still working. `current` can keep a run after it escalated, failed
+ * or was killed, until a later heartbeat drops it. Those are not in progress.
+ */
+export function inProgress(node: NodeSummary): NodeRun[] {
+  return node.current.filter((run) => !isFinished(run));
+}
+
 export function agentStatus(node: NodeSummary): AgentStatus {
   if (!node.connected) return 'offline';
-  return node.current.length > 0 ? 'running' : 'idle';
+  return inProgress(node).length > 0 ? 'running' : 'idle';
 }
 
 /** Running agents first, then idle, then offline, each by name. */
