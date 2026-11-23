@@ -26,7 +26,9 @@ const DEPLOYMENTS = `query Deployments($input: DeploymentListInput!, $first: Int
   }
 }`;
 
-const ROLLBACK = `mutation Rollback($id: String!) { deploymentRollback(id: $id) }`;
+// Railway's docs (integrations/api/manage-deployments) give the mutation a deployment
+// back, which needs a selection.
+const ROLLBACK = `mutation Rollback($id: String!) { deploymentRollback(id: $id) { id } }`;
 
 const graphqlErrors = z.array(z.object({ message: z.string() }));
 
@@ -47,7 +49,7 @@ const deploymentsData = z.object({
   }),
 });
 
-const rollbackData = z.object({ deploymentRollback: z.boolean() });
+const rollbackData = z.object({ deploymentRollback: z.object({ id: z.string() }).nullable() });
 
 /** A Deployer for one Railway service in one environment, over Railway's GraphQL API. */
 export class RailwayDeployer implements Deployer {
@@ -79,7 +81,9 @@ export class RailwayDeployer implements Deployer {
 
   async rollbackTo(id: string): Promise<void> {
     const data = rollbackData.parse(await this.request(ROLLBACK, { id }));
-    if (!data.deploymentRollback) throw new Error(`Railway did not accept the rollback to ${id}`);
+    if (data.deploymentRollback === null) {
+      throw new Error(`Railway did not accept the rollback to ${id}`);
+    }
   }
 
   private async request(query: string, variables: Record<string, unknown>): Promise<unknown> {

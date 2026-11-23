@@ -13,7 +13,9 @@ export type {
   OpenPrCall,
   OpsDeleteConfigCall,
   OpsGetConfigCall,
+  OpsPlanRollbackCall,
   OpsRestartCall,
+  OpsRollbackCall,
   OpsSetConfigCall,
   OpsToolCall,
   PushBranchCall,
@@ -27,8 +29,14 @@ export type { OpsApi, OpsReply, RestartReply } from './ops/ops.ts';
 export { FakeOps } from './ops/fake-ops.ts';
 export { HttpOps, HEALTH_TIMEOUT_MS, OPS_TIMEOUT_MS, RESTART_GRACE_MS } from './ops/http-ops.ts';
 export type { HttpOpsOptions } from './ops/http-ops.ts';
-export { MAX_RESTARTS, MAX_SETTING_VALUE, OpsHostTools } from './ops/host-tools.ts';
-export type { OpsHostToolsOptions, OpsUndo } from './ops/host-tools.ts';
+export {
+  MAX_RESTARTS,
+  MAX_ROLLBACKS,
+  MAX_SETTING_VALUE,
+  OpsHostTools,
+  ROLLBACK_POLL_MS,
+} from './ops/host-tools.ts';
+export type { OpsHostToolsOptions, OpsUndo, SentRollback } from './ops/host-tools.ts';
 export { liveAppKey, liveAppLockDir, tryLockLiveApp } from './ops/live-app-lock.ts';
 export { DockerExecRunner } from './exec/docker-runner.ts';
 export { UserExecRunner } from './exec/user-runner.ts';

@@ -101,6 +101,32 @@ describe('loadConfig', () => {
     });
   });
 
+  describe("the ops app's Railway service for the rollback tool", () => {
+    const app = { OPS_APP_URL: 'https://demo.example.com', OPS_SECRET: 'a'.repeat(32) };
+    const railway = {
+      OPS_RAILWAY_TOKEN: 'project-token',
+      OPS_RAILWAY_PROJECT_ID: '6f9619ff-8b86-4d11-b42d-00c04fc964ff',
+      OPS_RAILWAY_ENVIRONMENT_ID: '0b4a3a5e-9a3c-4c8e-8f0e-1f2d3c4b5a69',
+      OPS_RAILWAY_SERVICE_ID: 'c56a4180-65aa-42ec-a945-5fd21dec0538',
+    };
+
+    it('is optional, and taken whole with the ops app', () => {
+      expect(loadConfig({ ...nodeEnvFixture, ...app })).toMatchObject({ ok: true });
+      expect(loadConfig({ ...nodeEnvFixture, ...app, ...railway })).toMatchObject({
+        ok: true,
+        value: railway,
+      });
+    });
+
+    it('refuses part of it, or all of it without the ops app, at boot', () => {
+      const partial = { ...railway, OPS_RAILWAY_SERVICE_ID: undefined };
+      const missing = loadConfig({ ...nodeEnvFixture, ...app, ...partial });
+      expect(missing.ok ? '' : missing.error).toContain('OPS_RAILWAY_SERVICE_ID is required');
+      const alone = loadConfig({ ...nodeEnvFixture, ...railway });
+      expect(alone.ok ? '' : alone.error).toContain('OPS_APP_URL is required with OPS_RAILWAY_*');
+    });
+  });
+
   it('reports every missing var at once', () => {
     const result = loadConfig({});
     expect(result.ok).toBe(false);

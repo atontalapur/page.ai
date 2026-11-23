@@ -18,6 +18,17 @@ describe('runAgent', () => {
     expect(first[1]!.content).toContain('Invalid currency code : USDD');
   });
 
+  it('offers the rollback blocks only to a Tier 3 run that can roll back', async () => {
+    const prompts = async (extra: { tier?: 1 | 2 | 3; rollback?: boolean }) => {
+      const model = new ScriptedModel([submit()]);
+      await runAgent({ ...task, ...extra }, { model, ...fakeExecute() });
+      return (model.calls[0] ?? []).map((m) => m.content).join('\n');
+    };
+    expect(await prompts({ tier: 3, rollback: true })).toContain('page_ops_rollback_plan');
+    expect(await prompts({ tier: 3 })).not.toContain('page_ops_rollback');
+    expect(await prompts({ tier: 2, rollback: true })).not.toContain('page_ops_rollback');
+  });
+
   it('runs each action through execute and feeds the result back', async () => {
     const model = new ScriptedModel([bash('rg -n USDD src'), submit()]);
     const fake = fakeExecute((call) => okResult(call, "src/lib/money.ts:3:const C = 'USDD';"));

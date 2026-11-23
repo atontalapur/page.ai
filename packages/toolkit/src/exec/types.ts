@@ -64,11 +64,36 @@ export interface OpsRestartCall {
   tool: 'ops.restart';
 }
 
+/**
+ * A dry run of a rollback: the live deployment, and the earlier one a rollback would deploy
+ * again. Deploys nothing.
+ */
+export interface OpsPlanRollbackCall {
+  kind: 'host_tool';
+  tool: 'ops.planRollback';
+}
+
+/**
+ * Rolls the live app back to an earlier deployment, and waits until it is live. It takes the
+ * target the run's last plan named, against the deployment live then.
+ */
+export interface OpsRollbackCall {
+  kind: 'host_tool';
+  tool: 'ops.rollback';
+  /** The deployment id to go back to, as ops.planRollback named it. */
+  to: string;
+}
+
 export type GitHubToolCall = PushBranchCall | OpenPrCall;
 
-/** The live demo app's ops surface (#13), for Tier 3. */
+/** The live demo app's ops surface (#13), and its deploys, for Tier 3. */
 export type OpsToolCall =
-  OpsGetConfigCall | OpsSetConfigCall | OpsDeleteConfigCall | OpsRestartCall;
+  | OpsGetConfigCall
+  | OpsSetConfigCall
+  | OpsDeleteConfigCall
+  | OpsRestartCall
+  | OpsPlanRollbackCall
+  | OpsRollbackCall;
 
 /**
  * A tool the daemon runs on the host, not in the sandbox, because it needs the network or a

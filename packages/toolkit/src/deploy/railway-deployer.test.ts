@@ -74,7 +74,7 @@ describe('RailwayDeployer', () => {
   });
 
   it('sends a rollback, with an account token as a bearer token', async () => {
-    const { deployer, sent } = setup({ data: { deploymentRollback: true } }, 200, {
+    const { deployer, sent } = setup({ data: { deploymentRollback: { id: 'dep-2' } } }, 200, {
       tokenKind: 'account',
       endpoint: 'http://railway.test/graphql',
     });
@@ -84,12 +84,17 @@ describe('RailwayDeployer', () => {
       headers: { authorization: 'Bearer tok' },
       body: { variables: { id: 'dep-1' } },
     });
-    expect(sent[0]?.body.query).toContain('deploymentRollback');
+    expect(sent[0]?.body.query).toContain('deploymentRollback(id: $id) { id }');
   });
 
-  it('fails when Railway refuses the rollback', async () => {
-    const { deployer } = setup({ data: { deploymentRollback: false } });
+  it('fails when Railway answers the rollback with no deployment', async () => {
+    const { deployer } = setup({ data: { deploymentRollback: null } });
     await expect(deployer.rollbackTo('dep-1')).rejects.toThrow('did not accept');
+  });
+
+  it('fails on a rollback answer it cannot read', async () => {
+    const { deployer } = setup({ data: { deploymentRollback: true } });
+    await expect(deployer.rollbackTo('dep-1')).rejects.toThrow();
   });
 
   it('surfaces GraphQL errors, HTTP errors and malformed replies', async () => {

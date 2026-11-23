@@ -1,12 +1,15 @@
 import type { NodeConfig } from '@page/contracts';
 import { OpenRouterClient, withRetries, type ModelClient } from '@page/model-client';
 import {
+  FakeDeployer,
   FakeGitHub,
   FakeOps,
   HttpOps,
   PostgresAuditSink,
+  RailwayDeployer,
   RestGitHub,
   type AuditSink,
+  type Deployer,
   type GitHub,
   type OpsApi,
 } from '@page/toolkit';
@@ -42,6 +45,8 @@ export interface Adapters {
   ops?: OpsApi;
   /** Claims that live app for one Tier 3 run at a time, across daemons sharing the database. */
   opsLock?: OpsLock;
+  /** That app's deploys, for the Tier 3 rollback tool. Without it, runs get no rollback. */
+  deployer?: Deployer;
   /** Closes connections the adapters opened, after the daemon stops claiming jobs. */
   close(): Promise<void>;
 }
@@ -58,7 +63,7 @@ export interface Daemon {
  * may hold it, or it already finished.
  */
 export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
-  const { jobs, sandboxes, sink, link, results, model, github, ops, opsLock } = adapters;
+  const { jobs, sandboxes, sink, link, results, model, github, ops, opsLock, deployer } = adapters;
   // Each run's kill switch, with a logger that carries the run's issueId, runId and tier.
   const runs = new Map<string, { kill: AbortController; logger: Logger }>();
   // The link has no `off`, so the kill handler goes on once however often start() runs.
@@ -100,7 +105,7 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
               results,
               model,
               github,
-              ...withOps(ops, opsLock),
+              ...withOps(ops, opsLock, deployer),
               logger,
             },
             entry.kill.signal,
@@ -156,7 +161,11 @@ export async function createAdapters(config: NodeConfig, logger: Logger): Promis
     results: new PgBossRunResults({ boss, logger }),
     model: fake ? new ScriptedModel() : withRetries(openRouter(config)),
     github: fake ? new FakeGitHub() : gitHub(config),
-    ...withOps(opsFor(config, logger), opsLockFor(config, pool, logger)),
+    ...withOps(
+      opsFor(config, logger),
+      opsLockFor(config, pool, logger),
+      deployerFor(config, logger),
+    ),
     async close() {
       const results = await Promise.allSettled([
         link.close(),
@@ -204,9 +213,50 @@ export function opsLockFor(config: NodeConfig, pool: pg.Pool, logger: Logger): O
   return liveAppLock(pool, config.OPS_APP_URL, logger);
 }
 
-const withOps = (ops: OpsApi | undefined, opsLock: OpsLock | undefined) => ({
+/**
+ * The deploys of OPS_APP_URL's app on Railway, from the OPS_RAILWAY_* vars, for the Tier 3
+ * rollback tool, or an in-memory one with fakes on: a live deployment and one before it.
+ * Without the vars it is undefined, and a node with an ops API logs that once, here.
+ */
+export function deployerFor(config: NodeConfig, logger: Logger): Deployer | undefined {
+  if (config.USE_FAKE_ADAPTERS) return fakeDeploys();
+  const {
+    OPS_RAILWAY_TOKEN: token,
+    OPS_RAILWAY_PROJECT_ID: projectId,
+    OPS_RAILWAY_ENVIRONMENT_ID: environmentId,
+    OPS_RAILWAY_SERVICE_ID: serviceId,
+  } = config;
+  // The config schema takes all four or none, and OPS_APP_URL with them.
+  if (
+    token === undefined ||
+    projectId === undefined ||
+    environmentId === undefined ||
+    serviceId === undefined
+  ) {
+    if (config.OPS_APP_URL !== undefined) {
+      logger.warn('OPS_RAILWAY_* is unset: Tier 3 runs get no rollback tool');
+    }
+    return undefined;
+  }
+  return new RailwayDeployer({ token, projectId, environmentId, serviceId });
+}
+
+function fakeDeploys(): Deployer {
+  const at = (minute: number) => new Date(Date.UTC(2026, 0, 1, 0, minute)).toISOString();
+  return new FakeDeployer([
+    { id: 'fake-live', status: 'SUCCESS', createdAt: at(1), commitSha: null, canRollback: true },
+    { id: 'fake-before', status: 'REMOVED', createdAt: at(0), commitSha: null, canRollback: true },
+  ]);
+}
+
+const withOps = (
+  ops: OpsApi | undefined,
+  opsLock: OpsLock | undefined,
+  deployer: Deployer | undefined,
+) => ({
   ...(ops === undefined ? {} : { ops }),
   ...(opsLock === undefined ? {} : { opsLock }),
+  ...(deployer === undefined ? {} : { deployer }),
 });
 
 function openRouter(config: NodeConfig): ModelClient {

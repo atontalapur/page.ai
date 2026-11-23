@@ -481,8 +481,8 @@ gave Tier 3 the ops tools (read the live settings, set or drop an override, rest
 and #149 let the runner play ops scenarios. The limits are the ones frozen in #114. The Tier 1
 and Tier 2 prompts are unchanged, but the Tier 3 prompt gained the ops blocks, so Tier 3
 attempts here saw a different prompt from the dev and held-out runs. The set is reported on
-its own and isn't folded into dev. 024 stays unrun: it is held out, and its fix is a
-rollback, which has no agent tool yet.
+its own and isn't folded into dev. 024 stays unrun: it is held out and its reservation is
+used. Its fix is a rollback, which had no agent tool when this set ran.
 
 Both bugs are a bad `SHIPPING_FLAT_CENTS` override on the live app, and both make checkout
 return 500. In 029 the value is 2500000000, past the `integer` column the order's shipping

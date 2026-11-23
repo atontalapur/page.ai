@@ -10,6 +10,7 @@ import {
   SAFE_GIT,
   StepLog,
   type AuditSink,
+  type Deployer,
   type GitHub,
   type OpsApi,
 } from '@page/toolkit';
@@ -48,6 +49,11 @@ export interface RunDeps {
    * someone else holds it, the run's ops calls are refused. Without it, nothing is claimed.
    */
   opsLock?: OpsLock;
+  /**
+   * The live app's deploys. With it and `ops`, a Tier 3 run also gets the rollback tools,
+   * and its prompt offers them. Without it, they are refused as not set up on this node.
+   */
+  deployer?: Deployer;
   logger: Logger;
   agentConfig?: Partial<AgentConfig>;
   /** Milliseconds; injectable so tests control the wall clock. */
@@ -176,10 +182,13 @@ export async function runFixJob(
       opsTools = new OpsHostTools({
         ops: deps.ops,
         signal: stopped,
+        ...(deps.deployer === undefined ? {} : { deployer: deps.deployer }),
         ...(claim.refusal === undefined ? {} : { refusal: claim.refusal }),
       });
     }
     const hostTools = hostToolsFor(tier, { github: githubTools, ops: opsTools });
+    // The prompt offers the rollback blocks only to a run that has the tool.
+    const rollback = hostTools?.handles?.('ops.rollback') === true;
     const run: ExecuteFn = (call, { timeoutMs = Infinity, thought }) =>
       execute(call, {
         tier,
@@ -204,7 +213,7 @@ export async function runFixJob(
     let end: RunEnd;
     try {
       const agentRun = await runAgent(
-        { task: job.report, tier },
+        { task: job.report, tier, rollback },
         { model: deps.model, execute: run, now, signal: stopped },
         config,
       );
@@ -291,12 +300,13 @@ async function claimOps(
 /**
  * A Tier 3 run that didn't succeed puts back the overrides it changed, so the tier above
  * starts from the app this run found. Best effort, like closeUnfinishedPr: a change that
- * won't go back is logged, and the run still reported.
+ * won't go back is logged, and the run still reported. A rollback stays live and is logged,
+ * since rolling forward would redeploy the build the run judged bad (see OpsHostTools.undo).
  */
 async function undoUnfinishedOps(tools: OpsHostTools, end: RunEnd, logger: Logger): Promise<void> {
   if (end.kind === 'agent' && end.run.exitStatus === 'submitted') return;
   try {
-    const { restored, unknown, restarted, failed } = await tools.undo();
+    const { restored, unknown, restarted, failed, rollback } = await tools.undo();
     if (failed.length > 0) {
       logger.warn(
         { failed },
@@ -313,6 +323,14 @@ async function undoUnfinishedOps(tools: OpsHostTools, end: RunEnd, logger: Logge
       logger.warn(
         { settings: unknown },
         'ops changes that never answered may have landed; left as they are',
+      );
+    }
+    if (rollback !== null) {
+      logger.warn(
+        { rollback },
+        rollback.accepted
+          ? "kept the rollback of a run that did not succeed; rolling forward is a person's call"
+          : 'a rollback that never answered may have started; left as it is',
       );
     }
   } catch (error) {

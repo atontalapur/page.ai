@@ -22,6 +22,11 @@ export interface RollbackOptions {
   dryRun: boolean;
   /** A deployment id to go back to. Defaults to the one that was live before the current one. */
   to?: string;
+  /**
+   * The deployment the caller expects to be live, from an earlier plan. If another one is
+   * live now, the rollback is refused, so it can't replace a deploy the caller never saw.
+   */
+  from?: string;
 }
 
 export interface RollbackPlan {
@@ -39,6 +44,7 @@ export type RollbackError =
   | { type: 'deploy_in_progress'; message: string }
   | { type: 'no_target'; message: string }
   | { type: 'bad_target'; message: string }
+  | { type: 'live_changed'; message: string }
   | { type: 'deployer_failed'; message: string };
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -109,8 +115,9 @@ export function planRollback(
 
 /**
  * Rolls the service back one good deployment, or to `options.to`. A dry run returns the
- * plan without deploying. A failure of the deployer itself comes back as
- * `deployer_failed`; on a real run that means the rollback may or may not have started.
+ * plan without deploying. With `options.from`, a different live deployment refuses it as
+ * `live_changed`. A failure of the deployer itself comes back as `deployer_failed`; on a
+ * real run that means the rollback may or may not have started.
  */
 export async function rollback(
   deployer: Deployer,
@@ -125,6 +132,13 @@ export async function rollback(
 
   const plan = planRollback(deployments, options.to);
   if (!plan.ok) return plan;
+  const live = plan.value.from.id;
+  if (options.from !== undefined && live !== options.from) {
+    return err({
+      type: 'live_changed',
+      message: `deployment ${live} is live now, not ${options.from}, which the plan was made against`,
+    });
+  }
   if (options.dryRun) return ok({ dryRun: true, plan: plan.value });
 
   try {

@@ -175,8 +175,8 @@ export function checkCommand(input: string, tier: Tier): Verdict {
 
 /**
  * The lowest tier that may call each host tool. Tiers include the ones below them, so a
- * Tier 3 run may push and open PRs too. Reading the live config is Tier 3 as well: it shows
- * settings a lower tier has no reason to see.
+ * Tier 3 run may push and open PRs too. Reading the live config and planning a rollback are
+ * Tier 3 as well: they show settings and deploys a lower tier has no reason to see.
  */
 export const HOST_TOOL_TIERS: Readonly<Record<HostToolName, Tier>> = {
   'git.pushBranch': 2,
@@ -185,6 +185,8 @@ export const HOST_TOOL_TIERS: Readonly<Record<HostToolName, Tier>> = {
   'ops.setConfig': 3,
   'ops.deleteConfig': 3,
   'ops.restart': 3,
+  'ops.planRollback': 3,
+  'ops.rollback': 3,
 };
 
 /** Whether `tool` may run at `tier`. An unknown tool name is refused. */

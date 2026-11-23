@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FakeDeployer } from '../deploy/fake-deployer.ts';
 import { FakeOps } from '../ops/fake-ops.ts';
 import { OpsHostTools } from '../ops/host-tools.ts';
 import { combineHostTools, hostToolsFor } from './combine.ts';
@@ -46,5 +47,14 @@ describe('hostToolsFor', () => {
   it('gives nothing when no part is set up', () => {
     expect(hostToolsFor(3, {})).toBeUndefined();
     expect(hostToolsFor(3, { ops })?.handles?.('github.openPr')).toBe(false);
+  });
+
+  it('gives the rollback tools only with a deployer, so execute() refuses them otherwise', () => {
+    expect(hostToolsFor(3, { ops })?.handles?.('ops.rollback')).toBe(false);
+    const deploys = new OpsHostTools({ ops: new FakeOps(), deployer: new FakeDeployer() });
+    const tier3 = hostToolsFor(3, { github, ops: deploys });
+    expect(tier3?.handles?.('ops.planRollback')).toBe(true);
+    expect(tier3?.handles?.('ops.rollback')).toBe(true);
+    expect(hostToolsFor(2, { github, ops: deploys })?.handles?.('ops.rollback')).toBe(false);
   });
 });

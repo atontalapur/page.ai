@@ -46,6 +46,60 @@ describe('systemPrompt at Tier 3', () => {
   });
 });
 
+const ROLLBACK_TAGS = ['page_ops_rollback_plan', 'page_ops_rollback'];
+
+describe('systemPrompt at Tier 3 with a rollback', () => {
+  it('adds the rollback blocks after the ops blocks, and submit last', () => {
+    const prompt = systemPrompt(3, true);
+    expect(prompt).toContain('eleven kinds of action block');
+    for (const tag of [...OPS_TAGS, ...ROLLBACK_TAGS]) expect(prompt).toContain(tag);
+    expect(prompt.match(/^\d+\. /gm)).toEqual(Array.from({ length: 11 }, (_, i) => `${i + 1}. `));
+    expect(prompt).toContain('11. Submitting your work');
+    expect(prompt).toContain('for a rollback, once the build it brought back is live');
+    expect(prompt.indexOf('page_ops_rollback_plan')).toBeGreaterThan(
+      prompt.indexOf('page_ops_restart'),
+    );
+  });
+
+  it('is left out without a rollback, and below Tier 3', () => {
+    expect(systemPrompt(3, false)).toBe(systemPrompt(3));
+    expect(systemPrompt(3)).not.toMatch(/rollback/i);
+    expect(systemPrompt(2, true)).toBe(systemPrompt(2));
+    expect(systemPrompt(1, true)).toBe(systemPrompt(1));
+  });
+});
+
+describe('instancePrompt at Tier 3 with a rollback', () => {
+  it('says when a rollback is the fix, and when it is not', () => {
+    const prompt = instancePrompt({ task: 'x', tier: 3, rollback: true });
+    expect(prompt).toContain('## A bad deploy');
+    expect(prompt).toContain('plan a rollback with a page_ops_rollback_plan block');
+    expect(prompt).toContain('roll back with a page_ops_rollback block');
+    expect(prompt).toContain("Don't roll back to fix a bug that is in this repository's code");
+    expect(prompt).toContain('You may roll back once.');
+    expect(prompt.indexOf("## The live app's settings")).toBeLessThan(
+      prompt.indexOf('## A bad deploy'),
+    );
+    expect(prompt.indexOf('## A bad deploy')).toBeLessThan(prompt.indexOf('## Rules'));
+  });
+
+  it('is left out without a rollback, and below Tier 3', () => {
+    expect(instancePrompt({ task: 'x', tier: 3, rollback: false })).toBe(
+      instancePrompt({ task: 'x', tier: 3 }),
+    );
+    expect(instancePrompt({ task: 'x', tier: 3 })).not.toMatch(/rollback|bad deploy/i);
+    expect(instancePrompt({ task: 'x', tier: 2, rollback: true })).toBe(
+      instancePrompt({ task: 'x', tier: 2 }),
+    );
+  });
+
+  it("names no route or file, so it can't hint at a fix", () => {
+    const prompt = `${systemPrompt(3, true)}\n${instancePrompt({ task: 'x', tier: 3, rollback: true })}`;
+    const section = prompt.slice(prompt.indexOf('## A bad deploy'), prompt.indexOf('## Rules'));
+    expect(section).not.toMatch(/products|limit|NaN|\/api\/|\.ts\b/);
+  });
+});
+
 describe('instancePrompt', () => {
   it('asks a Tier 2 run to push and open a PR before it submits', () => {
     const prompt = instancePrompt({ task: 'x', tier: 2 });

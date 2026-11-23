@@ -136,8 +136,11 @@ export function hostToolArgs(call: HostToolCall): Record<string, string> {
       return { tool: call.tool, key: call.key, value: call.value };
     case 'ops.deleteConfig':
       return { tool: call.tool, key: call.key };
+    case 'ops.rollback':
+      return { tool: call.tool, to: call.to };
     case 'ops.getConfig':
     case 'ops.restart':
+    case 'ops.planRollback':
       return { tool: call.tool };
   }
 }
@@ -217,6 +220,11 @@ async function runExec(call: ExecCall, ctx: ExecContext, base: StepBase): Promis
   return ok({ ...base, exitCode: 0, output });
 }
 
+/**
+ * Every host tool call runs here and nowhere else, after the tier check and with its step
+ * open. The call is plain data, and hostToolArgs(call) is its tool and arguments, so a gate
+ * such as a person's approval can wrap this one call.
+ */
 async function runHostTool(
   call: HostToolCall,
   ctx: ExecContext,

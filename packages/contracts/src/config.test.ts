@@ -178,6 +178,69 @@ describe('nodeConfigSchema', () => {
       ).toBe(true);
     });
   });
+
+  describe("the ops app's Railway service", () => {
+    const app = { OPS_APP_URL: 'https://demo.example.com', OPS_SECRET: 'a'.repeat(32) };
+    const railway = {
+      OPS_RAILWAY_TOKEN: 'project-token',
+      OPS_RAILWAY_PROJECT_ID: '6f9619ff-8b86-4d11-b42d-00c04fc964ff',
+      OPS_RAILWAY_ENVIRONMENT_ID: '0b4a3a5e-9a3c-4c8e-8f0e-1f2d3c4b5a69',
+      OPS_RAILWAY_SERVICE_ID: 'c56a4180-65aa-42ec-a945-5fd21dec0538',
+    };
+    const parse = (env: Record<string, string | undefined>) =>
+      nodeConfigSchema.safeParse({ ...nodeEnvFixture, ...env });
+    const issues = (env: Record<string, string | undefined>) => {
+      const result = parse(env);
+      return result.success ? [] : result.error.issues.map((i) => i.message);
+    };
+
+    it('is optional, and takes all four with the ops app', () => {
+      const alone = parse(app);
+      expect(alone.success && alone.data.OPS_RAILWAY_TOKEN).toBeUndefined();
+      expect(parse({ ...app, ...railway, OPS_RAILWAY_TOKEN: ' project-token\n' })).toMatchObject({
+        success: true,
+        data: { ...railway },
+      });
+    });
+
+    it('names every var a partial set is missing', () => {
+      expect(issues({ ...app, OPS_RAILWAY_TOKEN: 'project-token' })).toEqual([
+        'OPS_RAILWAY_PROJECT_ID is required with OPS_RAILWAY_TOKEN',
+        'OPS_RAILWAY_ENVIRONMENT_ID is required with OPS_RAILWAY_TOKEN',
+        'OPS_RAILWAY_SERVICE_ID is required with OPS_RAILWAY_TOKEN',
+      ]);
+    });
+
+    it('needs the ops app, the one a rollback changes', () => {
+      expect(issues(railway)).toEqual([
+        'OPS_APP_URL is required with OPS_RAILWAY_*: a rollback changes that app',
+      ]);
+    });
+
+    it('refuses an id that is not a UUID', () => {
+      expect(issues({ ...app, ...railway, OPS_RAILWAY_SERVICE_ID: 'demo-app' })).toEqual([
+        'must be a Railway id, which is a UUID',
+      ]);
+    });
+
+    // Railway sets these on every service it runs, the daemon's own included.
+    it("ignores Railway's own vars, so the daemon never rolls back its own service", () => {
+      const own = {
+        RAILWAY_TOKEN: 'cli-token',
+        RAILWAY_PROJECT_ID: railway.OPS_RAILWAY_PROJECT_ID,
+        RAILWAY_ENVIRONMENT_ID: railway.OPS_RAILWAY_ENVIRONMENT_ID,
+        RAILWAY_SERVICE_ID: railway.OPS_RAILWAY_SERVICE_ID,
+      };
+      const result = parse({ ...app, ...own });
+      expect(result.success && result.data.OPS_RAILWAY_SERVICE_ID).toBeUndefined();
+      expect(result.success && 'RAILWAY_SERVICE_ID' in result.data).toBe(false);
+    });
+
+    it('is not checked with fakes on, which deploy nothing', () => {
+      const result = parse({ USE_FAKE_ADAPTERS: 'true', OPS_RAILWAY_TOKEN: 'project-token' });
+      expect(result.success).toBe(true);
+    });
+  });
 });
 
 describe('demoAppConfigSchema', () => {

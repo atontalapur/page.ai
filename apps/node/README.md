@@ -40,12 +40,13 @@ pnpm --filter @page/node start
 | `GITHUB_TOKEN`, `GITHUB_REPO` |                | Required unless fakes; Tier 2 tools     |
 | `OPS_APP_URL`                 |                | Optional; the app for Tier 3 ops tools  |
 | `OPS_SECRET`                  |                | That app's ops secret; needs 32+ chars  |
+| `OPS_RAILWAY_*` (four)        |                | Optional; that app's Railway service    |
 | `USE_FAKE_ADAPTERS`           | `false`        | See below                               |
 | `LOG_LEVEL`                   | `info`         |                                         |
 
 With `USE_FAKE_ADAPTERS=true` there is no Docker, model, GitHub or socket. Each run gets a
 fake sandbox whose commands exit 0, a scripted model that runs `git status` and submits, an
-in-memory GitHub, an in-memory ops API, and a link that logs events instead of sending them. Postgres stays real, so steps still land in
+in-memory GitHub, an in-memory ops API, an in-memory deployer with a deploy to roll back to, and a link that logs events instead of sending them. Postgres stays real, so steps still land in
 the `steps` table.
 
 Two things have to exist before a job will run:
@@ -79,7 +80,8 @@ On Railway the service builds that Dockerfile from the repo root
 (`RAILWAY_DOCKERFILE_PATH=apps/node/Dockerfile`) with no public domain, and takes the
 variables above: `DATABASE_URL` from the `db` service, `ORCHESTRATOR_URL` and
 `NODE_SHARED_SECRET` from the orchestrator, and `OPS_APP_URL` and `OPS_SECRET` for the demo
-app. It needs no port.
+app, with the `OPS_RAILWAY_*` vars for its service if Tier 3 may roll it back. It needs no
+port.
 
 ## Tier 2: pushing the fix and opening a PR
 
@@ -140,6 +142,54 @@ Without `OPS_APP_URL` the daemon logs once at startup that Tier 3 runs get no op
 every ops call is refused as `not set up on this node`. The daemon never reads
 `DEMO_APP_URL`, which `.env` keeps for staging's app, so a local daemon changes staging only
 if `OPS_APP_URL` names it.
+
+## Tier 3: rolling back a bad deploy
+
+With the Railway service behind `OPS_APP_URL` set, Tier 3 runs also get two rollback tools,
+built on `rollback()` and `RailwayDeployer` in `@page/toolkit`:
+
+- `ops.planRollback` (`page_ops_rollback_plan`): a dry run. It shows the live deployment and
+  the earlier one a rollback would deploy again, with each one's commit and creation time.
+  It deploys nothing.
+- `ops.rollback` (`page_ops_rollback`, holding a deployment id): deploys that earlier build
+  again, then asks Railway every 3 seconds until the new deployment is live or has failed,
+  within the command's time limit.
+
+The limits, and why:
+
+- One rollback a run. A rollback replaces the whole live build. If a run needs a second
+  one, the first was the wrong call, and what to deploy next is a person's decision.
+- Plan first. `ops.rollback` takes only the target of the run's last plan, so the agent has
+  seen what goes live before it sends anything, and the step log shows the same target. A
+  plan is spent once a rollback is sent.
+- The plan must still hold. If another deployment went live after the plan, the rollback is
+  refused (`live_changed`), so it can't replace a deploy the agent never saw.
+- Nothing while a deploy is in flight. A build or deploy newer than the live one would go
+  live after the rollback and undo it, so `rollback()` refuses.
+- The target served traffic before (`REMOVED`) and Railway still holds its image
+  (`canRollback`). By default `rollback()` skips every build of the live commit, so a second
+  rollback can't land on the build the first one left.
+
+A refused call sends nothing and doesn't use up the run's rollback. A rollback Railway took
+counts as a change to the live app, so a run that submits after one, with no PR and no code
+change, reports `opsOnly: true` like a settings fix.
+
+A run that ends without submitting keeps its rollback, while its override changes are put
+back as above. The daemon logs the rollback instead. Rolling forward would deploy again the
+build the run judged bad, with no one deciding to, and it is a deploy of its own that can
+fail or drop requests. The rollback's target is a build that served traffic before. Once a
+person approves Tier 3 tools, a roll forward would also undo their decision. A rollback
+whose request never answered may have started, and is logged and left as it is too.
+
+`OPS_RAILWAY_TOKEN` is a project token for the service's environment, sent as
+`Project-Access-Token`, so it can't reach another environment. `OPS_RAILWAY_PROJECT_ID`,
+`OPS_RAILWAY_ENVIRONMENT_ID` and `OPS_RAILWAY_SERVICE_ID` are UUIDs. Boot fails on part of
+the set, on an id that isn't a UUID, or on the set without `OPS_APP_URL`, since the run
+claims the app it rolls back by that URL. The names aren't Railway's own `RAILWAY_TOKEN` and
+`RAILWAY_*_ID`, because Railway sets those on every service it runs: a daemon on Railway would
+read its own service and roll itself back. Without the set, a daemon with ops tools logs
+once at startup that Tier 3 runs get no rollback tool, the prompt leaves the rollback blocks
+out, and a rollback call is refused as `not set up on this node`.
 
 ## Tests
 
