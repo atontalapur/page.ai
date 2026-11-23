@@ -67,9 +67,7 @@ describe('createDaemon', () => {
       'node.run.finished',
       'node.holding',
     ]);
-    expect(
-      a.link.sent.filter((s) => s.event === 'node.holding').map((s) => s.payload),
-    ).toEqual([
+    expect(a.link.sent.filter((s) => s.event === 'node.holding').map((s) => s.payload)).toEqual([
       { v: 1, runIds: [] },
       { v: 1, runIds: [jobFixtures.fix.runId] },
       { v: 1, runIds: [] },

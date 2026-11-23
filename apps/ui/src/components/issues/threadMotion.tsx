@@ -77,13 +77,7 @@ const gapBelow = (el: HTMLElement) => el.scrollHeight - el.clientHeight - el.scr
  * eases the scroll position down on the compositor's frames. Scrolling up lets go; a
  * button catches back up. The page itself does not move.
  */
-export function ChatScroller({
-  children,
-  label,
-}: {
-  children: ReactNode;
-  label: string;
-}) {
+export function ChatScroller({ children, label }: { children: ReactNode; label: string }) {
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const following = useRef(true);

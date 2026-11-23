@@ -81,25 +81,25 @@ function StepItem({ step, running }: { step: Step; running: boolean }) {
           {step.seq}
         </span>
         <div className="min-w-0 space-y-2">
-        {step.thought && <Thought text={step.thought} />}
-        {edit ? (
-          <div className="overflow-hidden rounded-md border">
-            <div className="flex items-center justify-between gap-2 border-b bg-muted/50 px-3 py-1 text-xs">
-              <span className="truncate font-mono">{shortPath(edit.path)}</span>
-              <span className={`shrink-0 font-medium ${toneText[tone]}`}>Edit · {label}</span>
+          {step.thought && <Thought text={step.thought} />}
+          {edit ? (
+            <div className="overflow-hidden rounded-md border">
+              <div className="flex items-center justify-between gap-2 border-b bg-muted/50 px-3 py-1 text-xs">
+                <span className="truncate font-mono">{shortPath(edit.path)}</span>
+                <span className={`shrink-0 font-medium ${toneText[tone]}`}>Edit · {label}</span>
+              </div>
+              <EditView {...edit} />
             </div>
-            <EditView {...edit} />
-          </div>
-        ) : step.kind === 'host_tool' ? (
-          <ToolCallCard step={step} label={label} toneClass={toneText[tone]} />
-        ) : (
-          <Terminal
-            command={named ? `${named.verb} ${named.target}` : step.input}
-            output={step.allowed ? step.outputTrimmed : ''}
-            label={label}
-            toneClass={toneText[tone]}
-          />
-        )}
+          ) : step.kind === 'host_tool' ? (
+            <ToolCallCard step={step} label={label} toneClass={toneText[tone]} />
+          ) : (
+            <Terminal
+              command={named ? `${named.verb} ${named.target}` : step.input}
+              output={step.allowed ? step.outputTrimmed : ''}
+              label={label}
+              toneClass={toneText[tone]}
+            />
+          )}
           {outputNotes(step).map((note) => (
             <p key={note.text} className={`text-xs ${toneText[note.tone]}`}>
               {note.text}
