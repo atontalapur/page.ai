@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { evalResultsSchema, loadResults, sameLimits, type Attempt } from './results.ts';
 import {
   AttemptError,
+  escalationReason,
   ProviderError,
   resultsFileName,
   runEval,
@@ -155,6 +156,61 @@ describe('runEval', () => {
     const results = await runEval(base(fn, { config: 'tier1-only' }));
     expect(results.runs[0]).toMatchObject({ tierLanded: 1, fixed: false, timeToFixMs: null });
     expect(results.summary).toMatchObject({ fixed: 0, fixRate: 0, costPerFixUsd: null });
+  });
+
+  describe('low_confidence', () => {
+    const confidence = {
+      score: 0,
+      changesCode: true,
+      reproduced: false,
+      testsPass: false,
+      checksPass: false,
+      liveAfterChange: null,
+    };
+    const low = { confidence, lowConfidence: true };
+
+    it('climbs past a submit that scored too low, and counts a passing one as false', async () => {
+      const { fn, calls } = scripted([{ ...low, checkPassed: true }, {}]);
+      const threshold = { 1: 0.3, 2: 0.3, 3: 0.3 };
+      const results = await runEval(base(fn, { confidenceThreshold: threshold }));
+      expect(calls.map((c) => c.tier)).toEqual([1, 2]);
+      expect(results.runs[0]).toMatchObject({
+        tierLanded: 2,
+        fixed: true,
+        falseEscalations: 1,
+        attempts: [{ tier: 1, exitStatus: 'submitted', ...low }, { tier: 2 }],
+      });
+      expect(results.confidenceThreshold).toEqual(threshold);
+      expect(evalResultsSchema.parse(results)).toEqual(results);
+    });
+
+    it('pages on a submit that scored too low at the last tier of the config', async () => {
+      const { fn } = scripted([{ ...low, checkPassed: true }]);
+      const results = await runEval(base(fn, { config: 'tier1-only' }));
+      expect(results.runs[0]).toMatchObject({
+        tierLanded: null,
+        fixed: false,
+        paged: true,
+        falsePage: true,
+      });
+    });
+
+    it('lands a submit with no score, as from a file before confidence escalation', async () => {
+      const { fn, calls } = scripted([{ confidence: null }]);
+      const results = await runEval(base(fn));
+      expect(calls.map((c) => c.tier)).toEqual([1]);
+      expect(results.runs[0]).toMatchObject({ tierLanded: 1, fixed: true });
+      expect(results).not.toHaveProperty('confidenceThreshold');
+    });
+
+    it('names why the daemon would hand a run on', () => {
+      expect(escalationReason({ exitStatus: 'step_limit' })).toBe('budget_exhausted');
+      expect(escalationReason({ exitStatus: 'submitted', lowConfidence: true })).toBe(
+        'low_confidence',
+      );
+      expect(escalationReason({ exitStatus: 'submitted' })).toBeUndefined();
+      expect(escalationReason({ exitStatus: 'format_errors' })).toBeUndefined();
+    });
   });
 
   it('starts at Tier 3 under tier3-start', async () => {

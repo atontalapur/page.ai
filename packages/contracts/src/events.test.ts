@@ -94,6 +94,21 @@ describe('node.run.finished', () => {
     expect(() => finished.parse({ ...escalated, note: null })).toThrow();
   });
 
+  it('round-trips a low_confidence escalation with its score', () => {
+    const low = {
+      ...escalated,
+      reason: 'low_confidence',
+      confidence: { ...confidenceFixture, score: 0.2, testsPass: false, checksPass: false },
+    };
+    expect(roundTrip(finished, low)).toEqual(low);
+  });
+
+  it('rejects a low_confidence escalation with no score', () => {
+    expect(() => finished.parse({ ...escalated, reason: 'low_confidence' })).toThrow(
+      /carries its score/,
+    );
+  });
+
   it('accepts a success the daemon did not score', () => {
     const unscored = { ...nodeToServerEventFixtures['node.run.finished'], confidence: null };
     expect(roundTrip(finished, unscored)).toEqual(unscored);

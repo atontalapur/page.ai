@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_AGENT_CONFIG, runAgent } from './agent.ts';
+import { CONFIDENCE_WEIGHTS } from './confidence.ts';
 import { bash, fakeExecute, ScriptedModel } from './test-utils.ts';
-import { budgetFor, ESCALATION_THRESHOLD } from './threshold.ts';
+import {
+  budgetFor,
+  CONFIDENCE_THRESHOLD,
+  ESCALATION_THRESHOLD,
+  isLowConfidence,
+} from './threshold.ts';
 
 const task = { task: 'GET /products returns 500: RangeError: Invalid currency code : USDD' };
 const TIERS = [1, 2, 3] as const;
@@ -31,6 +37,26 @@ describe('ESCALATION_THRESHOLD', () => {
     const model = new ScriptedModel(Array.from({ length: stepLimit + 1 }, () => bash('ls')));
     const result = await runAgent({ ...task, tier }, { model, ...fakeExecute() });
     expect(result).toMatchObject({ exitStatus: 'step_limit', modelCalls: stepLimit });
+  });
+
+  it.each(TIERS)('gives Tier %i a confidence threshold a score can fall below', (tier) => {
+    const threshold = CONFIDENCE_THRESHOLD[tier];
+    expect(threshold).toBeGreaterThan(0);
+    expect(threshold).toBeLessThanOrEqual(1);
+    expect(isLowConfidence({ score: 0 }, tier)).toBe(true);
+    expect(isLowConfidence({ score: threshold - 0.01 }, tier)).toBe(true);
+    expect(isLowConfidence({ score: threshold }, tier)).toBe(false);
+    expect(isLowConfidence({ score: 1 }, tier)).toBe(false);
+  });
+
+  it.each(TIERS)('never calls a run with no score at Tier %i low', (tier) => {
+    expect(isLowConfidence(null, tier)).toBe(false);
+  });
+
+  it('lets a run that ran nothing after its edit escalate, and one with only a check stay', () => {
+    // The default sits between a reproduction alone and a typecheck or lint alone.
+    expect(CONFIDENCE_WEIGHTS.reproduced).toBeLessThan(CONFIDENCE_THRESHOLD[1]);
+    expect(CONFIDENCE_WEIGHTS.checksPass).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD[1]);
   });
 
   it('lets an override narrow the tier budget', async () => {

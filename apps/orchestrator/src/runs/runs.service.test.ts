@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { escalationNoteFixture } from '@page/contracts/fixtures';
+import type { Tier } from '@page/contracts';
+import { confidenceFixture, escalationNoteFixture } from '@page/contracts/fixtures';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createTestDeps } from '../db/test-utils.ts';
 import { IssueNotFoundError, IssuesService } from '../issues/issues.service.ts';
+import { transition, type IssueState } from '../issues/transitions.ts';
 import { createLogger } from '../logger.ts';
 import { FIX_FAILED_QUEUE, FIX_QUEUE, type FixJob } from '../queue/fix-jobs.ts';
 import { RUN_FINISHED_QUEUE } from '../queue/queues.ts';
@@ -115,9 +117,53 @@ describe('RunsService', () => {
   it('keeps the PR link and the confidence of a run', async () => {
     const { job } = await fixing();
     const prUrl = 'https://github.com/atontalapur/page-demo/pull/7';
-    const confidence = { score: 0.9, reproduced: true, testsPass: true, selfAssessed: 0.8 };
-    await runs.record(finished(job, { prUrl, confidence }));
-    expect(await runRow(job.runId)).toMatchObject({ pr_url: prUrl, confidence });
+    await runs.record(finished(job, { prUrl, confidence: confidenceFixture }));
+    expect(await runRow(job.runId)).toMatchObject({ pr_url: prUrl, confidence: confidenceFixture });
+  });
+
+  it('escalates a low_confidence run a tier, keeping its score and its patch', async () => {
+    const { issue, job } = await fixing();
+    const confidence = { ...confidenceFixture, score: 0.2, testsPass: false, checksPass: false };
+    const diff = '--- a/src/shop/money.ts\n+++ b/src/shop/money.ts\n';
+    const low = { ...escalation, reason: 'low_confidence', confidence } as const;
+    expect(await runs.record({ ...finished(job, low), diff })).toEqual({
+      kind: 'applied',
+      event: 'escalate',
+    });
+
+    expect(await issues.get(issue.id)).toMatchObject({ status: 'fixing', currentTier: 2 });
+    expect(await liveJob(issue.id)).toMatchObject({
+      tier: 2,
+      escalationNote: escalationNoteFixture,
+    });
+    expect(await runRow(job.runId)).toMatchObject({ status: 'escalated', confidence, diff });
+    const escalations = await deps.db
+      .selectFrom('escalations')
+      .select(['from_tier', 'to_tier', 'reason'])
+      .where('run_id', '=', job.runId)
+      .execute();
+    expect(escalations).toEqual([{ from_tier: 1, to_tier: 2, reason: 'low_confidence' }]);
+    expect((await issues.events(issue.id)).at(-1)?.event).toEqual({
+      type: 'escalate',
+      runId: job.runId,
+      reason: `low_confidence: ${escalationNoteFixture.summary}`,
+    });
+  });
+
+  it('fails the issue for a low-scoring Tier 3 run, which has no tier to go to', async () => {
+    const { issue, job } = await fixing();
+    await runs.record(finished(job, escalation));
+    const tier2 = await liveJob(issue.id);
+    await runs.record(finished(tier2, { ...escalation, toTier: 3 }));
+    const tier3 = await liveJob(issue.id);
+
+    // The daemon fails a Tier 3 run it would have escalated, as it does one out of budget.
+    const confidence = { ...confidenceFixture, score: 0 };
+    await runs.record(
+      finished(tier3, { status: 'failed', confidence, note: escalationNoteFixture }),
+    );
+    expect(await issues.get(issue.id)).toMatchObject({ status: 'failed', currentTier: 3 });
+    expect(await runRow(tier3.runId)).toMatchObject({ status: 'failed', confidence });
   });
 
   it('escalates: writes the escalation and queues the next tier with report and note', async () => {
@@ -507,6 +553,31 @@ describe('issueEventFor', () => {
       reason: 'The run failed.',
     });
     expect(issueEventFor({ ...base, status: 'killed', note: null })).toEqual({ type: 'kill' });
+  });
+
+  it('escalates a low_confidence run a tier, and fails it past Tier 3', () => {
+    const confidence = { ...confidenceFixture, score: 0.2, testsPass: false, checksPass: false };
+    const note = escalationNoteFixture;
+    const event = issueEventFor({
+      ...base,
+      confidence,
+      status: 'escalated',
+      reason: 'low_confidence',
+      toTier: 2,
+      note,
+    });
+    expect(event).toEqual({ type: 'escalate', runId, reason: `low_confidence: ${note.summary}` });
+    const tier = (currentTier: Tier): IssueState => ({
+      status: 'fixing',
+      class: 'frontend',
+      severity: 'low',
+      currentTier,
+    });
+    expect(transition(tier(1), event)).toMatchObject({ status: 'fixing', currentTier: 2 });
+    expect(transition(tier(2), event)).toMatchObject({ status: 'fixing', currentTier: 3 });
+    // At Tier 3 the daemon reports the low score as a failure, which hands off to a human.
+    const failed = issueEventFor({ ...base, confidence, status: 'failed', note });
+    expect(transition(tier(3), failed)).toMatchObject({ status: 'failed', currentTier: 3 });
   });
 
   it('keeps the reason within the event contract', () => {

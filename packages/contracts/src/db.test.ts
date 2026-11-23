@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  confidenceFixture,
   decidedApprovalFixture,
   escalationFixture,
   issueFixture,
@@ -66,8 +67,15 @@ describe('runSchema', () => {
     expect(() => runSchema.parse({ ...runFixture, tier: 4 })).toThrow();
   });
 
-  it('rejects a confidence score outside 0 to 1', () => {
-    const confidence = { score: 1.2, reproduced: true, testsPass: true, selfAssessed: 0.5 };
+  it('round-trips a scored run, and rejects a confidence score outside 0 to 1', () => {
+    const scored = { ...runFixture, confidence: confidenceFixture };
+    expect(roundTrip(runSchema, scored)).toEqual(scored);
+    const confidence = { ...confidenceFixture, score: 1.2 };
+    expect(() => runSchema.parse({ ...runFixture, confidence })).toThrow();
+  });
+
+  it('rejects confidence parts it does not know, such as a self-assessment', () => {
+    const confidence = { ...confidenceFixture, selfAssessed: 0.9 };
     expect(() => runSchema.parse({ ...runFixture, confidence })).toThrow();
   });
 
@@ -108,6 +116,12 @@ describe('escalationSchema', () => {
 
   it('rejects an escalation that does not move up a tier', () => {
     expect(() => escalationSchema.parse({ ...escalationFixture, toTier: 1 })).toThrow();
+  });
+
+  it('accepts a low_confidence escalation and rejects an unknown reason', () => {
+    const low = { ...escalationFixture, toTier: 2, reason: 'low_confidence' };
+    expect(roundTrip(escalationSchema, low)).toEqual(low);
+    expect(() => escalationSchema.parse({ ...escalationFixture, reason: 'unsure' })).toThrow();
   });
 });
 

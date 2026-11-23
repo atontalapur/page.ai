@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import type { ExitStatus } from '@page/agent';
-import { bugClassSchema, tierSchema } from '@page/contracts';
+import { bugClassSchema, confidenceSchema, tierSchema } from '@page/contracts';
 import { z } from 'zod';
 
 // Every way an agent run ends. The check below fails typecheck if @page/agent adds one.
@@ -21,7 +21,8 @@ void everyExitStatus;
 export const exitStatusSchema = z.enum(EXIT_STATUSES);
 
 // The tiers each configuration tries, in order. A run moves up when the agent runs out of
-// budget, the way the daemon escalates an issue.
+// budget or submits a fix that scores under its tier's confidence threshold, the way the
+// daemon escalates an issue.
 export const EVAL_CONFIGS = {
   'tier1-only': [1],
   'tier3-start': [3],
@@ -55,6 +56,17 @@ export const attemptSchema = z.strictObject({
   /** execute() calls the policy refused. */
   blockedSteps: z.int().nonnegative(),
   diff: z.string(),
+  /**
+   * The daemon's score for a submitted attempt (scoreRun in @page/agent); null for one that
+   * didn't submit. Missing in files from before confidence escalation.
+   */
+  confidence: confidenceSchema.nullable().optional(),
+  /**
+   * The attempt submitted, but its score was under its tier's confidence threshold, so the
+   * run moved on as the daemon's `low_confidence` escalation does (or paged at the config's
+   * last tier). Missing in files from before confidence escalation, which never did this.
+   */
+  lowConfidence: z.boolean().optional(),
 });
 export type Attempt = z.infer<typeof attemptSchema>;
 
@@ -65,7 +77,10 @@ export const scenarioRunSchema = z.strictObject({
   expectedTier: tierSchema,
   run: z.int().positive(),
   attempts: z.array(attemptSchema),
-  /** The tier whose agent submitted. Null when every tier gave up. */
+  /**
+   * The tier whose agent submitted a fix that scored well enough. Null when every tier gave
+   * up, low scores included.
+   */
   tierLanded: tierSchema.nullable(),
   /** The submitted patch passed check.sh. */
   fixed: z.boolean(),
@@ -117,6 +132,17 @@ export const evalResultsSchema = z.strictObject({
    */
   limits: z
     .strictObject({ 1: tierLimitsSchema, 2: tierLimitsSchema, 3: tierLimitsSchema })
+    .optional(),
+  /**
+   * The per-tier confidence threshold the run played at (CONFIDENCE_THRESHOLD in
+   * packages/agent/src/threshold.ts). Missing in files from before confidence escalation.
+   */
+  confidenceThreshold: z
+    .strictObject({
+      1: confidenceSchema.shape.score,
+      2: confidenceSchema.shape.score,
+      3: confidenceSchema.shape.score,
+    })
     .optional(),
   /** The budget ran out before every planned run finished. */
   stoppedForBudget: z.boolean(),

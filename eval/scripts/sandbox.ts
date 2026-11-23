@@ -86,6 +86,17 @@ export async function agentDiff(sh: SandboxShell, baseline: string): Promise<str
 }
 
 /**
+ * The paths agentDiff's patch touches, new files included, for the confidence score. Call it
+ * after agentDiff, which stages them. Null when git can't list them, which the score reads as
+ * unknown, as the daemon does with a `git status` that fails.
+ */
+export async function changedPaths(sh: SandboxShell, baseline: string): Promise<string[] | null> {
+  const names = await sh(`git diff --cached --name-only -z --no-renames ${baseline} 2>/dev/null`);
+  if (names.code !== 0) return null;
+  return names.output.split('\0').filter((path) => path !== '');
+}
+
+/**
  * check.sh on `diff` in a sandbox of its own: break.sh, the agent's patch, then the check.
  * The agent's sandbox may have only seconds left on its wall clock when the agent stops,
  * so the check can't run there. Resolves whether the check passed.

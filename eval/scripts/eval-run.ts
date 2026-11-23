@@ -6,7 +6,7 @@ import { renameSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { budgetFor, ESCALATION_THRESHOLD } from '@page/agent';
+import { budgetFor, CONFIDENCE_THRESHOLD, ESCALATION_THRESHOLD } from '@page/agent';
 import { OpenRouterClient, withRetries } from '@page/model-client';
 import {
   evalConfigSchema,
@@ -146,6 +146,14 @@ if (resume !== undefined) {
         `${JSON.stringify(resume.limits)}. Restore those limits to resume it.`,
     );
   }
+  // A file from before confidence escalation never escalated on it, so it can't resume.
+  const threshold = resume.confidenceThreshold;
+  if (([1, 2, 3] as const).some((tier) => threshold?.[tier] !== CONFIDENCE_THRESHOLD[tier])) {
+    fail(
+      `--resume ${values.resume} played at another confidence threshold than threshold.ts ` +
+        `has now: ${JSON.stringify(threshold ?? 'none')}. Restore it to resume.`,
+    );
+  }
   if (mismatch.length > 0) {
     const what = mismatch.map(([name, was, now]) => `${name} was ${was}, now ${now}`).join('; ');
     const hint = mismatch.some(([name]) => name === 'commit')
@@ -227,6 +235,7 @@ const results = await runEval({
   model,
   gitSha,
   limits: ESCALATION_THRESHOLD,
+  confidenceThreshold: CONFIDENCE_THRESHOLD,
   attempt: dockerAttempt(image, client, liveApp === undefined ? {} : { liveApp }),
   canPlayOps: liveApp !== undefined,
   ...(liveApp === undefined ? {} : { prepareRun: prepareOpsRun(liveApp) }),
@@ -234,7 +243,9 @@ const results = await runEval({
   signal: pause.signal,
   onCheckpoint: save,
   onRun: (r) => {
-    const tiers = r.attempts.map((a) => `T${a.tier} ${a.exitStatus}`).join(' -> ');
+    const low = (a: (typeof r.attempts)[number]) =>
+      a.lowConfidence === true ? ' low_confidence' : '';
+    const tiers = r.attempts.map((a) => `T${a.tier} ${a.exitStatus}${low(a)}`).join(' -> ');
     const verdict = r.fixed ? 'fixed' : r.paged ? 'paged' : 'not fixed';
     console.log(`  ${r.scenario} #${r.run}: ${verdict} (${tiers}), $${r.costUsd.toFixed(4)}`);
   },

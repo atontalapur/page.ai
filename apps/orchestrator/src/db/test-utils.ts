@@ -97,10 +97,17 @@ async function start(db: Db, boss: PgBoss, close: () => Promise<void>): Promise<
   }
 }
 
-/** In-memory Postgres with migrations and pg-boss installed, so unit tests need no network. */
-export async function createTestDeps(): Promise<TestDeps> {
+/**
+ * In-memory Postgres with no migrations applied, for a test that applies them one by one.
+ * Whoever creates it destroys `db`, which closes the database.
+ */
+export async function createBareTestDb(): Promise<{ db: Db; pglite: PGlite }> {
   const pglite = await PGlite.create();
-  const db = new Kysely<Database>({
+  return { db: kyselyOn(pglite), pglite };
+}
+
+function kyselyOn(pglite: PGlite): Db {
+  return new Kysely<Database>({
     dialect: new PGliteDialect({
       pglite: {
         get closed() {
@@ -121,6 +128,11 @@ export async function createTestDeps(): Promise<TestDeps> {
       },
     }),
   });
+}
+
+/** In-memory Postgres with migrations and pg-boss installed, so unit tests need no network. */
+export async function createTestDeps(): Promise<TestDeps> {
+  const { db, pglite } = await createBareTestDb();
   const boss = new PgBoss({
     db: fromPglite(pglite),
     backend: 'pglite',

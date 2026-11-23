@@ -48,13 +48,15 @@ const runFinishedBase = {
  * The node's last word on a run. An escalation carries everything the server needs to write
  * the `Escalation` row; the server checks `toTier` is above the run's tier. The daemon sends
  * it on the socket for the UI and inside a `run_finished` job (jobs.ts) for the record.
+ *
+ * `confidence` is the daemon's score for a run whose agent submitted. It is null when the
+ * run was not scored: a daemon from before scoring, or a score that couldn't be worked out.
+ * A run with no score never escalates for want of one.
  */
 export const nodeRunFinishedSchema = z.discriminatedUnion('status', [
   z.strictObject({
     ...runFinishedBase,
     status: z.literal('succeeded'),
-    // Null when the agent submitted but the run was not scored. The daemon doesn't score
-    // runs yet, and a made-up score would mislead the escalation decision.
     note: escalationNoteSchema.nullable(),
     // True when a Tier 3 run changed the live app through the ops API and left no code
     // change: no PR, and a workspace that matches the baseline. The fix is then live already
@@ -63,13 +65,19 @@ export const nodeRunFinishedSchema = z.discriminatedUnion('status', [
     // field sends none, which reads as false.
     opsOnly: z.boolean().default(false),
   }),
-  z.strictObject({
-    ...runFinishedBase,
-    status: z.literal('escalated'),
-    reason: z.enum(ESCALATION_REASONS),
-    toTier: tierSchema,
-    note: escalationNoteSchema,
-  }),
+  z
+    .strictObject({
+      ...runFinishedBase,
+      status: z.literal('escalated'),
+      reason: z.enum(ESCALATION_REASONS),
+      toTier: tierSchema,
+      note: escalationNoteSchema,
+    })
+    // A low score is the reason, so the score has to be there.
+    .refine((e) => e.reason !== 'low_confidence' || e.confidence !== null, {
+      path: ['confidence'],
+      message: 'a low_confidence escalation carries its score',
+    }),
   z.strictObject({
     ...runFinishedBase,
     status: z.enum(['failed', 'killed']),

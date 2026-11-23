@@ -14,7 +14,7 @@ import {
   table,
   usd,
 } from './report.ts';
-import { escalates } from './runner.ts';
+import { outOfBudget } from './runner.ts';
 import type { Attempt, EvalResults } from './results.ts';
 
 /** A loaded results file and the path it came from. */
@@ -57,7 +57,7 @@ export const CANDIDATES = {
 const TIERS = [1, 2, 3] as const satisfies readonly Tier[];
 
 /** The exits that escalate a run: the agent reached a limit. */
-const isLimitHit = (a: Attempt) => escalates(a.exitStatus);
+const isLimitHit = (a: Attempt) => outOfBudget(a.exitStatus);
 
 /** Submitted, and the patch passed check.sh. */
 export const isFix = (a: Attempt) => a.exitStatus === 'submitted' && a.checkPassed;

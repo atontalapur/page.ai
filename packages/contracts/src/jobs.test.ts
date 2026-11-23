@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { escalationNoteFixture, jobFixtures } from './__fixtures__/index.ts';
+import { confidenceFixture, escalationNoteFixture, jobFixtures } from './__fixtures__/index.ts';
 import {
   FIX_QUEUE,
   jobSchemas,
@@ -81,6 +81,17 @@ describe('jobSchemas', () => {
 
     it('round-trips an escalation to the tier above', () => {
       expect(roundTrip(jobSchemas.run_finished, escalated)).toEqual(escalated);
+    });
+
+    it('round-trips a low_confidence escalation, which keeps the submitted diff', () => {
+      const low = {
+        ...escalated,
+        diff: '--- a/src/cart/total.ts\n+++ b/src/cart/total.ts\n',
+        result: { ...escalated.result, reason: 'low_confidence', confidence: confidenceFixture },
+      };
+      expect(roundTrip(jobSchemas.run_finished, low)).toEqual(low);
+      const unscored = { ...low, result: { ...low.result, confidence: null } };
+      expect(() => jobSchemas.run_finished.parse(unscored)).toThrow(/carries its score/);
     });
 
     it('rejects an escalation that does not go up a tier', () => {

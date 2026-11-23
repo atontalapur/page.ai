@@ -56,8 +56,11 @@ demo app --errors--> PostHog --webhook--> orchestrator --call + SMS--> on-call (
    [mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent), on the report.
 4. Escalate. Each tier gets 40 model calls, $0.50 and 14 minutes
    ([`threshold.ts`](packages/agent/src/threshold.ts)). A run that hits a limit before it
-   submits a patch moves the issue up a tier. Past Tier 3 the issue fails and stays with a
-   human. A submitted patch puts the issue in `awaiting_approval`. A Tier 3 run that fixes
+   submits a patch moves the issue up a tier. So does a submitted patch whose confidence score
+   is under the tier's threshold (0.3): the daemon scores it from what it can measure, such as
+   whether tests and checks passed after the last edit. Past Tier 3 the issue fails and stays
+   with a human. A submitted patch that scores well enough puts the issue in
+   `awaiting_approval`. A Tier 3 run that fixes
    the live app through its ops API or a rollback and changes no code resolves the issue,
    since the fix is live already and there is no patch to approve.
 5. Audit. Every agent command goes through `execute()` in `@page/toolkit`, which parses it,
@@ -85,8 +88,6 @@ triaged issue in 3 seconds.
 
 Not built yet:
 
-- Confidence scoring. Runs escalate only on the step, cost and time limits, and a submitted run
-  reports `confidence: null`.
 - The dashboard. `apps/ui` renders placeholder data and doesn't read the orchestrator.
 - `ApprovalsModule` is a stub, and `GatewayModule` serves the UI but not the node daemons, so a
   kill can't stop a run a daemon has already claimed.
@@ -96,6 +97,8 @@ Not built yet:
 All runs used `deepseek/deepseek-v4.1-flash` under three configurations: `tier1-only`,
 `tier3-start`, and `ladder` (Tier 1, then 2, then 3). The held-out set was run once, after the
 escalation threshold was frozen, as the [preregistration](docs/report/eval-prereg.md) requires.
+Every result below was measured before confidence escalation existed: the ladder climbed only
+on step, cost and time limits, and no run was scored.
 
 | Set                              | Runs | Cost  | tier1-only | tier3-start | ladder |
 | -------------------------------- | ---- | ----- | ---------- | ----------- | ------ |
@@ -106,7 +109,8 @@ escalation threshold was frozen, as the [preregistration](docs/report/eval-prere
 The preregistered bars pass on dev and held-out. On dev, the ladder twice submitted a wrong
 patch at Tier 1 (bugs 013 and 014) and never escalated or paged. On the ops set the ladder
 missed 029 every time: a lower tier submitted a code patch that left the live app broken, so it
-never reached the Tier 3 tools. Tables, charts and the threats to validity are in
+never reached the Tier 3 tools. Confidence escalation is meant to catch misses like these, and
+hasn't been measured on them. Tables, charts and the threats to validity are in
 [evaluation-method.md](docs/report/evaluation-method.md#results).
 
 ## Getting started

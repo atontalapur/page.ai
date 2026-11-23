@@ -8,6 +8,7 @@ import {
   SEVERITIES,
   STEP_KINDS,
 } from '@page/contracts';
+import { confidenceFixture } from '@page/contracts/fixtures';
 import type { Insertable } from 'kysely';
 import { afterAll, describe, expect, it } from 'vitest';
 import { IssuesService } from '../issues/issues.service.ts';
@@ -136,8 +137,7 @@ describe('runs table matches @page/contracts', () => {
   });
 
   it('accepts confidence only as an object', async () => {
-    const confidence = { score: 1, reproduced: true, testsPass: true, selfAssessed: 1 };
-    await expect(newRun({ confidence: JSON.stringify(confidence) })).resolves.toBeDefined();
+    await expect(newRun({ confidence: JSON.stringify(confidenceFixture) })).resolves.toBeDefined();
     await expect(newRun({ confidence: null })).resolves.toBeDefined();
     await expect(newRun({ confidence: '[]' })).rejects.toThrow();
     await expect(newRun({ confidence: '0.9' })).rejects.toThrow();

@@ -26,7 +26,7 @@ import { liveAppLock, type OpsLock } from './run/ops-lock.ts';
 import { PgBossRunResults, type RunResults } from './run/results.ts';
 import { runFixJob } from './run/run-fix-job.ts';
 import { DockerSandboxes } from './sandbox/docker-sandboxes.ts';
-import { FakeSandboxes } from './sandbox/fake-sandboxes.ts';
+import { FakeSandboxes, fakeWorkspace } from './sandbox/fake-sandboxes.ts';
 import { LocalSandboxes } from './sandbox/local-sandboxes.ts';
 import type { Sandboxes } from './sandbox/sandbox.ts';
 
@@ -185,7 +185,7 @@ export async function createAdapters(config: NodeConfig, logger: Logger): Promis
 
 /** Fakes, a container per run, or the one workspace in this container (SANDBOX_RUNTIME). */
 export function sandboxesFor(config: NodeConfig): Sandboxes {
-  if (config.USE_FAKE_ADAPTERS) return new FakeSandboxes();
+  if (config.USE_FAKE_ADAPTERS) return new FakeSandboxes(fakeWorkspace);
   if (config.SANDBOX_RUNTIME === 'local') return new LocalSandboxes();
   return new DockerSandboxes({ image: config.SANDBOX_IMAGE });
 }

@@ -28,9 +28,16 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
 ```
 
 - `--config` picks the tiers a run climbs: `tier1-only`, `tier3-start` or `ladder`
-  (Tier 1, then 2, then 3). A run moves up a tier only when the agent runs out of
-  steps, budget or time, as the daemon escalates an issue. Any other exit (model,
-  format or audit failure) pages a human at that tier.
+  (Tier 1, then 2, then 3). A run moves up a tier when the agent runs out of steps,
+  budget or time, or submits a fix that scores under its tier's `CONFIDENCE_THRESHOLD`
+  (`low_confidence`), as the daemon escalates an issue. At the config's last tier either
+  one pages. Any other exit (model, format or audit failure) pages a human at that tier.
+- Each submitted attempt is scored as the daemon scores it (`scoreRun` in `@page/agent`,
+  on the attempt's steps and the files its diff touches). The attempt records the score as
+  `confidence` and a low one as `lowConfidence: true`, and the file records the thresholds
+  it played at as `confidenceThreshold`; `--resume` refuses a file played at others. Files
+  from before confidence escalation have none of these, and none of their runs escalated
+  on a score: the dev, held-out and ops results in `docs/report` were all measured then.
 - Every attempt starts a fresh sandbox and runs `break.sh`, then starts the repo over so
   the broken code is its only commit, as a production bug already in `HEAD` would be.
   The agent gets the scenario's `report`. Its diff (everything since that commit,

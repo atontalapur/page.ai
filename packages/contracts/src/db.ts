@@ -54,15 +54,24 @@ export const RUN_STATUSES = [
 ] as const;
 
 /**
- * How sure a run is of its fix (README, step 4). Below the threshold, the issue escalates a tier.
- * The dashboard shows the parts, not only the score.
+ * How sure a run is of its fix (README, step 4), scored by the daemon from what it can measure
+ * when the agent submits (packages/agent/src/confidence.ts). Below its tier's threshold, the
+ * issue escalates a tier. The dashboard shows the parts, not only the score.
  */
 export const confidenceSchema = z.strictObject({
   score: z.number().min(0).max(1),
-  // The agent reproduced the error before fixing it.
+  // The change touches a file that isn't a test. Null when the daemon couldn't read the
+  // workspace.
+  changesCode: z.boolean().nullable(),
+  // Before its first edit to a file that isn't a test, the agent ran a test that failed.
   reproduced: z.boolean(),
+  // After its last edit, a test run passed and none failed.
   testsPass: z.boolean(),
-  selfAssessed: z.number().min(0).max(1),
+  // After its last edit, a typecheck or lint run passed and none failed.
+  checksPass: z.boolean(),
+  // For an ops-only fix: after its last change to the live app, a restart came back healthy
+  // or a rollback's deployment went live, so the app serves the change. Null for a code fix.
+  liveAfterChange: z.boolean().nullable(),
 });
 
 export type Confidence = z.infer<typeof confidenceSchema>;
@@ -75,7 +84,7 @@ export const runSchema = z.strictObject({
   startedAt: timestampSchema.nullable(),
   finishedAt: timestampSchema.nullable(),
   prUrl: prUrlSchema.nullable(),
-  // Null until the run scores itself.
+  // Null for a run that didn't submit, or one the daemon didn't score.
   confidence: confidenceSchema.nullable(),
 });
 
@@ -123,6 +132,9 @@ export const ESCALATION_REASONS = [
   'tests_failing',
   'budget_exhausted',
   'agent_error',
+  // The agent submitted, but its confidence score was below its tier's threshold
+  // (packages/agent/src/threshold.ts).
+  'low_confidence',
 ] as const;
 
 export const escalationSchema = z

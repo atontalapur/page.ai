@@ -11,8 +11,14 @@ export const bashReply = (command: string, thought = 'THOUGHT: look around first
 export const submitReply = (thought = 'THOUGHT: done.') =>
   `${thought}\n\n${FENCE}${ACTION_TAGS.submit}\n${FENCE}`;
 
-/** What the fake model does under USE_FAKE_ADAPTERS: one harmless command, then submit. */
-export const FAKE_REPLIES = [bashReply('git status'), submitReply()];
+/**
+ * What the fake model does under USE_FAKE_ADAPTERS: run the tests, then submit. In the fake
+ * workspace (fakeWorkspace) the tests pass, so the run scores above the threshold.
+ */
+export const FAKE_REPLIES = [
+  bashReply('pnpm --filter @page/demo-app test', 'THOUGHT: check the tests pass.'),
+  submitReply(),
+];
 
 /**
  * A ModelClient that answers with `replies` in order, at no cost. Once they run out it

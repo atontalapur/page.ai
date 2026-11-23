@@ -76,7 +76,10 @@ When a run ends, the node daemon sends a `run_finished` job (`runFinishedJobSche
 `succeeded` result with `opsOnly` is `ops_fixed` instead: the Tier 3 run changed the live app
 through the ops API and left no code change, so its fix is live already and there is no patch
 to approve. The daemon sets `opsOnly` itself, since a null diff also means one it couldn't
-read or one over the cap. A run with ops changes and a diff or a PR is `patch_ready`. An
+read or one over the cap. A run with ops changes and a diff or a PR is `patch_ready`. The
+daemon also decides when a submitted run escalates: one whose confidence score is under its
+tier's threshold arrives as `escalated` with reason `low_confidence` (or `failed` at Tier 3),
+its score and patch on the `runs` row, and the orchestrator applies it like any escalation. An
 escalation the issue takes also writes its `escalations` row. Entering the next tier queues
 its fix job with the report and the run's escalation note; a rejected patch hands the
 reviewer's reason on the same way. A result for a run that is no longer current only updates

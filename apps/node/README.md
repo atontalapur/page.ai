@@ -45,9 +45,11 @@ pnpm --filter @page/node start
 | `LOG_LEVEL`                   | `info`         |                                         |
 
 With `USE_FAKE_ADAPTERS=true` there is no Docker, model, GitHub or socket. Each run gets a
-fake sandbox whose commands exit 0, a scripted model that runs `git status` and submits, an
-in-memory GitHub, an in-memory ops API, an in-memory deployer with a deploy to roll back to, and a link that logs events instead of sending them. Postgres stays real, so steps still land in
-the `steps` table.
+fake sandbox with one changed file whose commands exit 0, a scripted model that runs the
+tests and submits (which scores 0.5, so the run succeeds), an in-memory GitHub, an
+in-memory ops API, an in-memory deployer with a deploy to roll back to, and a link that logs
+events instead of sending them. Postgres stays real, so steps still land in the `steps`
+table.
 
 Two things have to exist before a job will run:
 
@@ -122,15 +124,15 @@ Tier 3 run on the machine; the warning logs its path (`lockDir`), so remove it o
 is using the app. An eval on another machine doesn't see the claim, so don't run one
 against an app a daemon is using.
 
-A Tier 3 run that ends any way but submitted (it fails, escalates, expires or is killed)
-puts back each override it changed, and restarts the app if it restarted it after a change,
+A Tier 3 run that doesn't succeed (it fails, expires, is killed, or submits a fix that
+scores under the confidence threshold) puts back each override it changed, and restarts the app if it restarted it after a change,
 so the tier above starts from the app this run found. These requests go out after the run
 has stopped, kill included, and before its result is queued. It is best effort, like
 closing the PR of a run that didn't succeed: it tries every setting and the restart, and
 logs each one the app wouldn't take. A change whose request never answered, say because a
 kill cut it off, may have landed, and is logged by name and left as it is.
 
-A Tier 3 run that submits keeps its ops changes. If it changed the live app (an override it
+A Tier 3 run that succeeds keeps its ops changes. If it changed the live app (an override it
 didn't set back, or a restart after a change), opened no PR, and `git status` shows the
 workspace as it started, new files included, its result says `opsOnly: true` and the
 orchestrator resolves the issue: the fix is live already and there is no patch to approve.
@@ -191,6 +193,33 @@ read its own service and roll itself back. Without the set, a daemon with ops to
 once at startup that Tier 3 runs get no rollback tool, the prompt leaves the rollback blocks
 out, and a rollback call is refused as `not set up on this node`.
 
+## Confidence
+
+Once the agent submits, the daemon scores the run with `scoreRun` from `@page/agent` and
+sends the score as `confidence` on the result. It asks no model. It reads the run's steps and
+the files `git status` shows changed:
+
+| Part              | Holds when                                                                      | Weight |
+| ----------------- | ------------------------------------------------------------------------------- | -----: |
+| `testsPass`       | After the last edit, a test run passed and none failed                          |    0.5 |
+| `checksPass`      | After the last edit, a typecheck or lint passed and none failed                 |    0.3 |
+| `reproduced`      | Before the first edit to code, a test run failed                                |    0.2 |
+| `changesCode`     | A changed file isn't a test. False scores 0: nothing changed, or only tests     |        |
+| `liveAfterChange` | Ops-only fixes: a healthy restart or a live rollback came after the last change |        |
+
+An ops-only fix changed no code, so it scores 1 when `liveAfterChange` holds and 0 when it
+doesn't. A test or check run counts by its exit code. A command with a pipe exits with its
+last part (`sh -c` has no pipefail), so for one of those only Vitest's summary line says
+whether the tests passed. Steps that were refused, and test paths that matched no file,
+don't count.
+
+A score under the tier's `CONFIDENCE_THRESHOLD` (`packages/agent/src/threshold.ts`, 0.3 at
+every tier) sends the run on as `escalated` with reason `low_confidence`, or as `failed` at
+Tier 3. The note says what was missing, the patch stays on the run's record, a PR the run
+opened is closed, and its ops changes are put back, as for any run that doesn't succeed. A
+run the daemon couldn't score, because scoring threw or the daemon predates it, has
+`confidence: null` and never escalates for want of a score.
+
 ## Tests
 
 ```sh
@@ -219,5 +248,6 @@ Docker and model and check the `steps` row, and start and remove a real containe
   result that can't be queued after 3 tries fails the fix job. So does a daemon that dies
   mid-run, once the job expires. Either way pg-boss copies the job to `fix_failed`, and the
   orchestrator fails the issue from it.
-- `node.run.finished` for a submitted run is `succeeded` with `confidence: null`, since
-  nothing scores runs yet.
+- `node.run.finished` for a submitted run carries its score as `confidence`. A
+  `low_confidence` escalation needs an orchestrator that knows the reason (migration 007),
+  so deploy the orchestrator before the daemons.
