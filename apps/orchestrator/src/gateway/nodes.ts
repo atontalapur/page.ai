@@ -122,6 +122,23 @@ export class Nodes {
   }
 
   /**
+   * `socket` holds exactly `runIds`, the daemon's whole list. Adds each one and lets go of
+   * any this socket held that the list no longer names. A heartbeat that only added would
+   * put a finished run back during teardown and never take it off again.
+   */
+  syncHolding(runIds: readonly string[], socket: NodeSocket): string[] {
+    const entry = this.sockets.get(socket.id);
+    if (!entry) return [];
+    const named = new Set(runIds);
+    const changed = new Set<string>();
+    for (const id of [...entry.runs]) {
+      if (!named.has(id)) for (const name of this.release(id, socket)) changed.add(name);
+    }
+    for (const id of runIds) for (const name of this.hold(id, socket)) changed.add(name);
+    return [...changed];
+  }
+
+  /**
    * Forgets that `socket` holds `runId`. Another socket's hold on it is left alone. Returns
    * the name of the daemon that let it go, or none.
    */

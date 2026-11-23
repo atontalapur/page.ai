@@ -164,7 +164,12 @@ export function createDaemon(adapters: Adapters, logger: Logger): Daemon {
           // runFixJob ends it once the agent stops; this covers a run that never got that far.
           entry.inbox.end('run_ended');
           // A retry of the same runId may have replaced this entry; leave the newer one.
-          if (runs.get(runId) === entry) runs.delete(runId);
+          // Announce after the delete. A heartbeat sent while the sandbox was still coming
+          // down would otherwise leave the finished run on the agent.
+          if (runs.get(runId) === entry) {
+            runs.delete(runId);
+            announceHolding();
+          }
         }
       });
       logger.info('claiming fix jobs');

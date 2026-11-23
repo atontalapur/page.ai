@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { BotIcon, ChatRoundLineIcon } from '@solar-icons/react/bold-duotone';
+import { BotIcon } from '@solar-icons/react/bold-duotone';
 import { MAX_CHAT_CHARS, type IssueRun, type RunChat } from '@page/contracts';
 import { Button } from '@page/design-system/components/ui/button';
 import { Label } from '@page/design-system/components/ui/label';
@@ -12,6 +12,7 @@ import { isFinished } from '../../live/runs';
 import type { AskFailure } from '../../live/source';
 import AgentText from './AgentText';
 import { NameForm } from './ApprovalRequests';
+import { Enter } from './threadMotion';
 
 /**
  * A person's message to the agent and its answer, in the run's steps after the step it
@@ -22,21 +23,19 @@ export function ChatItem({ chat }: { chat: RunChat }) {
   const who = chat.askedBy.replace(/^ui:/, '');
   const status = chatStatus(chat);
   return (
-    <li className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2" aria-label={`Message from ${who}`}>
-      <span className="flex justify-end pt-2 text-blue-11">
-        <ChatRoundLineIcon className="size-4" />
-      </span>
-      <div className="min-w-0 space-y-2 rounded-md border border-blue-a5 bg-blue-a2 px-3 py-2">
+    <Enter item label={`Message from ${who}`}>
+      <div className="space-y-1.5">
         <p className="text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{who}</span> asked the agent at{' '}
+          <span className="font-medium text-foreground">{who}</span>
+          {' · '}
           {clockTime(chat.askedAt)}
         </p>
         <p className="whitespace-pre-wrap break-words text-sm">{chat.message}</p>
         {chat.status === 'answered' ? (
-          <div className="space-y-1 border-t border-blue-a5 pt-2">
+          <div className="space-y-1">
             <p className="flex items-center gap-1 text-xs text-muted-foreground">
               <BotIcon className="size-3.5" />
-              The agent answered at {clockTime(chat.closedAt)}
+              Answered at {clockTime(chat.closedAt)}
             </p>
             <AgentText
               text={chat.answer}
@@ -47,7 +46,7 @@ export function ChatItem({ chat }: { chat: RunChat }) {
           <p className="text-xs text-muted-foreground">{status}</p>
         )}
       </div>
-    </li>
+    </Enter>
   );
 }
 

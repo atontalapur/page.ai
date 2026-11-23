@@ -111,7 +111,7 @@ describe('IncidentDetailsPage', () => {
     expect(screen.getByText('Untriaged', { selector: '[data-slot="badge"]' })).toBeTruthy();
   });
 
-  it('shows the latest run: figures, the patch, and its steps by phase with their results', async () => {
+  it("shows every tier in one thread, with the patch and each step's result", async () => {
     const source = testSource([fixing, fresh]);
     source.runs.set(fixing.id, [
       run(1, 'escalated', {
@@ -153,8 +153,8 @@ describe('IncidentDetailsPage', () => {
     ]);
     renderDetails(fixing.id, source);
 
-    const tier2 = await screen.findAllByRole('list', { name: 'Tier 2 steps' });
-    const steps = within(tier2[0]!.closest('section')!.parentElement!);
+    const tier2 = await screen.findByRole('list', { name: 'Tier 2 steps' });
+    const steps = within(tier2);
     expect(steps.getByText(/^Read /)).toBeTruthy();
     expect(steps.getByText('Refused')).toBeTruthy();
     expect(steps.getByText('Policy: unquoted glob characters are not allowed')).toBeTruthy();
@@ -164,29 +164,24 @@ describe('IncidentDetailsPage', () => {
       steps.getByText('error: operator does not exist: text = integer', { selector: 'p' }),
     ).toBeTruthy();
     expect(steps.getByText('Tests 124 passed (124)', { selector: 'p' })).toBeTruthy();
+    const thread = screen.getByRole('region', { name: 'Agent thread' }).parentElement!;
+    // aria-label lives on the scroller; the region role comes from the labelled scroll box.
     expect(
-      screen
-        .getAllByRole('region')
-        .map((r) => r.getAttribute('aria-label'))
-        .filter(Boolean),
-    ).toEqual(
-      expect.arrayContaining([
-        'Explore, from step 0',
-        'Reproduce, from step 2',
-        'Fix, from step 3',
-        'Verify, from step 4',
-      ]),
-    );
+      within(thread)
+        .getAllByRole('list', { name: /Tier \d steps/ })
+        .map((list) => list.getAttribute('aria-label')),
+    ).toEqual(['Tier 1 steps', 'Tier 2 steps']);
 
     // The patch and the edit render through @pierre/diffs (mocked here).
     expect((await screen.findByTestId('patch-diff')).textContent).toContain('+new');
     expect((await screen.findByTestId('edit-diff')).textContent).toBe('old -> new');
-    expect(screen.getByText('2m 27s')).toBeTruthy();
+    expect(screen.getByText(/2m 27s/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Open the pull request' }).getAttribute('href')).toBe(
       'https://github.com/o/page-demo/pull/7',
     );
-    // The earlier run is there, collapsed.
-    expect(screen.getByText('Earlier runs')).toBeTruthy();
+    // The earlier tier stays in the thread, with the hand-off under it.
+    expect(screen.getByRole('list', { name: 'Tier 1 steps' })).toBeTruthy();
+    expect(screen.getByText('Escalated to the next tier')).toBeTruthy();
   });
 
   it("leads each step with the agent's reasoning, and cuts a long one short until asked", async () => {
@@ -224,8 +219,8 @@ describe('IncidentDetailsPage', () => {
     ]);
     renderDetails(fixing.id, source);
 
-    const [tier2] = await screen.findAllByRole('list', { name: 'Tier 2 steps' });
-    const latest = within(tier2!.closest('section')!.parentElement!);
+    const tier2 = await screen.findByRole('list', { name: 'Tier 2 steps' });
+    const latest = within(tier2.closest('section')!);
     expect(latest.getAllByText('Running').length).toBeGreaterThan(0);
     expect(latest.queryByText('Timed out')).toBeNull();
     // A finished run's step with no exit code did time out.
