@@ -176,6 +176,55 @@ $1.08 of the key's usage, so the projection left phase 3 with only the ops file,
 The held-out set was not read or run. The results are under Confidence calibration (dev) in
 [evaluation-method.md](evaluation-method.md#confidence-calibration-dev).
 
+Amendment 6 (2026-11-23), committed before its run: the ladder on the dev code bugs at the
+calibrated threshold, the file Amendment 5's phase 3 had no money for. The question is how
+the ladder as it stands on `main` does on code bugs now that it climbs on a low score: its
+fix rate, its false escalations and pages, how often it climbs on `low_confidence`, and
+whether a wrong patch like the frozen dev ladder's 013 and 014 is caught. Only dev scenarios
+run. The held-out set is not read, run or summarized, and 024 is never run. No threshold
+decision rests on this run; a change it suggests needs another amendment.
+
+One file: ladder, `--set dev` with no live app (so 029 and 030 are listed as skipped), 3 runs
+per scenario, `--concurrency 3`, `deepseek/deepseek-v4.1-flash` on OpenRouter at the frozen
+limits and `CONFIDENCE_THRESHOLD` 0.2 at every tier. It plays at the commit that merges this
+amendment, with the sandbox image built from that commit. That commit differs from
+Amendment 5's in two ways that reach a run. The task prompt has the three command notes (the
+note above), so this is a new set, not phase 3's missing half. And the runner leaves out a run
+that a stop cut off before it played (#208). The system prompts are the ones Amendment 5
+played. The eval offers neither the knowledge graph nor the daemon's hand-off, so no attempt
+can end as `escalated`.
+
+The runner plays run 1 of every scenario before any run 2. The report gives fix rate, cost
+per fixed bug, false escalations, false pages, escalations by reason and the score of every
+failing fix, as `pnpm eval:report` and `pnpm eval:tune` print them. It sets them beside the
+frozen dev ladder (51 of 54, wrong patches on 013 and 014) and Amendment 5's phase 1, and
+names what differs from each.
+
+Budget and stop rules:
+
+- Spend cap: $0.50 of the OpenRouter key's usage. The key had $0.60 left of its $5 limit on
+  2026-11-23. Amendment 5 projected this file at $0.40 of recorded model cost, and the key ran
+  about 19% above the recorded cost then, so about $0.48.
+- A watchdog reads the key's usage every minute and pauses the run (Ctrl-C, which
+  checkpoints) once it has grown $0.45 since the start. The $0.05 left covers attempts in
+  flight. The key's own limit is the last stop: past it OpenRouter refuses calls, and the
+  runner stops as on any provider failure.
+- `--max-cost` is $3. The runner charges a failed attempt its whole reserved $0.50, so its
+  count isn't the spend guard here; the watchdog is.
+- A pause ends the run. It isn't resumed, since the cap is spent. The report counts the
+  rounds every scenario finished and shows a partial round apart.
+- The first provider failure (`stoppedForProvider`) stops the runner on its own. The file is
+  resumed from its checkpoint once the provider is back, if the cap allows. A second provider
+  stop ends it, and it is reported incomplete. Never retry in a loop.
+- A run in `errors` (a sandbox, script or check failure) is played again once with
+  `--resume`, if the cap allows. A run that fails twice stays out and is reported.
+- A run with a `model_error` attempt is thrown out and rerun if the cap allows, as the bars
+  require, and reported if it doesn't.
+- A held-out id in any command, results file or analysis: stop.
+
+Other agents may run tests on this machine, so its load is logged every five minutes, and
+attempts that end on a step, cost or time limit are reported apart with the load.
+
 ## Bars
 
 lesson: how close the full ladder gets to the Tier 3 from-start fix rate while granting
