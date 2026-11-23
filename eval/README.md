@@ -98,7 +98,10 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   runner drops every runtime config override on the app, restarts it and runs
   `break-ops.sh`. Tier 3 attempts get the ops tools on that app (`page_ops_*` blocks);
   code scenarios at Tier 3 get them on an in-memory fake. `check.sh` runs on the host as
-  soon as the agent stops, before the next tier can change the app. Ops runs take turns
+  soon as the agent stops, before the next tier can change the app. A daemon asks a person
+  to approve each `ops.setConfig`, `ops.deleteConfig`, `ops.restart` and `ops.rollback`; the
+  eval approves them at once (`evalApprove` in `src/approve.ts`), since no one watches its
+  runs and the prereg measures the agent without a person in the loop. Ops runs take turns
   on the app (code runs don't wait), one eval process at a time may hold it (a daemon's
   Tier 3 run on the same machine takes the same lock), and the eval resets it when it
   ends. 024 needs a rollback. The daemon gives Tier 3 runs a rollback tool when it has the
@@ -271,7 +274,10 @@ daemon can be the Railway ones or local ones.
   `DEMO_APP_URL`, which is staging's, and refuses a URL whose host isn't `localhost`,
   `127.0.0.1` or `::1`, so a local run can't break a deployed app. The daemon's ops tools go
   to its own `OPS_APP_URL`, so for a local run leave it unset or point it at the compose
-  app, never at staging.
+  app, never at staging. Its Tier 3 run waits for a person to approve each change to the
+  app: approve on the incident page, or start the daemon with `AUTO_APPROVE_OPS=true`, which
+  it takes only for an `OPS_APP_URL` on this machine. Otherwise each request times out after
+  3 minutes as rejected, and the run escalates or fails instead of resolving.
 
 `--target staging` runs against the deployed app at `DEMO_APP_URL`. The test never deploys,
 so a code scenario's bug must already be live there: staging serves the seeded demo baseline
