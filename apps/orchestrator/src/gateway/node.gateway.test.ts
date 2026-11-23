@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import {
   NODE_NAMESPACE,
+  serverToNodeEvents,
   serverToUiEvents,
   UI_NAMESPACE,
   type ServerToUiEvents,
@@ -11,12 +12,15 @@ import {
   escalationNoteFixture,
   nodeToServerEventFixtures,
   stepFixture,
+  uiToServerEventFixtures,
 } from '@page/contracts/fixtures';
 import type { Socket } from 'socket.io-client';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { createTestDeps, testConfig } from '../db/test-utils.ts';
 import { IssuesService } from '../issues/issues.service.ts';
+import { FIX_QUEUE, type FixJob } from '../queue/fix-jobs.ts';
+import { RunsService } from '../runs/runs.service.ts';
 import { NODE_HANDSHAKES_PER_MINUTE, NODE_MESSAGES_PER_10_SECONDS } from './node.gateway.ts';
 import { Nodes } from './nodes.ts';
 import { outcome, TestSockets } from './test-utils.ts';
@@ -63,12 +67,22 @@ async function connected(socket: Socket): Promise<Socket> {
 }
 
 const daemon = () => connected(nodes.connect({ token: secret }));
+const ui = () => connected(tabs.connect({ token: testConfig.apiToken }));
+
+/** The run ids of each `run.kill` a daemon gets, checked against its contract. */
+function kills(node: Socket): string[] {
+  const runIds: string[] = [];
+  node.on('run.kill', (payload: unknown) => {
+    runIds.push(serverToNodeEvents['run.kill'].parse(payload).runId);
+  });
+  return runIds;
+}
 
 type UiEvent = keyof ServerToUiEvents;
 
 /** Every run event a tab gets, each parsed against its contract as the UI parses it. */
 async function tab() {
-  const socket = await connected(tabs.connect({ token: testConfig.apiToken }));
+  const socket = await ui();
   const seen: { event: UiEvent; ok: boolean; payload: unknown }[] = [];
   socket.onAny((event: UiEvent, payload: unknown) => {
     if (event === 'issue.updated') return;
@@ -254,5 +268,153 @@ describe('Nodes', () => {
     other.close();
     await expect.poll(() => registry.holder(second.runId)).toBeUndefined();
     expect(registry.list().map((entry) => entry.id)).not.toContain(other.id);
+  });
+});
+
+describe('kills', () => {
+  const registry = app.get(Nodes);
+  const api = { authorization: `Bearer ${testConfig.apiToken ?? ''}` };
+
+  /** A daemon that has sent a run's first step, once the gateway has handled it. */
+  async function holding(runId: string) {
+    const seen = await tab();
+    const node = await daemon();
+    const killed = kills(node);
+    node.emit('node.step', { v: 1, step: step(runId, 0) });
+    await expect.poll(() => seen.some((s) => s.event === 'run.step')).toBe(true);
+    expect(registry.holder(runId)?.id).toBe(node.id);
+    return { node, killed };
+  }
+
+  it('sends run.kill to the daemon holding the run, and to no other', async () => {
+    const a = await fixing();
+    const b = await fixing();
+    const nodeA = await holding(a.runId);
+    const nodeB = await holding(b.runId);
+
+    // The issue's kill event, as an operator sends it.
+    const res = await app.inject({
+      method: 'POST',
+      url: `/issues/${a.issueId}/events`,
+      headers: api,
+      payload: { type: 'kill' },
+    });
+    expect(res.statusCode).toBe(200);
+    await expect.poll(() => nodeA.killed).toEqual([a.runId]);
+
+    // The UI's run.kill kills the issue too.
+    const tabSocket = await ui();
+    tabSocket.emit('run.kill', { v: 1, runId: b.runId });
+    await expect.poll(() => nodeB.killed).toEqual([b.runId]);
+    expect(nodeA.killed).toEqual([a.runId]);
+    expect(await issues.get(b.issueId)).toMatchObject({ status: 'killed' });
+  });
+
+  it('kills the issue of a run no daemon holds, then the daemon once it names the run', async () => {
+    const { issueId, runId } = await fixing();
+    const tabSocket = await ui();
+    tabSocket.emit('run.kill', { v: 1, runId });
+    await expect.poll(async () => (await issues.get(issueId)).status).toBe('killed');
+    const [job] = await deps.boss.findJobs(FIX_QUEUE, { id: runId });
+    expect(job?.state).toBe('cancelled');
+
+    // A daemon that was on the run while disconnected comes back and sends its next step.
+    const node = await daemon();
+    const killed = kills(node);
+    node.emit('node.step', { v: 1, step: step(runId, 3) });
+    await expect.poll(() => killed).toEqual([runId]);
+    // Only on its first event for the run.
+    node.emit('node.step', { v: 1, step: step(runId, 4) });
+    node.emit('node.run.finished', {
+      v: 1,
+      runId,
+      status: 'killed',
+      prUrl: null,
+      confidence: null,
+      note: null,
+    });
+    await expect.poll(() => registry.holder(runId)).toBeUndefined();
+    expect(killed).toEqual([runId]);
+  });
+
+  it('stops the run of an issue failed without a result, and not one that reported', async () => {
+    const lost = await fixing();
+    const reported = await fixing();
+    const nodeLost = await holding(lost.runId);
+    const nodeReported = await holding(reported.runId);
+    const runs = app.get(RunsService);
+
+    const job: FixJob = {
+      v: 1,
+      runId: lost.runId,
+      issueId: lost.issueId,
+      fingerprint: 'unused',
+      tier: 1,
+      report: 'unused',
+    };
+    await runs.recordLost(job, 'the job expired');
+    await expect.poll(() => nodeLost.killed).toEqual([lost.runId]);
+
+    nodeReported.node.emit('node.run.finished', {
+      v: 1,
+      runId: reported.runId,
+      status: 'escalated',
+      prUrl: null,
+      confidence: null,
+      reason: 'tests_failing',
+      toTier: 2,
+      note: escalationNoteFixture,
+    });
+    await expect.poll(() => registry.holder(reported.runId)).toBeUndefined();
+    await runs.record({
+      v: 1,
+      issueId: reported.issueId,
+      tier: 1,
+      startedAt: stepFixture.createdAt,
+      finishedAt: stepFixture.createdAt,
+      diff: null,
+      result: {
+        v: 1,
+        runId: reported.runId,
+        status: 'escalated',
+        prUrl: null,
+        confidence: null,
+        reason: 'tests_failing',
+        toTier: 2,
+        note: escalationNoteFixture,
+      },
+    });
+    expect(await issues.get(reported.issueId)).toMatchObject({ status: 'fixing', currentTier: 2 });
+    expect(nodeReported.killed).toEqual([]);
+  });
+
+  it('drops a run.kill that breaks its contract, and leaves run.chat and approval.decide', async () => {
+    const held = await fixing();
+    const other = await fixing();
+    const { killed } = await holding(held.runId);
+    const tabSocket = await ui();
+    tabSocket.emit('run.kill', { v: 1, runId: 'not-a-uuid' });
+    tabSocket.emit('run.kill', { v: 2, runId: held.runId });
+    tabSocket.emit('run.chat', { v: 1, runId: held.runId, message: 'Stop.' });
+    tabSocket.emit('approval.decide', uiToServerEventFixtures['approval.decide']);
+    // Handled after the ones above, since a socket's events arrive in order.
+    tabSocket.emit('run.kill', { v: 1, runId: other.runId });
+    await expect.poll(async () => (await issues.get(other.issueId)).status).toBe('killed');
+    expect(await issues.get(held.issueId)).toMatchObject({ status: 'fixing' });
+    expect(killed).toEqual([]);
+  });
+
+  it('sends a run.kill for a finished run only to a daemon still holding it', async () => {
+    const { issueId, runId } = await fixing();
+    const { killed } = await holding(runId);
+    await issues.apply(issueId, { type: 'kill' });
+    await expect.poll(() => killed).toEqual([runId]);
+    // The tab didn't know yet: the issue is killed, so only the daemon hears again.
+    const tabSocket = await ui();
+    tabSocket.emit('run.kill', { v: 1, runId });
+    await expect.poll(() => killed).toEqual([runId, runId]);
+    // No daemon holds an unknown run, so nothing is sent.
+    tabSocket.emit('run.kill', { v: 1, runId: randomUUID() });
+    expect(await issues.get(issueId)).toMatchObject({ status: 'killed' });
   });
 });

@@ -13,14 +13,20 @@ import {
   type Step,
 } from '@page/contracts';
 import type { Namespace } from 'socket.io';
-import { z } from 'zod';
 import type { Config } from '../config.ts';
 import type { Logger } from '../logger.ts';
 import { RateLimiter } from '../rate-limit.ts';
 import { RunsService, type RunOwner } from '../runs/runs.service.ts';
 import { CONFIG, LOGGER } from '../tokens.ts';
 import { Nodes, type NodeSocket } from './nodes.ts';
-import { guardHandshakes, limitMessages, socketAddress, type SocketGuard } from './socket-guard.ts';
+import { RunKills } from './run-kills.ts';
+import {
+  guardHandshakes,
+  limitMessages,
+  listen,
+  socketAddress,
+  type SocketGuard,
+} from './socket-guard.ts';
 import { UiGateway } from './ui.gateway.ts';
 
 type NodeNamespace = Namespace<NodeToServerEvents, ServerToNodeEvents>;
@@ -57,10 +63,12 @@ const runIdOf = (payload: NodePayload<NodeEvent>) =>
  * `auth.token` and is refused with `unauthorized` without it.
  *
  * Each event a daemon sends is checked against its contract, and one that fails is logged and
- * dropped. A socket holds a run (Nodes) from its first event naming it. Steps, diffs and
- * results go to the UI as `run.step`, `run.diff` and `run.finished`, and a run's first step
- * (seq 0) also sends `run.started`. None of this is a record: the daemon writes each step to
- * the `steps` table itself, and the `run_finished` job is the run's record.
+ * dropped. A socket holds a run (Nodes) from its first event naming it, and if that run is no
+ * longer its issue's run in progress, the daemon gets `run.kill`: the issue was killed while
+ * no daemon held the run, or moved on. Steps, diffs and results go to the UI as `run.step`,
+ * `run.diff` and `run.finished`, and a run's first step (seq 0) also sends `run.started`.
+ * None of this is a record: the daemon writes each step to the `steps` table itself, and the
+ * `run_finished` job is the run's record.
  */
 @WebSocketGateway({ namespace: NODE_NAMESPACE, serveClient: false })
 export class NodeGateway
@@ -84,6 +92,7 @@ export class NodeGateway
     @Inject(LOGGER) private readonly logger: Logger,
     private readonly nodes: Nodes,
     private readonly runs: RunsService,
+    private readonly kills: RunKills,
     private readonly ui: UiGateway,
   ) {
     this.guard = {
@@ -104,11 +113,9 @@ export class NodeGateway
     const address = socketAddress(socket);
     this.nodes.add(socket, address);
     this.links.set(socket.id, { queue: Promise.resolve(), owners: new Map() });
-    // The typed on() wants a literal; the payload is unchecked until receive parses it.
-    const listen = socket.on.bind(socket) as (e: string, fn: (payload: unknown) => void) => void;
-    for (const event of Object.keys(nodeToServerEvents) as NodeEvent[]) {
-      listen(event, (payload) => this.receive(socket, event, payload));
-    }
+    listen(socket, nodeToServerEvents, this.guard, (event, payload) =>
+      this.receive(socket, event, payload),
+    );
     this.logger.info({ address }, 'node daemon connected');
   }
 
@@ -118,33 +125,41 @@ export class NodeGateway
     this.logger.warn({ address: socketAddress(socket), runIds }, 'node daemon disconnected');
   }
 
-  private receive(socket: NodeSocket, event: NodeEvent, raw: unknown): void {
+  private receive(socket: NodeSocket, event: NodeEvent, payload: NodePayload<NodeEvent>): void {
     const link = this.links.get(socket.id);
     if (!link) return;
-    const parsed = nodeToServerEvents[event].safeParse(raw);
-    if (!parsed.success) {
-      this.logger.warn(
-        { event, problems: z.prettifyError(parsed.error) },
-        'dropped a node event that breaks its contract',
-      );
-      return;
-    }
-    const payload = parsed.data;
     const runId = runIdOf(payload);
     // At once, not in the queue, so a kill that lands while earlier events wait finds it.
-    if (event === 'node.run.finished') this.nodes.release(runId, socket);
+    const finished = event === 'node.run.finished';
+    if (finished) this.nodes.release(runId, socket);
     else this.nodes.hold(runId, socket);
 
     const handler = this.handlers[event] as Handler<NodeEvent> | undefined;
-    if (!handler) {
-      this.logger.warn({ event, runId }, 'no handler for this node event yet; dropped');
-      return;
-    }
+    if (!handler) this.logger.warn({ event, runId }, 'no handler for this node event yet; dropped');
     link.queue = link.queue
-      .then(() => handler(socket, payload))
+      .then(async () => {
+        if (!finished) await this.check(socket, runId);
+        await handler?.(socket, payload);
+      })
       .catch((err: unknown) => {
-        this.logger.error({ err, event, runId }, 'node event handler failed');
+        this.logger.error({ err, event, runId }, 'node event failed');
       });
+  }
+
+  /**
+   * On a socket's first event for a run, kills a run that is no longer its issue's run in
+   * progress. Its fix job is cancelled already; this stops the daemon still on it.
+   */
+  private async check(socket: NodeSocket, runId: string): Promise<void> {
+    const owners = this.links.get(socket.id)?.owners;
+    if (!owners || owners.has(runId)) return;
+    const owner = await this.ownerOf(socket, runId);
+    if (owner?.current) return;
+    this.logger.warn(
+      { runId, issueId: owner?.issueId },
+      'a daemon is on a run that is no longer in progress; killing it',
+    );
+    this.kills.stop(runId, owner?.issueId);
   }
 
   private async relayStep(socket: NodeSocket, step: Step): Promise<void> {
