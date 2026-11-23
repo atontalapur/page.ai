@@ -10,8 +10,15 @@ import { runStatusStyles } from '../../lib/statusStyles';
 // are reloaded on this interval as well as on every issue change.
 export const RUNS_POLL_MS = 5_000;
 
-function stepResult(step: Step): { label: string; failed: boolean } {
+/**
+ * A step is written before its command runs and completed after, so the running run's last
+ * step with no exit code and no output yet is still going, not timed out.
+ */
+function stepResult(step: Step, running: boolean): { label: string; failed: boolean } {
   if (!step.allowed) return { label: 'Refused', failed: true };
+  if (step.exitCode === null && running && step.outputTrimmed === '') {
+    return { label: 'Running', failed: false };
+  }
   if (step.exitCode === null) return { label: 'Timed out', failed: true };
   if (step.exitCode === 0) return { label: 'OK', failed: false };
   return { label: `Exit ${step.exitCode}`, failed: true };
@@ -35,8 +42,8 @@ function Thought({ text }: { text: string }) {
 
 const time = (at: string | null) => (at ? new Date(at).toLocaleTimeString() : undefined);
 
-function StepRow({ step }: { step: Step }) {
-  const { label, failed } = stepResult(step);
+function StepRow({ step, running }: { step: Step; running: boolean }) {
+  const { label, failed } = stepResult(step, running);
   return (
     <li className="space-y-1 border-b py-2 last:border-b-0">
       {step.thought && <Thought text={step.thought} />}
@@ -93,7 +100,11 @@ function RunCard({ run, open }: { run: IssueRun; open: boolean }) {
         ) : (
           <ol aria-label={`Tier ${run.tier} steps`}>
             {run.steps.map((step) => (
-              <StepRow key={step.seq} step={step} />
+              <StepRow
+                key={step.seq}
+                step={step}
+                running={run.status === 'running' && step === run.steps.at(-1)}
+              />
             ))}
           </ol>
         )}
