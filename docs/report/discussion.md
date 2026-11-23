@@ -2,7 +2,7 @@
 
 This section reads the [Results](evaluation-method.md#results) against the question the
 evaluation asks, lists what the system can't do yet and the risks it carries, and names the
-next steps the sources already point to. It describes `main` at `1bcf5e1` (2026-11-23).
+next steps the sources already point to. It describes `main` at `b53eb48` (2026-11-23).
 
 ## What the results show
 
@@ -38,11 +38,15 @@ channel instead of its reply ([Amendment 2](eval-prereg.md)).
 
 ## What the results don't show
 
-Every reported run came before confidence escalation. The ladder that runs today also climbs
-on a submitted patch that scores under its tier's threshold, so it is not the ladder that was
-measured. The results files don't keep the steps the score reads, so the recorded runs can't
-be scored after the fact. Whether the score would have caught 013, 014 or 029 is not known.
-#174 notes that the 029 patches came with a test, so the score may not have caught them.
+Every run in the Results came before confidence escalation. The ladder that runs today also
+climbs on a submitted patch that scores under its tier's threshold, so it is not the ladder
+those runs measured, and their files don't keep the steps the score reads, so they can't be
+scored after the fact. The dev calibration later played the ladder with scoring on, on 029 and
+030 only, and the score doesn't catch 029: the ladder landed a wrong code patch three times
+again, and each scored 1
+([Confidence calibration (dev)](evaluation-method.md#confidence-calibration-dev)). Whether it
+would catch 013 or 014 is still not known, since the calibration's runs of those bugs held no
+wrong patch.
 
 The held-out set doesn't test climbing, since the ladder never climbed there, and it says
 nothing about ops bugs, since 024 was skipped. No run has used the rollback tool. The four
@@ -64,15 +68,20 @@ the dev and held-out runs saw.
 
 ## What the system can't do yet
 
-- Nobody can query a run while it works. The project plan has "approval, query and kill" on the
-  dashboard for week 7. The contracts define `run.chat`, but no daemon handles it, and the
-  orchestrator drops it ([orchestrator README](../../apps/orchestrator/README.md)).
-- The rollback tool has run only against a fake deployer. Its Railway GraphQL fields are checked
-  against Railway's docs and a faked fetch (#172).
-- The node daemon on Railway is built (`SANDBOX_RUNTIME=local`, #163), but that PR left "deploy
-  as a Railway service and run a staging fix end to end" unchecked, and the staging run on record
-  used a daemon on a local machine. On Railway the sandbox also loses its network block and its
-  per-run CPU and memory limits ([ADR 0001](../adr/0001-sandbox-network-policy.md)).
+- A person can ask a run a question from the incident page (`run.chat`, #192), but the agent
+  reads it only at its next step boundary, so it waits out the model call in flight. A run
+  takes at most 10 messages, and a message to a daemon that dies stays pending until the fix
+  job expires ([orchestrator README](../../apps/orchestrator/README.md)).
+- No rollback has run against Railway. A read-only check ran the planner against staging's real
+  deployment list, through a guard that let only that query out. The query, its fields and the
+  parsing held, and the planner found no target, since the older deployments were skipped or
+  no longer redeployable. The staging node gets the rollback tool only once a Railway project
+  token exists for it (#178).
+- The node daemon runs as a Railway service on staging (`SANDBOX_RUNTIME=local`, #163) and
+  connects as `railway-staging`, but no fix has run through it yet, so #163's "run a staging fix
+  end to end" is still open. The staging run on record used a daemon on a local machine. On
+  Railway the sandbox also loses its network block and its per-run CPU and memory limits
+  ([ADR 0001](../adr/0001-sandbox-network-policy.md)).
 - A fix that adds a dependency can't be tested in the sandbox until the image is rebuilt, since
   the sandbox has no network.
 - A push copies whole files from the sandbox to the demo repo, so the two have to start from the
@@ -100,10 +109,15 @@ hostile one.
 
 ### Approval identity
 
-Every dashboard tab shares one API token. The name a person gives before approving is a label,
-not a login: anyone with the token can connect under any name, and the record keeps that name
-([orchestrator README](../../apps/orchestrator/README.md)). It tells honest teammates apart and
-does nothing more. The demo repo has a similar gap. Agent PRs are authored with the owner's
+Each person can have a personal dashboard token (#189). Once `DASHBOARD_TOKENS` lists any,
+only a personal token decides a Tier 3 approval or sends `run.chat`, and the record names that
+person as `ui:<name>`. The shared API token still reads everything and sends issue events such
+as `start_fix`, `kill` and `approve`, recorded as `api:shared`, which names no one. Where
+`DASHBOARD_TOKENS` is unset, as in local runs, the old fallback holds: the name a tab gives is a
+label anyone with the shared token can choose
+([orchestrator README](../../apps/orchestrator/README.md)). Staging lists one person so far, and
+a leaked personal token acts as that person until their entry is replaced. The demo repo has a
+similar gap. Agent PRs are authored with the owner's
 token, so its ruleset requires no approval, and a leaked token is write access to `main`
 ([docs/demo-repo.md](../demo-repo.md)).
 
@@ -143,9 +157,12 @@ code in the report's stack, or that the reported error is gone (#174).
 2. The wrong patches scored as high as working ones, so change the scorer under a later
    amendment. #174 names what it lacks: a check that the patch touches the code in the stack, and
    one that the reported error is gone.
-3. Make the first live rollback check `ops.planRollback` against staging, which only lists
-   deployments, before anyone relies on `ops.rollback` (#172).
-4. Run a staging fix through a daemon deployed on Railway, the step #163 left open.
-5. Give approvals real identity, and move the demo repo to a bot account or a GitHub App with one
-   required approval, which [docs/demo-repo.md](../demo-repo.md) says would close the token gap.
-6. Build querying a run from the dashboard, the one week 7 dashboard item that isn't built.
+3. Create the staging Railway project token (#178), so the staging node gets the rollback
+   tool, and run one approved rollback of the staging demo app before anyone relies on
+   `ops.rollback`.
+4. Run a staging fix through the daemon deployed on Railway, the step #163 left open.
+5. Give each teammate a personal token on staging, and move the demo repo to a bot account or a
+   GitHub App with one required approval, which [docs/demo-repo.md](../demo-repo.md) says would
+   close the token gap.
+6. Fix the runner bug that kept 015 #2, a run that never played, as a page instead of listing
+   it in `notPlayed`.

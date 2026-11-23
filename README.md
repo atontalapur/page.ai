@@ -86,9 +86,11 @@ minutes ([ADR 0001](docs/adr/0001-sandbox-network-policy.md)).
 
 Working and tested: ingest, triage, paging, the issue state machine and its queues; the node
 daemon, sandbox, toolkit and the Tier 2 and Tier 3 host tools, rollback included; confidence
-scoring and escalation; approval of Tier 3 calls that change the live app; the Socket.IO
-gateway for the dashboard and the daemons, so a kill stops a run a daemon has claimed; the
-dashboard, which the orchestrator serves, with live incidents, runs, approvals and daemons;
+scoring and escalation; approval of Tier 3 calls that change the live app, decided under a
+personal dashboard token so the record names who approved; asking the agent a question while
+it runs, from the incident page (`run.chat`); the Socket.IO gateway for the dashboard and the
+daemons, so a kill stops a run a daemon has claimed; the dashboard, which the orchestrator
+serves, with live incidents, runs, approvals and daemons;
 30 seeded bugs with a self-test in CI; the eval runner, its report and charts, a nightly eval
 and an end-to-end harness. A staging run on Railway took scenario 029 from a 500 on the demo
 app through PostHog to a triaged issue in 3 seconds, and the staging dashboard showed a new
@@ -99,12 +101,14 @@ Known limits:
 - The confidence threshold (0.2) was calibrated on dev bugs only, on one model, from data with
   one failing fix in it (Amendment 5 in `docs/report/eval-prereg.md`). The score's weights
   weren't fitted. None of the results below used either.
-- The rollback tool has run only against a fake deployer. Scenario 024 is held out and was
-  never run.
+- No rollback has run against Railway. The planner has read staging's real deployment list,
+  but the staging node has no Railway project token yet (#178), so Tier 3 runs there get no
+  rollback tool. Scenario 024 is held out and was never run.
+- The node daemon runs as a Railway service on staging, but no fix has run through it yet.
 - Live events, daemon tracking and approval deadlines live in one orchestrator process, so the
   orchestrator runs as a single instance.
-- The dashboard uses one shared API token. The name a person gives before approving is a label,
-  not a login.
+- Where `DASHBOARD_TOKENS` is unset, as in local runs, the name a person gives before
+  approving is a label, not a login. Staging has a personal token for one person so far.
 
 ## Results
 
@@ -123,9 +127,12 @@ on step, cost and time limits, and no run was scored.
 The preregistered bars pass on dev and held-out. On dev, the ladder twice submitted a wrong
 patch at Tier 1 (bugs 013 and 014) and never escalated or paged. On the ops set the ladder
 missed 029 every time: a lower tier submitted a code patch that left the live app broken, so it
-never reached the Tier 3 tools. Confidence escalation is meant to catch misses like these, and
-hasn't been measured on them. Tables, charts and the threats to validity are in
-[evaluation-method.md](docs/report/evaluation-method.md#results).
+never reached the Tier 3 tools. Confidence escalation is meant to catch misses like these. The
+later dev calibration played the ladder with it on, on 029 and 030 only, and it didn't catch
+029: each wrong patch brought its own passing test and scored 1. Tables, charts and the
+threats to validity are in [evaluation-method.md](docs/report/evaluation-method.md#results),
+and the calibration in
+[Confidence calibration (dev)](docs/report/evaluation-method.md#confidence-calibration-dev).
 
 ## Getting started
 

@@ -128,12 +128,13 @@ is using the app. An eval on another machine doesn't see the claim, so don't run
 against an app a daemon is using.
 
 A Tier 3 run that doesn't succeed (it fails, expires, is killed, or submits a fix that
-scores under the confidence threshold) puts back each override it changed, and restarts the app if it restarted it after a change,
-so the tier above starts from the app this run found. These requests go out after the run
-has stopped, kill included, and before its result is queued. It is best effort, like
-closing the PR of a run that didn't succeed: it tries every setting and the restart, and
-logs each one the app wouldn't take. A change whose request never answered, say because a
-kill cut it off, may have landed, and is logged by name and left as it is.
+scores under the confidence threshold) puts back each override it changed, and restarts the
+app if it restarted it after a change, so whoever takes the issue next finds the app as this
+run found it. These requests go out after the run has stopped, kill included, and before its
+result is queued. It is best effort, like closing the PR of a run that didn't succeed: it
+tries every setting and the restart, and logs each one the app wouldn't take. A change whose
+request never answered, say because a kill cut it off, may have landed, and is logged by name
+and left as it is.
 
 A Tier 3 run that succeeds keeps its ops changes. If it changed the live app (an override it
 didn't set back, or a restart after a change), opened no PR, and `git status` shows the
