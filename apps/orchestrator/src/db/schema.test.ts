@@ -181,6 +181,22 @@ describe('steps table matches @page/contracts', () => {
   });
 });
 
+describe('run_nodes table', () => {
+  const claim = (node_name: string, run_id = randomUUID()) =>
+    db.insertInto('run_nodes').values({ run_id, node_name }).execute();
+
+  it('needs no runs row, since a run has none until its result is recorded', async () => {
+    await expect(claim('railway-node')).resolves.toBeDefined();
+  });
+
+  it('rejects an empty name and a second row for one run', async () => {
+    await expect(claim('')).rejects.toThrow();
+    const runId = randomUUID();
+    await claim('railway-node', runId);
+    await expect(claim('other-node', runId)).rejects.toThrow();
+  });
+});
+
 const note = JSON.stringify({ summary: 'x', tried: [], blocker: 'y' });
 
 describe('escalations table matches @page/contracts', () => {

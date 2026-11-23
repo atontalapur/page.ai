@@ -399,7 +399,7 @@ function isCurrent(issue: { status: string; current_run_id: string | null }, run
   return issue.status === 'fixing' && issue.current_run_id === runId;
 }
 
-function toStep(row: Selectable<StepsTable>): Step {
+export function toStep(row: Selectable<StepsTable>): Step {
   return {
     runId: row.run_id,
     seq: row.seq,

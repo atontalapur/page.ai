@@ -17,7 +17,7 @@ between tiers is part of the issue state machine (`src/issues/transitions.ts`), 
 | `RunsModule`      | `run_finished` jobs from the node daemon: runs row, issue event, next tier |
 | `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions. Stub.        |
 | `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone   |
-| `GatewayModule`   | Socket.IO for the UI and the node daemons: live events, kills (#34)        |
+| `GatewayModule`   | Socket.IO for the UI and the node daemons: live events, kills; `/nodes`    |
 
 ## Issue lifecycle
 
@@ -116,6 +116,9 @@ a new one.
 | GET    | `/issues/:id`        |                                            |
 | GET    | `/issues/:id/events` |                                            |
 | POST   | `/issues/:id/events` | an `issueEvent`, e.g. `{ "type": "kill" }` |
+| GET    | `/issues/:id/runs`   |                                            |
+| GET    | `/nodes`             |                                            |
+| GET    | `/nodes/:name/runs`  | `?limit=` 1 to 100, default 20             |
 | POST   | `/ingest/posthog`    | a PostHog `$exception` webhook             |
 | GET    | `/` and `/assets/*`  | the built UI, below                        |
 
@@ -130,6 +133,14 @@ Bodies are validated against the zod contracts (400). `POST /issues/:id/events` 
 400 for `patch_ready`, `ops_fixed`, `escalate` and `fail`: run outcomes reach an issue only
 through the `run_finished` queue, which also writes the `runs` and `escalations` rows. Unknown ids return 404. Events the current status doesn't allow return 409. `GET /issues`
 returns at most 200 issues, most recently updated first; a repeat report counts as an update.
+
+`GET /nodes` and `GET /nodes/:name/runs` serve the UI's agents pages (`nodeSummarySchema` and
+`nodeRunSchema` in contracts). `/nodes` lists each node daemon by name: the ones connected to
+this instance, the ones it saw leave, and the 50 that worked the newest runs, each with the
+runs it holds now (issue title, tier, status, step count and last step) and when it took its
+newest. `/nodes/:name/runs` lists the runs a daemon worked, the one it took last first,
+including the one in progress. A name a daemon can't have returns 400, and a name no daemon
+used returns an empty list.
 
 ## UI
 
@@ -165,6 +176,13 @@ daemon or a tab sends is checked against its contract (`nodeToServerEvents`,
   `GET /issues/:id/runs` calls the run `running`. None of it is stored here: the daemon writes
   the `steps` table itself, and the `run_finished` job stays the record of a run. A tab doesn't
   get what was sent while it was disconnected, so it should load the runs again on reconnect.
+- **Names.** A daemon sends its name (`NODE_NAME`, or its hostname) as `auth.name` in the
+  handshake. One that sends none, or one a hostname can't hold, is listed as
+  `unnamed-<address>` and logged. Sockets with the same name count as one daemon. On a
+  daemon's first event for a run, the gateway writes the `run_nodes` row that says which
+  daemon worked it, since the pg-boss claim doesn't say. Every tab gets `node.updated`, the
+  daemon as `GET /nodes` lists it, when a daemon connects, disconnects, takes a run or lets
+  one go, after the run's own event.
 - **Which daemon holds a run.** The claim is the pg-boss `fix` job, which doesn't say which
   daemon took it. `Nodes` keeps, in memory, the socket whose events last named each run: from
   its first event for the run until its `node.run.finished` or its disconnect. After a
@@ -195,6 +213,7 @@ memory (`src/rate-limit.ts`), so each instance counts its own and a restart star
 | UI socket messages, per socket      | 20 every 10s  | The socket is closed                        |
 | Node socket handshakes, per address | 30 a minute   | Refused with `connect_error` `rate_limited` |
 | Node socket messages, per socket    | 300 every 10s | The socket is closed                        |
+| `/nodes` routes, per address        | 60 a minute   | 429 with `Retry-After`                      |
 
 A page load is index.html and about ten hashed files, so 300 a minute is about 30 full reloads.
 A tab handshakes once and socket.io-client retries a lost connection at most every 5s, under
@@ -205,8 +224,11 @@ refusal it waits a minute, so 30 leaves room for several daemons behind one addr
 a secret guesser to 30 tries. A run sends a step per command, each after a model call, so
 well under one a second; 300 in 10s leaves room for the events a daemon buffered while it was
 disconnected, which it sends at once. A daemon whose socket is closed connects again 5s later,
-and its steps are in the `steps` table either way. API
-routes don't count toward the UI's limit. The address is the last `X-Forwarded-For` entry,
+and its steps are in the `steps` table either way. A tab loads `/nodes` when it connects or
+reconnects, and an agent's runs again when that daemon takes or lets go of a run, so a few a
+minute; 60 leaves room for several tabs behind one address. The two `/nodes` routes share
+one count, which runs after the token check (`RateLimitGuard`), so a request without the
+token gets its 401 and isn't counted. API routes don't count toward the UI's limit. The address is the last `X-Forwarded-For` entry,
 which Railway's proxy adds, or the socket's own address. Without a proxy in front a client can
 set that header itself, so the limits slow a misbehaving client; the token is what keeps
 strangers out.

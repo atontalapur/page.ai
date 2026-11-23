@@ -5,6 +5,7 @@ import {
   serverToNodeEvents,
   serverToUiEvents,
   UI_NAMESPACE,
+  type NodeSummary,
   type ServerToUiEvents,
   type Step,
 } from '@page/contracts';
@@ -67,6 +68,7 @@ async function connected(socket: Socket): Promise<Socket> {
 }
 
 const daemon = () => connected(nodes.connect({ token: secret }));
+const namedDaemon = (name: string) => connected(nodes.connect({ token: secret, name }));
 const ui = () => connected(tabs.connect({ token: testConfig.apiToken }));
 
 /** The run ids of each `run.kill` a daemon gets, checked against its contract. */
@@ -80,12 +82,32 @@ function kills(node: Socket): string[] {
 
 type UiEvent = keyof ServerToUiEvents;
 
+/**
+ * Every run and node event a tab gets, in order, each parsed against its contract as the UI
+ * parses it. Node events come as `node.updated <name>`, for one daemon's only.
+ */
+async function timeline(name: string) {
+  const socket = await ui();
+  const seen: { event: string; node?: NodeSummary }[] = [];
+  socket.onAny((event: UiEvent, payload: unknown) => {
+    if (event === 'issue.updated') return;
+    if (event !== 'node.updated') {
+      serverToUiEvents[event].parse(payload);
+      seen.push({ event });
+      return;
+    }
+    const { node } = serverToUiEvents['node.updated'].parse(payload);
+    if (node.name === name) seen.push({ event: `node.updated ${name}`, node });
+  });
+  return seen;
+}
+
 /** Every run event a tab gets, each parsed against its contract as the UI parses it. */
 async function tab() {
   const socket = await ui();
   const seen: { event: UiEvent; ok: boolean; payload: unknown }[] = [];
   socket.onAny((event: UiEvent, payload: unknown) => {
-    if (event === 'issue.updated') return;
+    if (event === 'issue.updated' || event === 'node.updated') return;
     const parsed = serverToUiEvents[event].safeParse(payload);
     seen.push({ event, ok: parsed.success, payload: parsed.data });
   });
@@ -234,6 +256,136 @@ describe('node events to the UI', () => {
     node.emit('node.diff', { v: 1, runId, diff: '' });
     await expect.poll(() => seen.length).toBe(1);
     expect(seen.map((s) => s.event)).toEqual(['run.diff']);
+  });
+});
+
+/** `s`, written to the steps table first, as the daemon writes each step before sending it. */
+async function written(s: Step): Promise<Step> {
+  await deps.db
+    .insertInto('steps')
+    .values({
+      run_id: s.runId,
+      seq: s.seq,
+      kind: s.kind,
+      input: s.input,
+      output_trimmed: s.outputTrimmed,
+      exit_code: s.exitCode,
+      allowed: s.allowed,
+      thought: s.thought,
+      created_at: new Date(s.createdAt),
+    })
+    .execute();
+  return s;
+}
+
+/** The daemon recorded as working `runId`. */
+async function workedBy(runId: string): Promise<string | undefined> {
+  const row = await deps.db
+    .selectFrom('run_nodes')
+    .select('node_name')
+    .where('run_id', '=', runId)
+    .executeTakeFirst();
+  return row?.node_name;
+}
+
+describe('daemon names and node.updated', () => {
+  const registry = app.get(Nodes);
+  const nameOf = (socket: Socket) => registry.list().find((entry) => entry.id === socket.id)?.name;
+
+  it('knows a daemon by the name it sends, and one without a valid name by its address', async () => {
+    const named = await namedDaemon('railway-node');
+    const unnamed = await daemon();
+    const spaced = await connected(nodes.connect({ token: secret, name: 'my node' }));
+    expect(nameOf(named)).toBe('railway-node');
+    expect(nameOf(unnamed)).toMatch(/^unnamed-192\.0\.2\.\d+$/);
+    expect(nameOf(spaced)).toMatch(/^unnamed-192\.0\.2\.\d+$/);
+  });
+
+  it('tells the tabs when a daemon connects, takes a run, lets it go and leaves', async () => {
+    const { issueId, runId } = await fixing();
+    const seen = await timeline('updates-node');
+    const node = await namedDaemon('updates-node');
+    await expect.poll(() => seen.length).toBe(1);
+    expect(seen[0]?.node).toMatchObject({ connected: true, current: [], lastRunAt: null });
+
+    node.emit('node.step', { v: 1, step: await written(step(runId, 0, 'ls')) });
+    await expect.poll(() => seen.length).toBe(4);
+    // After the run's own events, so a tab has the step before the daemon's new run.
+    expect(seen.map((s) => s.event)).toEqual([
+      'node.updated updates-node',
+      'run.started',
+      'run.step',
+      'node.updated updates-node',
+    ]);
+    expect(seen[3]?.node).toMatchObject({
+      connected: true,
+      lastRunAt: expect.any(String) as unknown,
+      current: [
+        {
+          id: runId,
+          issueId,
+          issueTitle: 'Boom',
+          tier: 1,
+          status: 'running',
+          stepCount: 1,
+          lastStep: { seq: 0, input: 'ls' },
+        },
+      ],
+    });
+
+    // A later step of a run it holds already changes nothing node.updated carries.
+    node.emit('node.step', { v: 1, step: await written(step(runId, 1)) });
+    node.emit('node.run.finished', { ...nodeToServerEventFixtures['node.run.finished'], runId });
+    await expect.poll(() => seen.length).toBe(7);
+    expect(seen.slice(4).map((s) => s.event)).toEqual([
+      'run.step',
+      'run.finished',
+      'node.updated updates-node',
+    ]);
+    expect(seen[6]?.node).toMatchObject({ connected: true, current: [] });
+
+    node.close();
+    await expect.poll(() => seen.length).toBe(8);
+    expect(seen[7]?.node).toMatchObject({
+      connected: false,
+      since: expect.any(String) as unknown,
+      current: [],
+    });
+  });
+
+  it('records the daemon working each run, and moves the run to the one that names it last', async () => {
+    const { runId } = await fixing();
+    const first = await namedDaemon('first-node');
+    first.emit('node.step', { v: 1, step: step(runId, 0) });
+    await expect.poll(() => workedBy(runId)).toBe('first-node');
+
+    const seen = await timeline('first-node');
+    const second = await namedDaemon('second-node');
+    second.emit('node.step', { v: 1, step: step(runId, 1) });
+    await expect.poll(() => workedBy(runId)).toBe('second-node');
+    // The daemon the run left is told it holds nothing now.
+    await expect.poll(() => seen.at(-1)?.node?.current).toEqual([]);
+  });
+
+  it('counts sockets that share a name as one daemon', async () => {
+    const { runId } = await fixing();
+    const a = await namedDaemon('twin-node');
+    const b = await namedDaemon('twin-node');
+    b.emit('node.step', { v: 1, step: step(runId, 0) });
+    await expect.poll(() => registry.state('twin-node').runIds).toEqual([runId]);
+    expect(registry.state('twin-node').connected).toBe(true);
+    expect(registry.names().filter((name) => name === 'twin-node')).toHaveLength(1);
+
+    a.close();
+    await expect.poll(() => registry.list().some((entry) => entry.id === a.id)).toBe(false);
+    expect(registry.state('twin-node')).toMatchObject({ connected: true, runIds: [runId] });
+    b.close();
+    await expect.poll(() => registry.state('twin-node').connected).toBe(false);
+    expect(registry.state('twin-node')).toMatchObject({
+      runIds: [],
+      since: expect.any(String) as unknown,
+    });
+    expect(registry.state('never-seen')).toEqual({ connected: false, since: null, runIds: [] });
   });
 });
 
