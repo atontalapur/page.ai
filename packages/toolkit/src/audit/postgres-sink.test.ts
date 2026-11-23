@@ -9,6 +9,7 @@ const step = {
   outputTrimmed: '',
   exitCode: null,
   allowed: true,
+  thought: 'List the directory first.',
 };
 
 describe('PostgresAuditSink', () => {
@@ -19,7 +20,7 @@ describe('PostgresAuditSink', () => {
       expect.stringMatching(
         /insert into steps[\s\S]*coalesce\(max\(seq\) \+ 1, 0\)[\s\S]*returning seq/,
       ),
-      [TEST_RUN_ID, 'exec', 'ls', '', null, true],
+      [TEST_RUN_ID, 'exec', 'ls', '', null, true, 'List the directory first.'],
     );
   });
 

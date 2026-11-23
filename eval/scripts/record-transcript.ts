@@ -76,8 +76,14 @@ try {
   });
   const recording = recordingDeps({
     model: withRetries(new OpenRouterClient({ apiKey, model: values.model })),
-    execute: (call, { timeoutMs = Infinity }) =>
-      execute(call, { tier, runner, steps, timeoutMs: Math.min(DEFAULT_TIMEOUT_MS, timeoutMs) }),
+    execute: (call, { timeoutMs = Infinity, thought }) =>
+      execute(call, {
+        tier,
+        runner,
+        steps,
+        timeoutMs: Math.min(DEFAULT_TIMEOUT_MS, timeoutMs),
+        ...(thought === undefined ? {} : { thought }),
+      }),
   });
   // The scenario's report stands in for the triaged error report until ingest (#30) can
   // build one.

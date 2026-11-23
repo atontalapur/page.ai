@@ -180,13 +180,14 @@ export async function runFixJob(
       });
     }
     const hostTools = hostToolsFor(tier, { github: githubTools, ops: opsTools });
-    const run: ExecuteFn = (call, { timeoutMs = Infinity }) =>
+    const run: ExecuteFn = (call, { timeoutMs = Infinity, thought }) =>
       execute(call, {
         tier,
         runner: sandbox.runner,
         steps,
         timeoutMs: Math.min(DEFAULT_TIMEOUT_MS, timeoutMs),
         ...(hostTools === undefined ? {} : { hostTools }),
+        ...(thought === undefined ? {} : { thought }),
       });
 
     // runAgent applies the tier's escalation threshold. The container's wall clock started

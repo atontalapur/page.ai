@@ -113,13 +113,14 @@ export function dockerAttempt(
           {
             model,
             signal,
-            execute: (call, { timeoutMs = Infinity }) =>
+            execute: (call, { timeoutMs = Infinity, thought }) =>
               execute(call, {
                 tier,
                 runner,
                 steps,
                 timeoutMs: Math.min(DEFAULT_TIMEOUT_MS, timeoutMs),
                 ...(hostTools === undefined ? {} : { hostTools }),
+                ...(thought === undefined ? {} : { thought }),
               }),
           },
           {

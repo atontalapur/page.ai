@@ -69,6 +69,8 @@ export interface StepsTable {
   output_trimmed: Generated<string>;
   exit_code: number | null;
   allowed: boolean;
+  // The model's THOUGHT for the step (006_step_thought.sql). Optional on insert.
+  thought: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: Generated<Date>;
 }
 

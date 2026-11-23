@@ -29,6 +29,7 @@ describe('execute audit log', () => {
         outputTrimmed: 'refused: sudo is blocked at every tier',
         exitCode: null,
         allowed: false,
+        thought: null,
       },
     ]);
   });
@@ -189,9 +190,22 @@ describe('execute audit log', () => {
     );
   });
 
+  it("stores the model's thought with the step it asked for, refused or run", async () => {
+    const { sink, ctx } = setup();
+    await execute(exec('ls'), { ...ctx, thought: 'Find the product route.' });
+    await execute(exec('sudo ls'), { ...ctx, thought: 'Maybe it needs root.' });
+    await execute(exec('ls -la'), ctx);
+
+    expect(sink.steps.map((s) => [s.allowed, s.thought])).toEqual([
+      [true, 'Find the product route.'],
+      [false, 'Maybe it needs root.'],
+      [true, null],
+    ]);
+  });
+
   it('carries on numbering for a run that already has steps', async () => {
     const { sink, ctx } = setup();
-    const stored = { runId: TEST_RUN_ID, kind: 'exec' as const, input: 'ls' };
+    const stored = { runId: TEST_RUN_ID, kind: 'exec' as const, input: 'ls', thought: null };
     sink.steps.push(
       { ...stored, seq: 0, outputTrimmed: '', exitCode: 0, allowed: true },
       { ...stored, seq: 1, outputTrimmed: '', exitCode: 0, allowed: true },
@@ -268,6 +282,7 @@ describe('InMemoryAuditSink', () => {
       outputTrimmed: '',
       exitCode: null,
       allowed: true,
+      thought: null,
     };
     const otherRun = { ...step, runId: '00000000-0000-4000-8000-000000000003' };
     expect([await sink.open(step), await sink.open(step), await sink.open(otherRun)]).toEqual([
