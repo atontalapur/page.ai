@@ -62,7 +62,8 @@ const schema = envSchema(
     // issues wait for an operator's start_fix.
     AUTO_START_FIX_MAX_PER_HOUR: z.coerce.number().int().positive().default(5),
     ...pagerShape,
-    DASHBOARD_URL: z.string().min(1).default('http://localhost:3000'),
+    // Where the orchestrator serves the UI, so the page links to the issue's page there.
+    DASHBOARD_URL: z.string().min(1).default('http://localhost:4000'),
     // The built UI (apps/ui/dist), relative to the working directory. Every way the
     // orchestrator starts (pnpm dev, the image, the stack image) runs it from
     // apps/orchestrator, so the default finds the build beside it.

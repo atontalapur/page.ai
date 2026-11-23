@@ -34,7 +34,7 @@ describe('TriageService', () => {
     const payload = notifyJobSchema.parse(jobs[0]?.data);
     expect(payload).toMatchObject({ v: 2, issueId: issue.id, channel: 'call', to: '+15550000001' });
     expect(payload.message).toContain('medium frontend');
-    expect(payload.message).toContain(`/issues/${issue.id}`);
+    expect(payload.message).toContain(`/incidents/${issue.id}`);
     expect(jobs[0]?.singletonKey).toBe('hydrate:+15550000001');
   });
 

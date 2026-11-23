@@ -212,7 +212,7 @@ so the app is compiled with `tsc` to `dist/` rather than run from source.
 | `TWILIO_MACHINE_DETECTION`    | `false`                 | Voicemail or fax counts as not answered. Paid accounts only: trial rejects it |
 | `TWILIO_TRIAL`                | `false`                 | Trial account: calls and texts use Twilio's templates, not the page text      |
 | `NOTIFY_TO_NUMBERS`           |                         | Comma-separated E.164 numbers                                                 |
-| `DASHBOARD_URL`               | `http://localhost:3000` | Link included in the call and the SMS                                         |
+| `DASHBOARD_URL`               | `http://localhost:4000` | Where the UI is served; the call and SMS link `<url>/incidents/<id>`          |
 | `UI_DIST_DIR`                 | `../ui/dist`            | The built UI, relative to the working directory (`apps/orchestrator`)         |
 
 A missing or bad `DATABASE_URL` stops startup with exit code 1 and one log line naming each

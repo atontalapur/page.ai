@@ -22,7 +22,7 @@ describe('loadConfig', () => {
       autoStartFixMaxPerHour: 5,
       twilio: undefined,
       notifyTo: [],
-      dashboardUrl: 'http://localhost:3000',
+      dashboardUrl: 'http://localhost:4000',
       uiDistDir: resolve('../ui/dist'),
     });
   });
