@@ -6,18 +6,18 @@ through Kysely, moves them through a state machine, and queues fix jobs on pg-bo
 
 ## Modules
 
-`AppModule` serves `/health`, `/issues` and `/ingest/posthog`, and imports six feature modules.
-Ingest, triage, runs, notify and the gateway are wired. Approvals is still a stub. Escalation
-between tiers is part of the issue state machine (`src/issues/transitions.ts`), not a module.
+`AppModule` serves `/health`, `/issues` and `/ingest/posthog`, and imports six feature modules,
+all wired. Escalation between tiers is part of the issue state machine
+(`src/issues/transitions.ts`), not a module.
 
-| Module            | Owns                                                                       |
-| ----------------- | -------------------------------------------------------------------------- |
-| `IngestModule`    | `POST /ingest/posthog`: secret check, upsert by fingerprint, queue triage  |
-| `TriageModule`    | Class and severity by model with a rule fallback, then notify              |
-| `RunsModule`      | `run_finished` jobs from the node daemon: runs row, issue event, next tier |
-| `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions. Stub.        |
-| `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone   |
-| `GatewayModule`   | Socket.IO for the UI and the node daemons: live events, kills; `/nodes`    |
+| Module            | Owns                                                                          |
+| ----------------- | ----------------------------------------------------------------------------- |
+| `IngestModule`    | `POST /ingest/posthog`: secret check, upsert by fingerprint, queue triage     |
+| `TriageModule`    | Class and severity by model with a rule fallback, then notify                 |
+| `RunsModule`      | `run_finished` jobs from the node daemon: runs row, issue event, next tier    |
+| `ApprovalsModule` | Tier 3 requests to run gated ops tools, their decisions, `GET /approvals`     |
+| `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone      |
+| `GatewayModule`   | Socket.IO for the UI and the daemons: live events, kills, approvals; `/nodes` |
 
 ## Issue lifecycle
 
@@ -108,19 +108,20 @@ a new one.
 
 ## API
 
-| Method | Path                 | Body                                       |
-| ------ | -------------------- | ------------------------------------------ |
-| GET    | `/health`            |                                            |
-| POST   | `/issues`            | `{ fingerprint, title }`                   |
-| GET    | `/issues?status=`    |                                            |
-| GET    | `/issues/:id`        |                                            |
-| GET    | `/issues/:id/events` |                                            |
-| POST   | `/issues/:id/events` | an `issueEvent`, e.g. `{ "type": "kill" }` |
-| GET    | `/issues/:id/runs`   |                                            |
-| GET    | `/nodes`             |                                            |
-| GET    | `/nodes/:name/runs`  | `?limit=` 1 to 100, default 20             |
-| POST   | `/ingest/posthog`    | a PostHog `$exception` webhook             |
-| GET    | `/` and `/assets/*`  | the built UI, below                        |
+| Method | Path                  | Body                                       |
+| ------ | --------------------- | ------------------------------------------ |
+| GET    | `/health`             |                                            |
+| POST   | `/issues`             | `{ fingerprint, title }`                   |
+| GET    | `/issues?status=`     |                                            |
+| GET    | `/issues/:id`         |                                            |
+| GET    | `/issues/:id/events`  |                                            |
+| POST   | `/issues/:id/events`  | an `issueEvent`, e.g. `{ "type": "kill" }` |
+| GET    | `/issues/:id/runs`    |                                            |
+| GET    | `/nodes`              |                                            |
+| GET    | `/nodes/:name/runs`   | `?limit=` 1 to 100, default 20             |
+| GET    | `/approvals?issueId=` | or `?runId=`; below                        |
+| POST   | `/ingest/posthog`     | a PostHog `$exception` webhook             |
+| GET    | `/` and `/assets/*`   | the built UI, below                        |
 
 Every route but `/health` and `/ingest/posthog` needs `Authorization: Bearer
 <ORCHESTRATOR_API_TOKEN>` and returns 401 without it. With the token unset they all return 401,
@@ -196,10 +197,58 @@ daemon or a tab sends is checked against its contract (`nodeToServerEvents`,
   daemon was away, the gateway sends that daemon `run.kill`. The daemon stops the run and
   reports it `killed`.
 
-Each gateway has a handler map, and an event with no handler is logged and dropped. Tier 3
-approvals add `node.approval.request` to `NodeGateway` and `approval.decide` to `UiGateway`,
-and answer the daemon with `Nodes.send(runId, 'approval.decided', ...)`. `run.chat` waits for a
-daemon that handles it.
+Each gateway has a handler map, and an event with no handler is logged and dropped. `run.chat`
+waits for a daemon that handles it.
+
+## Tier 3 approvals
+
+A Tier 3 run asks a person before each gated ops call: `ops.setConfig`, `ops.deleteConfig`,
+`ops.restart` and `ops.rollback` (`APPROVAL_TOOLS` in `@page/toolkit`; `apps/node/README.md`
+says why those four). `ApprovalsModule` holds the requests and their decisions in the
+`approvals` table, and `ApprovalRelay` in the gateway sends each change out.
+
+- **Request.** The daemon sends `node.approval.request` with an id it picked, the run, the
+  tool, its arguments and `expiresAt`, when it stops waiting. `ApprovalsService.request`
+  stores it pending under the issue whose run it is, holding `expiresAt` to
+  `MAX_APPROVAL_WAIT_MS` (15 minutes), and every tab gets `approval.requested`. A request
+  from a run that is no longer its issue's run in progress is stored rejected and answered at
+  once. One for a run no issue knows is dropped.
+- **Decision.** A tab sends `approval.decide` with the id and `approved` or `rejected`. The
+  server records it as `ui:<name>` (identity, below), every tab gets `approval.updated`, and
+  the daemon holding the run gets `approval.decided`. The update is conditional on the row
+  being pending and before `expires_at`, so the first decision wins. A second one is refused
+  and logged, and the tab that sent it gets `approval.updated` with the decision that stands.
+- **The server closes a request** as rejected when no one decides by `expires_at`
+  (`system:timed_out`), and when its run stops waiting (`system:run_ended`): on
+  `node.run.finished`, on a change that cancels the run's fix job (a kill, the next tier),
+  and when the issue leaves `fixing`. Each close reaches the tabs and the daemon like a
+  person's decision. Deadlines are timers on the instance that stored the request, set again
+  at boot for every request still pending, and a decision after `expires_at` is refused
+  whatever the timers did.
+- **A daemon that was away** gets nothing sent meanwhile, so after a reconnect it sends each
+  request still waiting again, with the same id. The server stores nothing new: it answers
+  one decided meanwhile with its decision, and keeps waiting on one still open.
+
+`approvals.run_id` is the fix job's id, as `steps.run_id` is, with no foreign key: a run in
+progress has no `runs` row until its result is recorded, and that is when it asks. Each
+request names its issue instead (`issue_id`, a foreign key), so an issue with approvals can't
+be deleted (`007_approvals_in_progress.sql`). Creating the `runs` row when a run starts would
+have kept the key, but `GET /issues/:id/runs`, `RunsService.owner` (which tells a recorded run
+from one in progress) and `recordLost` all read a row as a finished run.
+
+`GET /approvals?issueId=<id>` lists an issue's approvals, oldest first, pending and decided,
+and `?runId=<id>` a run's. A tab loads them when it opens an incident and after each reconnect,
+since it misses what was sent while it was away. Without exactly one of the two it answers 400,
+and 404 for an unknown issue.
+
+**Identity.** Every tab shares `ORCHESTRATOR_API_TOKEN`, so the token says nothing about who
+is there. A tab that decides also sends the person's name as `auth.name` in its handshake
+(`approverNameSchema`: 1 to 40 letters, digits, spaces or `.'_-`), and the server keeps
+`ui:<name>` on the socket. `approval.decide` carries no decider, and the server takes it from
+the socket, never from the payload; a tab with no name, or one that isn't allowed, can't
+decide. The name is what the person typed, not a login: it tells honest teammates apart in the
+record, and anyone with the token can connect under any name. The server's own decisions are
+`system:timed_out` and `system:run_ended`, which no name can match since a name has no colon.
 
 ## Rate limits
 
@@ -219,7 +268,9 @@ A page load is index.html and about ten hashed files, so 300 a minute is about 3
 A tab handshakes once and socket.io-client retries a lost connection at most every 5s, under
 12 a minute, so 30 leaves room for a few tabs behind one address. The handshake limit runs
 before the token check, so it also holds a token guesser to 30 tries a minute. Kill, chat and
-approval decisions are clicks, far under 20 in 10s. A daemon handshakes once, and after a
+approval decisions are clicks, far under 20 in 10s; `approval.decide` counts toward that
+limit like every other message, so a tab that floods decisions is closed. A daemon's
+approval requests count toward its 300, at most one per gated call. A daemon handshakes once, and after a
 refusal it waits a minute, so 30 leaves room for several daemons behind one address and holds
 a secret guesser to 30 tries. A run sends a step per command, each after a model call, so
 well under one a second; 300 in 10s leaves room for the events a daemon buffered while it was
