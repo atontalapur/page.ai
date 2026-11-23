@@ -1,5 +1,14 @@
 import { createParamDecorator, type ExecutionContext } from '@nestjs/common';
+import { deciderFor, ISSUE_EVENT_ACTORS } from '@page/contracts';
 import type { Caller } from './api-tokens.ts';
+
+/**
+ * How the record names a caller: `ui:<name>` for a person, as their Tier 3 decisions are, and
+ * `api:shared` for the shared token.
+ */
+export function actorOf(caller: Caller): string {
+  return caller.kind === 'person' ? deciderFor(caller.name) : ISSUE_EVENT_ACTORS.sharedToken;
+}
 
 const callers = new WeakMap<object, Caller>();
 

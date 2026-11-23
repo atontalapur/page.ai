@@ -13,6 +13,7 @@ import type { Namespace, Socket } from 'socket.io';
 import { z } from 'zod';
 import { ApprovalsService } from '../approvals/approvals.service.ts';
 import { ApiTokens, type Caller } from '../auth/api-tokens.ts';
+import { actorOf } from '../auth/caller.ts';
 import { IssueUpdates } from '../issues/issue-updates.ts';
 import type { Logger } from '../logger.ts';
 import { RateLimiter } from '../rate-limit.ts';
@@ -79,7 +80,9 @@ export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnectio
    * is logged and dropped, so a new one goes here: `run.chat` once the daemon handles it.
    */
   private readonly handlers: { [E in TabEvent]?: Handler<E> } = {
-    'run.kill': (_socket, { runId }) => this.kills.kill(runId),
+    // Recorded under the tab's decider when it has one, so a name label counts here too.
+    'run.kill': (socket, { runId }) =>
+      this.kills.kill(runId, socket.data.decider ?? actorOf(socket.data.caller)),
     'approval.decide': (socket, { approvalId, decision }) =>
       this.decide(socket, approvalId, decision),
   };

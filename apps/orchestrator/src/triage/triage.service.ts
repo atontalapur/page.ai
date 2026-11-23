@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Issue, JobPayload } from '@page/contracts';
+import { ISSUE_EVENT_ACTORS, type Issue, type JobPayload } from '@page/contracts';
 import type { Config } from '../config.ts';
 import { IssuesService } from '../issues/issues.service.ts';
 import { issueLogger, type Logger } from '../logger.ts';
@@ -44,7 +44,11 @@ export class TriageService {
         );
         return;
       }
-      const fixing = await this.issues.apply(issue.id, { type: 'start_fix' });
+      const fixing = await this.issues.apply(
+        issue.id,
+        { type: 'start_fix' },
+        { actor: ISSUE_EVENT_ACTORS.triage },
+      );
       issueLogger(this.logger, { issueId: issue.id, tier: fixing.currentTier }).info('fix started');
     }
   }
@@ -72,11 +76,11 @@ export class TriageService {
         issue.fingerprint,
       );
     }
-    const triaged = await this.issues.apply(issue.id, {
-      type: 'triage',
-      class: verdict.class,
-      severity: verdict.severity,
-    });
+    const triaged = await this.issues.apply(
+      issue.id,
+      { type: 'triage', class: verdict.class, severity: verdict.severity },
+      { actor: ISSUE_EVENT_ACTORS.triage },
+    );
     // Railway's log parser drops a `severity` field (staging's `issue triaged` lines show only
     // the class), so the verdict's severity goes under another name.
     log.info(

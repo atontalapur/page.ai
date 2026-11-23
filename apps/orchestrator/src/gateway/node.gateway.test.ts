@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import {
+  ISSUE_EVENT_ACTORS,
   NODE_NAMESPACE,
   serverToNodeEvents,
   serverToUiEvents,
@@ -465,6 +466,21 @@ describe('kills', () => {
     await expect.poll(() => nodeB.killed).toEqual([b.runId]);
     expect(nodeA.killed).toEqual([a.runId]);
     expect(await issues.get(b.issueId)).toMatchObject({ status: 'killed' });
+    // Both came with the shared token, from a tab that gave no name.
+    for (const { issueId } of [a, b]) {
+      expect((await issues.events(issueId)).at(-1)).toMatchObject({
+        event: { type: 'kill' },
+        actor: ISSUE_EVENT_ACTORS.sharedToken,
+      });
+    }
+  });
+
+  it('records a kill from a named tab under its name while there are no personal tokens', async () => {
+    const { issueId, runId } = await fixing();
+    const named = await connected(tabs.connect({ token: testConfig.apiToken, name: 'Nidheesh' }));
+    named.emit('run.kill', { v: 1, runId });
+    await expect.poll(async () => (await issues.get(issueId)).status).toBe('killed');
+    expect((await issues.events(issueId)).at(-1)?.actor).toBe('ui:Nidheesh');
   });
 
   it('kills the issue of a run no daemon holds, then the daemon once it names the run', async () => {

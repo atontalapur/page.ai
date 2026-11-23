@@ -22,6 +22,8 @@ import {
   type NewIssue,
 } from '@page/contracts';
 import { z } from 'zod';
+import type { Caller } from '../auth/api-tokens.ts';
+import { actorOf, CallerOf } from '../auth/caller.ts';
 import { RunsService } from '../runs/runs.service.ts';
 import { IssueNotFoundError, IssuesService } from './issues.service.ts';
 import { TransitionError } from './transitions.ts';
@@ -88,20 +90,23 @@ export class IssuesController {
   }
 
   /**
-   * Applies one event. 400 for a run outcome, which only the run_finished queue applies.
-   * 409 when the issue's status doesn't allow the event.
+   * Applies one event, recorded under who sent it: the person a personal token names, or the
+   * shared token. 400 for a run outcome, which only the run_finished queue applies. 409 when
+   * the issue's status doesn't allow the event.
    */
   @Post(':id/events')
   @HttpCode(200)
   apply(
     @Param('id', { schema: issueId }) id: string,
     @Body({ schema: issueEventSchema }) event: IssueEvent,
+    @CallerOf() caller: Caller | undefined,
   ): Promise<Issue> {
     if (RUN_EVENTS.has(event.type)) {
       throw new BadRequestException(
         `${event.type} comes from the node daemon's run_finished job, not this route`,
       );
     }
-    return asHttp(this.issues.apply(id, event));
+    const actor = caller === undefined ? undefined : actorOf(caller);
+    return asHttp(this.issues.apply(id, event, actor === undefined ? {} : { actor }));
   }
 }

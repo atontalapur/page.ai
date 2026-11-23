@@ -148,6 +148,57 @@ describe('a personal token', () => {
   });
 });
 
+describe('who sent an issue event', () => {
+  /** An issue in `fixing`, with the run its fix job carries. */
+  async function fixing() {
+    const { issue } = await issues.report({ fingerprint: `actor-${++n}`, title: 'Boom' });
+    await issues.apply(issue.id, { type: 'triage', class: 'frontend', severity: 'low' });
+    await issues.apply(issue.id, { type: 'start_fix' });
+    const { current_run_id: runId } = await deps.db
+      .selectFrom('issues')
+      .select('current_run_id')
+      .where('id', '=', issue.id)
+      .executeTakeFirstOrThrow();
+    return { issueId: issue.id, runId: runId! };
+  }
+
+  const lastActor = async (issueId: string) => (await issues.events(issueId)).at(-1)?.actor;
+
+  it('records the person over HTTP, and the shared token as api:shared', async () => {
+    for (const [token, actor] of [
+      [arjunToken, 'ui:Arjun'],
+      [shared, 'api:shared'],
+    ] as const) {
+      const { issueId } = await fixing();
+      const res = await app.inject({
+        method: 'POST',
+        url: `/issues/${issueId}/events`,
+        headers: bearer(token),
+        payload: { type: 'kill' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(await lastActor(issueId)).toBe(actor);
+      const listed = await app.inject({
+        method: 'GET',
+        url: `/issues/${issueId}/events`,
+        headers: bearer(token),
+      });
+      expect(listed.json<{ actor: string | null }[]>().at(-1)?.actor).toBe(actor);
+    }
+  });
+
+  it("records a socket's run.kill under the token's person, never the tab's name", async () => {
+    const daniyal = await connected(tabs.connect({ token: daniyalToken, name: 'Arjun' }));
+    const watcher = await connected(tabs.connect({ token: shared, name: 'Arjun' }));
+    const first = await fixing();
+    const second = await fixing();
+    daniyal.emit('run.kill', { v: 1, runId: first.runId });
+    watcher.emit('run.kill', { v: 1, runId: second.runId });
+    await expect.poll(() => lastActor(first.issueId)).toBe('ui:Daniyal');
+    await expect.poll(() => lastActor(second.issueId)).toBe('api:shared');
+  });
+});
+
 describe('the shared token, once personal tokens exist', () => {
   it('sees requests and lists them, but its decisions are dropped', async () => {
     const watcher = await connected(tabs.connect({ token: shared, name: 'Nidheesh' }));
