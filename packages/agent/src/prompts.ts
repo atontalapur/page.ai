@@ -234,7 +234,7 @@ ${operates(tier) ? OPS_SECTION : ''}${rollsBack(tier, rollback) ? ROLLBACK_SECTI
 
 1. Every response must contain exactly one action block.
 2. Each command runs in a fresh shell in the repository root. The app is in \`${APP}\`. \`cd\` and environment variables do not carry over to the next command.
-3. Only these programs are available: cat, ls, head, tail, rg, find, git (status, diff and log only) and pnpm (test, lint, typecheck, vitest, tsc and eslint). Anything else is refused.
+3. Only these programs are available: cat, ls, head, tail, rg, find, git (status, diff and log only) and pnpm (test, lint, typecheck, vitest, tsc and eslint). Anything else is refused, including grep, xargs, sed, echo and cd: search with rg, and give each command its paths directly.
 4. Commands may use pipes, \`&&\`, \`||\`, \`;\` and redirects to files inside the repository. Globs, \`$\` variables, backticks, \`$(...)\`, heredocs and subshells are refused, so quote patterns and pass paths explicitly. Quote paths that contain brackets, such as Next.js route folders: \`cat -n "app/orders/[id]/page.tsx"\`.
 5. Change files only with ${EDIT} blocks. The SEARCH text must match the file exactly, including indentation, and appear exactly once. Use an empty SEARCH section to create a new file.
 6. Command output is cut to about 8,000 characters, keeping the start and the end. Narrow your command if you need the middle.
@@ -247,10 +247,22 @@ ${FENCE}${BASH}
 rg -n "getCart" ${APP}/src
 ${FENCE}
 
+### Search only TypeScript files (\`-t ts\` covers .ts and .tsx; there is no tsx type)
+
+${FENCE}${BASH}
+rg -n -t ts "getCart" ${APP}/src
+${FENCE}
+
 ### View specific lines of a file
 
 ${FENCE}${BASH}
 cat -n ${APP}/src/shop/cart.ts | head -40
+${FENCE}
+
+### Read a file whose path has brackets, quoted
+
+${FENCE}${BASH}
+cat -n "${APP}/src/app/orders/[id]/page.tsx"
 ${FENCE}
 
 ### Find files by name

@@ -48,6 +48,13 @@ frozen budgets in `threshold.ts`, which are unchanged). The bars, arms and resul
 they were. A run with confidence escalation is a new set on dev bugs, with an amendment of
 its own; the held-out reservation is used and is not run again.
 
+Note (2026-11-23), not an amendment: after the calibration runs, the task prompt gained
+three notes on commands, from refused steps on staging: it names the commands that are
+refused (grep, xargs, sed, echo, cd), says `rg -t ts` covers `.tsx`, and shows a quoted path
+with brackets. The system prompts are unchanged. Every result in this preregistration
+describes the prompt before them. A run on the new prompt is a new set, with an amendment of
+its own.
+
 Amendment 5 (2026-11-23), committed before any run with confidence escalation: a dev-only
 run to calibrate the confidence threshold (#174). The question is whether the score
 (`scoreRun` in `packages/agent/src/confidence.ts`) separates submitted patches that pass
