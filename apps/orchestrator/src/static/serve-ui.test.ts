@@ -7,7 +7,7 @@ import { pino } from 'pino';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { createTestDeps, testConfig } from '../db/test-utils.ts';
-import { serveUi } from './serve-ui.ts';
+import { serveUi, UI_REQUESTS_PER_MINUTE } from './serve-ui.ts';
 
 const INDEX = '<!doctype html><title>PageAgents</title><div id="root"></div>';
 const SCRIPT = 'console.log("ui")';
@@ -30,14 +30,17 @@ afterAll(async () => {
   await rm(root, { recursive: true });
 });
 
+let addresses = 0;
 type Method = 'GET' | 'POST';
+/** A request from its own forwarded address, so the UI limit counts each test apart. */
 function request(
   method: Method,
   url: string,
   headers: Record<string, string> = {},
   payload?: object,
 ) {
-  return app.inject({ method, url, payload, headers });
+  const address = `192.0.2.${++addresses}`;
+  return app.inject({ method, url, payload, headers: { 'x-forwarded-for': address, ...headers } });
 }
 const page = { accept: 'text/html,application/xhtml+xml,*/*;q=0.8' };
 const api = { authorization: `Bearer ${testConfig.apiToken ?? ''}` };
@@ -90,6 +93,20 @@ describe('the built UI', () => {
       posthogWebhookFixture,
     );
     expect(ingest.statusCode).toBe(200);
+  });
+
+  it(`answers 429 past ${UI_REQUESTS_PER_MINUTE} UI requests a minute from one address`, async () => {
+    const headers = { 'x-forwarded-for': '198.51.100.20', ...page };
+    for (let i = 0; i < UI_REQUESTS_PER_MINUTE; i++) {
+      expect((await app.inject({ method: 'GET', url: '/', headers })).statusCode).toBe(200);
+    }
+    const limited = await app.inject({ method: 'GET', url: '/incidents', headers });
+    expect(limited.statusCode).toBe(429);
+    expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
+    // Only the UI's files count: the API and /health aren't limited here.
+    expect((await app.inject({ method: 'GET', url: '/health', headers })).statusCode).toBe(200);
+    // Another address has its own count.
+    expect((await request('GET', '/', page)).statusCode).toBe(200);
   });
 });
 

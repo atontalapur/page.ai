@@ -6,6 +6,7 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { createTestDeps, testConfig } from '../db/test-utils.ts';
 import { TriageService } from '../triage/triage.service.ts';
+import { HANDSHAKES_PER_MINUTE, MESSAGES_PER_10_SECONDS } from './ui.gateway.ts';
 
 const deps = await createTestDeps();
 const app: NestFastifyApplication = await createApp(deps, false);
@@ -23,9 +24,19 @@ afterEach(() => {
   for (const socket of sockets.splice(0)) socket.close();
 });
 
-/** A socket that doesn't retry. */
-function connect(auth: Record<string, unknown>): Socket {
-  const socket = io(url, { auth, transports: ['websocket'], reconnection: false, forceNew: true });
+let addresses = 0;
+/**
+ * A socket that doesn't retry. Each gets its own forwarded address, so the handshake limit
+ * counts every test apart.
+ */
+function connect(auth: Record<string, unknown>, address = `203.0.113.${++addresses}`): Socket {
+  const socket = io(url, {
+    auth,
+    transports: ['websocket'],
+    reconnection: false,
+    forceNew: true,
+    extraHeaders: { 'x-forwarded-for': address },
+  });
   sockets.push(socket);
   return socket;
 }
@@ -123,5 +134,22 @@ describe('UI socket', () => {
     });
     await received;
     expect(seen).toEqual([]);
+  });
+
+  it(`refuses an address's handshakes past ${HANDSHAKES_PER_MINUTE} a minute`, async () => {
+    const address = '198.51.100.7';
+    for (let i = 0; i < HANDSHAKES_PER_MINUTE; i++) {
+      expect(await outcome(connect({ token: 'wrong' }, address))).toBe('unauthorized');
+    }
+    // Even with the right token: the limit runs first, so guessing stays bounded.
+    expect(await outcome(connect({ token }, address))).toBe('rate_limited');
+    expect(await outcome(connect({ token }))).toBe('connected');
+  });
+
+  it(`closes a socket that sends more than ${MESSAGES_PER_10_SECONDS} messages in 10s`, async () => {
+    const socket = await live();
+    const closed = new Promise<string>((resolve) => socket.once('disconnect', resolve));
+    for (let i = 0; i <= MESSAGES_PER_10_SECONDS; i++) socket.emit('run.chat', { v: 1 });
+    expect(await closed).toBe('io server disconnect');
   });
 });

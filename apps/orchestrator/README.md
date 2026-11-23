@@ -151,6 +151,27 @@ contract before it goes out. IssuesService publishes the issue after the transac
 (`report`, and `afterCommit` for every status change), so a rolled-back change is never sent.
 Events go only to tabs on the instance that made the change, which is fine with one instance.
 
+## Rate limits
+
+The routes and the socket added for the UI are limited per client, in memory
+(`src/rate-limit.ts`), so each instance counts its own and a restart starts over:
+
+| What                           | Limit        | Past it                                     |
+| ------------------------------ | ------------ | ------------------------------------------- |
+| UI files, per address          | 300 a minute | 429 with `Retry-After`                      |
+| Socket handshakes, per address | 30 a minute  | Refused with `connect_error` `rate_limited` |
+| Socket messages, per socket    | 20 every 10s | The socket is closed                        |
+
+A page load is index.html and about ten hashed files, so 300 a minute is about 30 full reloads.
+A tab handshakes once and socket.io-client retries a lost connection at most every 5s, under
+12 a minute, so 30 leaves room for a few tabs behind one address. The handshake limit runs
+before the token check, so it also holds a token guesser to 30 tries a minute. The UI sends no
+messages yet; kill, chat and approval decisions will be clicks, far under 20 in 10s. API
+routes don't count toward the UI's limit. The address is the last `X-Forwarded-For` entry,
+which Railway's proxy adds, or the socket's own address. Without a proxy in front a client can
+set that header itself, so the limits slow a misbehaving client; the token is what keeps
+strangers out.
+
 ## Run locally
 
 ```sh

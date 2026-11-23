@@ -4,6 +4,12 @@ import fastifyStatic from '@fastify/static';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { FastifyInstance } from 'fastify';
 import type { Logger } from '../logger.ts';
+import { clientAddress, RateLimiter } from '../rate-limit.ts';
+
+// A page load is index.html and about ten hashed files (the script, the stylesheet, the
+// fonts), so 300 a minute is about 30 full reloads. Past that a client gets 429s until its
+// minute is up. The files are public, so the API token can't bound this.
+export const UI_REQUESTS_PER_MINUTE = 300;
 
 /**
  * A browser asking for a page (not a script, an image or an API response), the way
@@ -34,8 +40,21 @@ export async function serveUi(
     logger.warn({ root }, 'no UI build found; serving the API only');
     return false;
   }
-  // A plugin of its own, so its reply decorators and routes stay apart from Nest's.
+  const limiter = new RateLimiter(UI_REQUESTS_PER_MINUTE, 60_000);
+  // A plugin of its own, so the limit and the routes apply only to the UI's files.
   await app.register(async (scope: FastifyInstance) => {
+    scope.addHook('onRequest', async (request, reply) => {
+      const address = clientAddress(
+        request.socket.remoteAddress,
+        request.headers['x-forwarded-for'],
+      );
+      const { allowed, retryAfterMs } = limiter.hit(address);
+      if (allowed) return;
+      await reply
+        .code(429)
+        .header('retry-after', String(Math.ceil(retryAfterMs / 1000)))
+        .send({ statusCode: 429, error: 'Too Many Requests', message: 'rate limited' });
+    });
     await scope.register(fastifyStatic, {
       root,
       // One route per file in the build, found at boot, so no wildcard competes with the
