@@ -237,11 +237,17 @@ describe('escalations table matches @page/contracts', () => {
 
 describe('approvals table matches @page/contracts', () => {
   const request = async (values: Partial<Insertable<ApprovalsTable>> = {}) => {
-    const { id } = await newRun({ tier: 3 });
+    const { id, issue_id } = await newRun({ tier: 3 });
     return db
       .insertInto('approvals')
-      .values({ run_id: id, action: 'ops.restart', ...values })
-      .returning('run_id')
+      .values({
+        run_id: id,
+        issue_id,
+        action: 'ops.restart',
+        expires_at: new Date(Date.now() + 60_000),
+        ...values,
+      })
+      .returning(['run_id', 'issue_id'])
       .executeTakeFirstOrThrow();
   };
   const decided = { decided_by: 'reviewer', decided_at: new Date() };
@@ -275,8 +281,18 @@ describe('approvals table matches @page/contracts', () => {
     await expect(request({ args: '"restart"' })).rejects.toThrow();
   });
 
-  it("won't delete a run that has approvals", async () => {
-    const { run_id } = await request();
-    await expect(db.deleteFrom('runs').where('id', '=', run_id).execute()).rejects.toThrow();
+  it('needs no runs row: a run in progress asks before its result is recorded', async () => {
+    const issue = await insertIssue({ status: 'fixing', current_tier: 3 });
+    await expect(request({ run_id: randomUUID(), issue_id: issue.id })).resolves.toBeDefined();
+  });
+
+  it('needs an issue that exists, and a deadline', async () => {
+    await expect(request({ issue_id: randomUUID() })).rejects.toThrow();
+    await expect(request({ expires_at: bad(null) })).rejects.toThrow();
+  });
+
+  it("won't delete an issue that has approvals", async () => {
+    const { issue_id } = await request();
+    await expect(db.deleteFrom('issues').where('id', '=', issue_id).execute()).rejects.toThrow();
   });
 });

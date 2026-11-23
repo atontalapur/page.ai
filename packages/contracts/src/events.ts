@@ -34,6 +34,13 @@ export const SOCKET_REFUSALS = ['unauthorized', 'rate_limited'] as const;
 
 export type SocketRefusal = (typeof SOCKET_REFUSALS)[number];
 
+/**
+ * The longest the server holds an approval request open, from when it hears it. A Tier 3
+ * run's wall clock is 14 minutes, so no daemon waits longer; a later `expiresAt` is cut down
+ * to this.
+ */
+export const MAX_APPROVAL_WAIT_MS = 15 * 60 * 1000;
+
 const runKill = z.strictObject({ v, runId: idSchema });
 const runChat = z.strictObject({ v, runId: idSchema, message: z.string().min(1) });
 const runDiff = z.strictObject({ v, runId: idSchema, diff: z.string() });
@@ -122,13 +129,16 @@ export const nodeToServerEvents = {
   'node.diff': runDiff,
   'node.run.finished': nodeRunFinishedSchema,
   // A Tier 3 agent asks to run a gated host tool such as `ops.restart`. The node picks the
-  // approval id so it can match the `approval.decided` that answers it.
+  // approval id so it can match the `approval.decided` that answers it, and sends the same
+  // request again after a reconnect. `expiresAt` is when it stops waiting; the server holds
+  // the request open no longer than MAX_APPROVAL_WAIT_MS.
   'node.approval.request': z.strictObject({
     v,
     approvalId: idSchema,
     runId: idSchema,
     action: pendingApprovalSchema.shape.action,
     args: pendingApprovalSchema.shape.args,
+    expiresAt: pendingApprovalSchema.shape.expiresAt,
   }),
 };
 

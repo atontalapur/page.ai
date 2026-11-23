@@ -51,7 +51,11 @@ describe('PgPipelineReader against Postgres', () => {
        values ($1, 0, 'exec', 'git status', true), ($1, 1, 'exec', 'pnpm test', true)`,
       [runId],
     );
-    await pool.query(`insert into approvals (run_id, action) values ($1, 'ops.restart')`, [runId]);
+    await pool.query(
+      `insert into approvals (run_id, issue_id, action, expires_at)
+       values ($1, $2, 'ops.restart', now() + interval '3 minutes')`,
+      [runId, issueId],
+    );
     await pool.query(
       `insert into ${boss}.job (name, id, state, data) values ('fix', $1, 'active', $2)`,
       [runId, { v: 1, issueId, runId }],

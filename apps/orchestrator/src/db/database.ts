@@ -93,13 +93,16 @@ export interface EscalationsTable {
 
 export interface ApprovalsTable {
   id: Generated<string>;
+  // The fix job's id. No foreign key: a run in progress has no runs row yet (007).
   run_id: string;
+  issue_id: string;
   action: string;
   args: ColumnType<Record<string, unknown>, string | undefined, string>;
   decision: Generated<Approval['decision']>;
   decided_by: string | null;
   decided_at: Date | null;
   requested_at: Generated<Date>;
+  expires_at: Date;
 }
 
 export interface SchemaMigrationsTable {

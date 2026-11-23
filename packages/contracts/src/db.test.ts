@@ -8,7 +8,16 @@ import {
   runFixture,
   stepFixture,
 } from './__fixtures__/index.ts';
-import { approvalSchema, escalationSchema, issueSchema, runSchema, stepSchema } from './db.ts';
+import {
+  approvalSchema,
+  approverNameSchema,
+  deciderFor,
+  escalationSchema,
+  issueSchema,
+  runSchema,
+  stepSchema,
+  SYSTEM_DECIDERS,
+} from './db.ts';
 import { roundTrip } from './test-utils.ts';
 
 describe('issueSchema', () => {
@@ -138,5 +147,37 @@ describe('approvalSchema', () => {
 
   it('rejects a pending approval that already has a decider', () => {
     expect(() => approvalSchema.parse({ ...pendingApprovalFixture, decidedBy: 'arjun' })).toThrow();
+  });
+
+  it('needs the issue and the deadline', () => {
+    expect(() => approvalSchema.parse({ ...pendingApprovalFixture, issueId: undefined })).toThrow();
+    expect(() =>
+      approvalSchema.parse({ ...pendingApprovalFixture, expiresAt: undefined }),
+    ).toThrow();
+  });
+});
+
+describe('approverNameSchema', () => {
+  it.each(['Arjun', 'Nidheesh K.', "O'Brien", 'ana-maria_2', '  Daniyal  ', 'José'])(
+    'takes %j',
+    (name) => {
+      expect(approverNameSchema.parse(name)).toBe(name.trim());
+    },
+  );
+
+  it.each(['', '   ', 'system:timed_out', 'ui:arjun', '-arjun', 'a'.repeat(41), 'x<script>'])(
+    'refuses %j',
+    (name) => {
+      expect(approverNameSchema.safeParse(name).success).toBe(false);
+    },
+  );
+
+  it('keeps a person apart from the server', () => {
+    const people = deciderFor('arjun');
+    expect(people).toBe('ui:arjun');
+    expect(Object.values(SYSTEM_DECIDERS)).not.toContain(people);
+    for (const system of Object.values(SYSTEM_DECIDERS)) {
+      expect(approverNameSchema.safeParse(system).success).toBe(false);
+    }
   });
 });

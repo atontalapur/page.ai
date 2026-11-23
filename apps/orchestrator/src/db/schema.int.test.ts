@@ -38,6 +38,12 @@ async function newRun(tier: 1 | 2 | 3 = 1): Promise<string> {
   return run.id;
 }
 
+const issueOf = async (runId: string) =>
+  (await db.selectFrom('runs').select('issue_id').where('id', '=', runId).executeTakeFirstOrThrow())
+    .issue_id;
+
+const inAMinute = () => new Date(Date.now() + 60_000);
+
 describe('orchestrator tables on real Postgres', () => {
   it('stores an issue and its events through IssuesService, as contracts records', async () => {
     const fingerprint = `int-${randomUUID()}`;
@@ -205,7 +211,13 @@ describe('orchestrator tables on real Postgres', () => {
     const runId = await newRun(3);
     const { id } = await db
       .insertInto('approvals')
-      .values({ run_id: runId, action: 'ops.restart', args: JSON.stringify({ dryRun: false }) })
+      .values({
+        run_id: runId,
+        issue_id: await issueOf(runId),
+        action: 'ops.restart',
+        args: JSON.stringify({ dryRun: false }),
+        expires_at: inAMinute(),
+      })
       .returning('id')
       .executeTakeFirstOrThrow();
 
@@ -218,12 +230,14 @@ describe('orchestrator tables on real Postgres', () => {
       return approvalSchema.parse({
         id: row.id,
         runId: row.run_id,
+        issueId: row.issue_id,
         action: row.action,
         args: row.args,
         decision: row.decision,
         decidedBy: row.decided_by,
         decidedAt: iso(row.decided_at),
         requestedAt: iso(row.requested_at),
+        expiresAt: iso(row.expires_at),
       });
     };
 
@@ -243,20 +257,17 @@ describe('orchestrator tables on real Postgres', () => {
       .insertInto('escalations')
       .values({ run_id: runId, from_tier: 2, to_tier: 3, reason: 'needs_higher_tier', note })
       .execute();
-    await db.insertInto('approvals').values({ run_id: runId, action: 'ops.restart' }).execute();
-    const { issue_id } = await db
-      .selectFrom('runs')
-      .select('issue_id')
-      .where('id', '=', runId)
-      .executeTakeFirstOrThrow();
+    const issue_id = await issueOf(runId);
+    await db
+      .insertInto('approvals')
+      .values({ run_id: runId, issue_id, action: 'ops.restart', expires_at: inAMinute() })
+      .execute();
 
     // 23001 is restrict_violation: ON DELETE RESTRICT, not a missing row or a cascade.
     const deleteIssue = () => db.deleteFrom('issues').where('id', '=', issue_id).execute();
     const deleteRun = () => db.deleteFrom('runs').where('id', '=', runId).execute();
     await expect(deleteIssue()).rejects.toMatchObject({ code: '23001' });
-    await expect(deleteRun()).rejects.toMatchObject({ code: '23001' });
-    await db.deleteFrom('approvals').where('run_id', '=', runId).execute();
-    // The escalation alone still holds the run.
+    // The escalation holds the run; an approval doesn't (007).
     await expect(deleteRun()).rejects.toMatchObject({ code: '23001' });
 
     const runs = await db.selectFrom('runs').select('id').where('id', '=', runId).execute();
@@ -266,6 +277,25 @@ describe('orchestrator tables on real Postgres', () => {
       .where('run_id', '=', runId)
       .execute();
     expect([runs.length, escalations.length]).toEqual([1, 1]);
+
+    // An approval holds its issue with no runs row: a run in progress asks before it has one.
+    const asking = await db
+      .insertInto('issues')
+      .values({ fingerprint: `int-${randomUUID()}`, title: 'x', status: 'fixing', current_tier: 3 })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    await db
+      .insertInto('approvals')
+      .values({
+        run_id: randomUUID(),
+        issue_id: asking.id,
+        action: 'ops.restart',
+        expires_at: inAMinute(),
+      })
+      .execute();
+    await expect(
+      db.deleteFrom('issues').where('id', '=', asking.id).execute(),
+    ).rejects.toMatchObject({ code: '23001' });
 
     // An issue's event log holds it too, even with no runs.
     const { issue } = await service.report({ fingerprint: `int-${randomUUID()}`, title: 'x' });

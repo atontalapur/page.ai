@@ -156,14 +156,46 @@ export type Escalation = z.infer<typeof escalationSchema>;
 
 const approvalBase = {
   id: idSchema,
+  // The fix job's id, as `runs.id`. A Tier 3 run asks while it is in progress, before it has
+  // a `runs` row, so this names the run without referencing one.
   runId: idSchema,
+  issueId: idSchema,
   // The host tool the agent wants to run, e.g. `ops.restart`, and its arguments.
   action: z.string().min(1),
   args: z.record(z.string(), z.unknown()),
   requestedAt: timestampSchema,
+  // When the daemon stops waiting. The server refuses a decision after it, and rejects the
+  // request as timed out.
+  expiresAt: timestampSchema,
 };
 
 export const APPROVAL_DECISIONS = ['approved', 'rejected'] as const;
+
+/**
+ * `decidedBy` for a request the server closed itself: no one decided before it expired, or
+ * the run stopped waiting (it finished, was killed, or is no longer its issue's run). A
+ * person is `ui:<name>` (deciderFor), and a name can't hold a colon, so neither passes for
+ * the other.
+ */
+export const SYSTEM_DECIDERS = {
+  timedOut: 'system:timed_out',
+  runEnded: 'system:run_ended',
+} as const;
+
+/**
+ * The name a person gives the UI before they approve or reject anything, sent as `auth.name`
+ * in the tab's socket handshake. Letters, digits, spaces and `.'_-`, starting with a letter
+ * or digit.
+ */
+export const approverNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(40)
+  .regex(/^[\p{L}\p{N}][\p{L}\p{N} .'_-]*$/u, "letters, digits, spaces and .'_- only");
+
+/** `decidedBy` for a person, from the name their tab connected with. */
+export const deciderFor = (name: string) => `ui:${name}`;
 
 export const pendingApprovalSchema = z.strictObject({
   ...approvalBase,
@@ -175,7 +207,8 @@ export const pendingApprovalSchema = z.strictObject({
 export const decidedApprovalSchema = z.strictObject({
   ...approvalBase,
   decision: z.enum(APPROVAL_DECISIONS),
-  // Set by the server from the deciding socket's identity, never from a client payload.
+  // Set by the server from the deciding socket's identity, never from a client payload:
+  // `ui:<name>` for a person, or one of SYSTEM_DECIDERS.
   decidedBy: z.string().min(1),
   decidedAt: timestampSchema,
 });
