@@ -166,6 +166,18 @@ describe('AgentWorkspacePage', () => {
     expect(within(getCard('Human Review')).getByText('Decision: Approved')).toBeTruthy();
   });
 
+  it('keeps the awaiting task in view when a new task is queued behind it', () => {
+    renderWorkspace('AG-002', { agentId: 'AG-002', incidentId: null });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Seed Task' }));
+
+    expect(getAgentStatusBadge('Fix Agent').textContent).toBe('Awaiting Approval');
+    expect(within(getCard('Current Incident')).getByRole('link', { name: 'INC-003' })).toBeTruthy();
+    expect(within(getCard('Human Review')).getByText('TASK-002 · INC-003')).toBeTruthy();
+    expect(screen.getByText('src/workers/task.ts')).toBeTruthy();
+    expect(screen.queryByText('No execution is available for this agent.')).toBeNull();
+  });
+
   it("shows execution data for the agent's own incident", () => {
     renderWorkspace('AG-002');
 

@@ -109,8 +109,8 @@ describe('DashboardPage', () => {
   it('gives incident badges dark mode variants', () => {
     renderDashboard();
 
-    expect(screen.getAllByText('Critical')[0]!.className).toContain('dark:bg-red-950');
-    expect(screen.getAllByText('Investigating')[0]!.className).toContain('dark:bg-purple-950');
+    expect(screen.getAllByText('Critical')[0]!.className).toContain('dark:border-red-900');
+    expect(screen.getAllByText('Investigating')[0]!.className).toContain('dark:border-purple-900');
   });
 
   it('renders the AgentOverview component', () => {

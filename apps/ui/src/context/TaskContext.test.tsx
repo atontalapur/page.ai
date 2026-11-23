@@ -132,7 +132,7 @@ describe('TaskContext', () => {
     ]);
   });
 
-  it('picks the active task in Running, Queued, Awaiting Approval order', () => {
+  it('picks the active task in Running, Awaiting Approval, Queued order', () => {
     const { result } = renderHook(() => useTasks(), {
       wrapper,
     });
@@ -158,11 +158,14 @@ describe('TaskContext', () => {
       runningId = result.current.createTask(input).id;
     });
 
+    expect(result.current.getActiveAgentTask('AG-003')?.id).toBe(awaitingId);
+
     act(() => {
       result.current.updateTaskStatus(awaitingId, 'Awaiting Approval');
     });
 
-    expect(result.current.getActiveAgentTask('AG-003')?.id).toBe(queuedId);
+    // Work waiting on a human outranks work that hasn't started.
+    expect(result.current.getActiveAgentTask('AG-003')?.id).toBe(awaitingId);
 
     act(() => {
       result.current.updateTaskStatus(runningId, 'Running');
@@ -172,25 +175,29 @@ describe('TaskContext', () => {
 
     act(() => {
       result.current.updateTaskStatus(runningId, 'Completed');
-      result.current.updateTaskStatus(queuedId, 'Failed');
+      result.current.updateTaskStatus(awaitingId, 'Completed');
     });
 
-    expect(result.current.getActiveAgentTask('AG-003')?.id).toBe(awaitingId);
+    expect(result.current.getActiveAgentTask('AG-003')?.id).toBe(queuedId);
   });
 
-  it('keeps its functions stable across task updates', () => {
-    const { result } = renderHook(() => useTasks(), {
+  it('keeps the context value stable until the tasks change', () => {
+    const { result, rerender } = renderHook(() => useTasks(), {
       wrapper,
     });
 
-    const { createTask, updateTaskStatus, getAgentTasks } = result.current;
+    const first = result.current;
+
+    rerender();
+
+    expect(result.current).toBe(first);
 
     act(() => {
       result.current.updateTaskStatus('TASK-001', 'Awaiting Approval');
     });
 
-    expect(result.current.createTask).toBe(createTask);
-    expect(result.current.updateTaskStatus).toBe(updateTaskStatus);
-    expect(result.current.getAgentTasks).not.toBe(getAgentTasks);
+    expect(result.current).not.toBe(first);
+    expect(result.current.createTask).toBe(first.createTask);
+    expect(result.current.updateTaskStatus).toBe(first.updateTaskStatus);
   });
 });

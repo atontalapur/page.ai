@@ -396,13 +396,16 @@ export default function AgentWorkspacePage() {
                       {test.passed ? (
                         <Badge
                           variant="outline"
-                          className="border-green-200 bg-green-100 text-green-700"
+                          className="border-green-200 bg-green-100 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300"
                         >
                           <CheckCircle2 className="mr-1 size-3" />
                           Passed
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="border-red-200 bg-red-100 text-red-700">
+                        <Badge
+                          variant="outline"
+                          className="border-red-200 bg-red-100 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+                        >
                           <XCircle className="mr-1 size-3" />
                           Failed
                         </Badge>

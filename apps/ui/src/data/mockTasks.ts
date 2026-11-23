@@ -62,11 +62,13 @@ export function getTasksByAgent(tasks: AgentTask[], agentId: string): AgentTask[
   return tasks.filter((task) => task.agentId === agentId);
 }
 
-const activeStatusOrder: TaskStatus[] = ['Running', 'Queued', 'Awaiting Approval'];
+const activeStatusOrder: TaskStatus[] = ['Running', 'Awaiting Approval', 'Queued'];
 
 /**
  * The task an agent is working on: its first Running task, else its first
- * Queued task, else its first Awaiting Approval task.
+ * Awaiting Approval task, else its first Queued task. Work waiting on a
+ * reviewer outranks work that hasn't started, so the workspace keeps showing
+ * the changes Human Review asks about.
  */
 export function getActiveTask(tasks: AgentTask[], agentId: string): AgentTask | undefined {
   const agentTasks = getTasksByAgent(tasks, agentId);
