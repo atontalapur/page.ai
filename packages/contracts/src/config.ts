@@ -155,6 +155,9 @@ export const nodeConfigSchema = envSchema(
         .default('pgboss'),
       // Built from infra/sandbox/Dockerfile.
       SANDBOX_IMAGE: z.string().min(1).default('page-sandbox'),
+      // docker: one container per run (ADR 0001). local: one workspace in the daemon's own
+      // container, run as an unprivileged user, for hosts without Docker such as Railway.
+      SANDBOX_RUNTIME: z.enum(['docker', 'local']).default('docker'),
       OPENROUTER_API_KEY: secret.optional(),
       // An OpenRouter model id, e.g. `openai/gpt-5-mini`.
       OPENROUTER_MODEL: z.string().min(1).optional(),

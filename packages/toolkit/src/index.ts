@@ -31,6 +31,8 @@ export { MAX_RESTARTS, MAX_SETTING_VALUE, OpsHostTools } from './ops/host-tools.
 export type { OpsHostToolsOptions, OpsUndo } from './ops/host-tools.ts';
 export { liveAppKey, liveAppLockDir, tryLockLiveApp } from './ops/live-app-lock.ts';
 export { DockerExecRunner } from './exec/docker-runner.ts';
+export { UserExecRunner } from './exec/user-runner.ts';
+export type { UserExecRunnerOptions } from './exec/user-runner.ts';
 export type { DockerExecRunnerOptions } from './exec/docker-runner.ts';
 export { FakeRunner } from './exec/fake-runner.ts';
 export type { ExecRunner, RunRequest, RunResult } from './exec/runner.ts';

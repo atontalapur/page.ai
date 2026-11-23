@@ -96,11 +96,20 @@ describe('nodeConfigSchema', () => {
     expect(() => nodeConfigSchema.parse(env)).toThrow(/GITHUB_TOKEN/);
   });
 
-  it('defaults the pg-boss schema and sandbox image', () => {
+  it('defaults the pg-boss schema, sandbox image and sandbox runtime', () => {
     expect(nodeConfigSchema.parse(nodeEnvFixture)).toMatchObject({
       PGBOSS_SCHEMA: 'pgboss',
       SANDBOX_IMAGE: 'page-sandbox',
+      SANDBOX_RUNTIME: 'docker',
     });
+  });
+
+  it('takes the local sandbox runtime and refuses an unknown one', () => {
+    const local = nodeConfigSchema.parse({ ...nodeEnvFixture, SANDBOX_RUNTIME: 'local' });
+    expect(local.SANDBOX_RUNTIME).toBe('local');
+    expect(() => nodeConfigSchema.parse({ ...nodeEnvFixture, SANDBOX_RUNTIME: 'vm' })).toThrow(
+      /SANDBOX_RUNTIME/,
+    );
   });
 
   it('requires a model when real adapters are on, but not with fakes', () => {

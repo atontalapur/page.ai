@@ -4,12 +4,14 @@ import type pg from 'pg';
 import { pino } from 'pino';
 import { describe, expect, it, vi } from 'vitest';
 import { loadConfig } from './config.ts';
-import { createDaemon, opsFor, opsLockFor, type Adapters } from './daemon.ts';
+import { createDaemon, opsFor, opsLockFor, sandboxesFor, type Adapters } from './daemon.ts';
 import { FakeJobSource } from './jobs/fake-job-source.ts';
 import { FakeLink } from './link/fake-link.ts';
 import { bashReply, ScriptedModel, submitReply } from './model/scripted-model.ts';
 import { FakeRunResults } from './run/results.ts';
+import { DockerSandboxes } from './sandbox/docker-sandboxes.ts';
 import { FakeSandboxes } from './sandbox/fake-sandboxes.ts';
+import { LocalSandboxes } from './sandbox/local-sandboxes.ts';
 import type { Sandboxes } from './sandbox/sandbox.ts';
 
 function adapters() {
@@ -157,6 +159,21 @@ describe('createDaemon', () => {
     await daemon.start();
     await a.jobs.deliver({ ...jobFixtures.fix, tier: 3 });
     expect(ops.calls).toEqual(['getConfig']);
+  });
+});
+
+describe('sandboxesFor', () => {
+  const config = (env: Record<string, string>) => {
+    const result = loadConfig({ ...nodeEnvFixture, ...env });
+    if (!result.ok) throw new Error(result.error);
+    return result.value;
+  };
+
+  it('uses a container per run by default, the local workspace on request, and fakes over both', () => {
+    expect(sandboxesFor(config({}))).toBeInstanceOf(DockerSandboxes);
+    expect(sandboxesFor(config({ SANDBOX_RUNTIME: 'local' }))).toBeInstanceOf(LocalSandboxes);
+    const fake = config({ SANDBOX_RUNTIME: 'local', USE_FAKE_ADAPTERS: 'true' });
+    expect(sandboxesFor(fake)).toBeInstanceOf(FakeSandboxes);
   });
 });
 
