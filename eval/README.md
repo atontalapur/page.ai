@@ -299,11 +299,71 @@ The first staging run (2026-11-19, `results/e2e/2026-11-20T01-06-15Z-staging-016
 passed 3 of 3 in a row. Each issue opened 3 to 6 s after the trigger, triage took up to 3 s,
 the claim under 4 s, and the Tier 1 fix 2m29s to 4m16s. Each run's patch fixed the query and
 added a test. Triage filed the bug as `backend-api` where the scenario says `database`, which
-the test reports as a warning.
+the test reports as a warning. That was the rule fallback reading only the title (#159, next
+section).
 
 On both targets, the daemon has to run `SANDBOX_IMAGE=page-sandbox:demo` built for the same
 scenario, and page-demo `main` has to hold the same tree (`demo-sync.sh <id>`), or the PR's
 diff carries more than the fix.
+
+### Triage classes (#159)
+
+Staging filed 016 (`database`) and 029 (`infra-config`) as `backend-api/high`, the rules'
+answer for a title with no keyword in it. Triage now classifies from the stored report
+(`apps/orchestrator/src/triage/`). The table is the class each path gives every scenario
+from what ingest stores for it. `apps/orchestrator/src/triage/scenarios.test.ts` rebuilds
+each scenario's PostHog webhook from its report and checks the rules column, with source
+frames and with the compiled `.next/server` frames staging sends; both give the same
+classes. The model column is one run of `openai/gpt-4o-mini` (the default `TRIAGE_MODEL`) at
+temperature 0 on the compiled frames, which cost $0.0024. A miss is in bold.
+
+| Scenario | Class        | Rules        | Model        |
+| -------- | ------------ | ------------ | ------------ |
+| 001      | frontend     | frontend     | frontend     |
+| 002      | frontend     | frontend     | frontend     |
+| 003      | frontend     | frontend     | frontend     |
+| 004      | backend-api  | backend-api  | backend-api  |
+| 005      | backend-api  | backend-api  | backend-api  |
+| 006      | backend-api  | **database** | **database** |
+| 007      | database     | database     | database     |
+| 008      | database     | database     | database     |
+| 009      | infra-config | infra-config | infra-config |
+| 010      | infra-config | infra-config | infra-config |
+| 011      | frontend     | frontend     | frontend     |
+| 012      | frontend     | frontend     | frontend     |
+| 013      | backend-api  | backend-api  | backend-api  |
+| 014      | backend-api  | **database** | **database** |
+| 015      | database     | database     | database     |
+| 016      | database     | database     | database     |
+| 017      | database     | database     | database     |
+| 018      | infra-config | infra-config | infra-config |
+| 019      | infra-config | infra-config | infra-config |
+| 020      | infra-config | infra-config | infra-config |
+| 021      | frontend     | frontend     | frontend     |
+| 022      | frontend     | frontend     | **database** |
+| 023      | frontend     | frontend     | frontend     |
+| 024      | backend-api  | backend-api  | **database** |
+| 025      | backend-api  | backend-api  | **frontend** |
+| 026      | backend-api  | backend-api  | **database** |
+| 027      | database     | database     | database     |
+| 028      | database     | database     | database     |
+| 029      | infra-config | infra-config | infra-config |
+| 030      | infra-config | infra-config | infra-config |
+| Right    |              | 28 of 30     | 24 of 30     |
+
+| Class        | Scenarios | Rules right | Model right |
+| ------------ | --------- | ----------- | ----------- |
+| frontend     | 8         | 8           | 7           |
+| backend-api  | 8         | 6           | 3           |
+| database     | 7         | 7           | 7           |
+| infra-config | 7         | 7           | 7           |
+
+Both miss 006 and 014: a Postgres constraint or missing-column error whose bug is in the
+route's logic, which nothing in the report shows. The model also files 022, 024 and 026, where
+Postgres rejected a value the code passed it, as `database`, and 025 as `frontend`, since its
+error names a page path. When the model answers, its class stands, so staging gets the model
+column; the rules answer without a key or when the call fails. Both were written with these 30
+reports in view, so the counts overstate how either does on a new bug.
 
 ### Environment
 

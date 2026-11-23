@@ -44,9 +44,11 @@ demo app --errors--> PostHog --webhook--> orchestrator --call + SMS--> on-call (
    group by fingerprint. The stored report keeps the request line, the exception and its in-app
    frames, and drops bodies, headers, cookies, query values and email addresses, since a Tier 2
    run puts it in a public PR.
-2. Triage. A cheap OpenRouter model sets the class (frontend, backend/API, database or
-   infra/config) and the severity. Rules take over when the model times out or replies with
-   junk. The orchestrator then calls and texts on-call through Twilio with a dashboard link.
+2. Triage. A cheap OpenRouter model reads the stored report and sets the class (frontend,
+   backend/API, database or infra/config) and the severity. Rules over the same report take
+   over when the model times out or replies with junk, and their severity is a floor under
+   the model's. The orchestrator then calls and texts on-call through Twilio with a dashboard
+   link.
 3. Fix. With `AUTO_START_FIX=true`, triage queues a Tier 1 fix job, at most
    `AUTO_START_FIX_MAX_PER_HOUR` (default 5) an hour. The node daemon claims it, starts a
    sandbox container and runs the agent, a TypeScript port of
