@@ -208,11 +208,13 @@ says why those four). `ApprovalsModule` holds the requests and their decisions i
 `approvals` table, and `ApprovalRelay` in the gateway sends each change out.
 
 - **Request.** The daemon sends `node.approval.request` with an id it picked, the run, the
-  tool, its arguments and `expiresAt`, when it stops waiting. `ApprovalsService.request`
-  stores it pending under the issue whose run it is, holding `expiresAt` to
-  `MAX_APPROVAL_WAIT_MS` (15 minutes), and every tab gets `approval.requested`. A request
-  from a run that is no longer its issue's run in progress is stored rejected and answered at
-  once. One for a run no issue knows is dropped.
+  tool, its arguments, `expiresAt`, when it stops waiting, and `reason`, the agent's own words
+  for why (at most 1,000 characters; `approvals.reason`, `011_approval_reason.sql`). The server
+  runs the reason through `approvalReason` again and stores null for a daemon that sends none.
+  `ApprovalsService.request` stores it pending under the issue whose run it is, holding
+  `expiresAt` to `MAX_APPROVAL_WAIT_MS` (15 minutes), and every tab gets
+  `approval.requested`. A request from a run that is no longer its issue's run in progress is
+  stored rejected and answered at once. One for a run no issue knows is dropped.
 - **Decision.** A tab sends `approval.decide` with the id and `approved` or `rejected`. The
   server records it as `ui:<name>` (identity, below), every tab gets `approval.updated`, and
   the daemon holding the run gets `approval.decided`. The update is conditional on the row

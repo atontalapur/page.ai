@@ -235,9 +235,26 @@ GitHub tools, which only reach the run's own branch and PR.
 
 `execute()` asks after the tier check and before the step opens. The daemon sends
 `node.approval.request` with the tool, its arguments (a rollback also names the live
-deployment and the one it would deploy, from the run's last plan) and `expiresAt`, and waits
-for the `approval.decided` that answers it. The orchestrator shows the request on the
+deployment and the one it would deploy, from the run's last plan), `expiresAt` and `reason`,
+and waits for the `approval.decided` that answers it. The orchestrator shows the request on the
 incident page.
+
+`reason` is the model's THOUGHT for the step that asked, so the person sees why the agent
+wants the call. `approvalReason` in `@page/contracts` drops control characters and
+bidirectional marks, trims it and clips it to 1,000 characters (`MAX_APPROVAL_REASON_CHARS`);
+it is null when the model wrote none. It is the model's text, and the model read an error
+report anyone could have shaped, so the incident page shows it as plain text, labeled as the
+agent's own words.
+
+The agent knows its changes wait. When a person answers (`LinkApprovals`) and the run has a
+gated tool, the Tier 3 task prompt gets a "Changes a person approves" section: which blocks
+wait, that the person reads the THOUGHT before the block, that a wait can take a few minutes of
+the run's time, to read the settings first and restart once after its last change, and that a
+rejection or no answer comes back refused. Then it shouldn't ask for the same change again: it
+tries another fix, or submits so the run goes to a person. With `AUTO_APPROVE_OPS`, in the eval,
+on a node with no ops API and below Tier 3, the prompt has no such section.
+`packages/agent/src/eval-prompt.test.ts` pins the prompts an auto-approved run sees to hashes
+of the ones the recorded eval runs used.
 
 - **Approved**: the tool runs with what is left of the command's time limit.
 - **Rejected**: the step is a refusal, `refused: ops.restart was not approved: arjun
