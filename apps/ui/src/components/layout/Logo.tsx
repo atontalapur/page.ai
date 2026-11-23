@@ -1,7 +1,7 @@
 /**
- * The Page.AI mark: a P drawn as one spline, stem flowing into the bowl, with a page going
- * out beside it as two broadcast arcs. Strokes take the text colour, so it works in both
- * themes.
+ * The Page.AI mark: four rounded corner brackets, open at the middle of each side, framing
+ * a filled page. Both take the text colour, the page at reduced opacity, so it works in
+ * both themes.
  */
 export function LogoMark({ className }: { className?: string }) {
   return (
@@ -9,38 +9,36 @@ export function LogoMark({ className }: { className?: string }) {
       viewBox="0 0 32 32"
       fill="none"
       stroke="currentColor"
+      strokeWidth="2.4"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       className={className}
     >
-      {/* The P: up the stem, over the bowl, and back in to meet it in one curve. */}
-      <path
-        d="M8 27.5V11.5C8 7.36 11.13 4 15.25 4C19.37 4 22.5 7.13 22.5 11C22.5 14.87 19.37 18 15.5 18C13.6 18 12 17.3 10.9 16.1"
-        strokeWidth="2.6"
+      <rect
+        x="6.6"
+        y="6.6"
+        width="18.8"
+        height="18.8"
+        rx="3.2"
+        fill="currentColor"
+        stroke="none"
+        opacity="0.42"
       />
-      {/* The page going out. */}
-      <path
-        d="M25.6 7.2C27.1 8.6 27.9 10.3 27.9 12C27.9 13.7 27.1 15.4 25.6 16.8"
-        strokeWidth="2.2"
-      />
-      <path
-        d="M28.6 4.6C30.6 6.6 31.6 9.2 31.6 12C31.6 14.8 30.6 17.4 28.6 19.4"
-        strokeWidth="1.6"
-        opacity="0.45"
-      />
+      <path d="M2.8 12.4V9.2A6.4 6.4 0 0 1 9.2 2.8H12.4" />
+      <path d="M19.6 2.8H22.8A6.4 6.4 0 0 1 29.2 9.2V12.4" />
+      <path d="M29.2 19.6V22.8A6.4 6.4 0 0 1 22.8 29.2H19.6" />
+      <path d="M12.4 29.2H9.2A6.4 6.4 0 0 1 2.8 22.8V19.6" />
     </svg>
   );
 }
 
-/** The mark with the wordmark beside it. */
+/** The mark alone; the name is there for screen readers. */
 export default function Logo() {
   return (
-    <span className="flex items-center gap-2">
+    <span className="flex items-center">
       <LogoMark className="size-7 text-foreground" />
-      <span className="text-[17px] font-semibold tracking-tight">
-        Page<span className="text-muted-foreground">.AI</span>
-      </span>
+      <span className="sr-only">Page.AI</span>
     </span>
   );
 }

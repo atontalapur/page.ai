@@ -6,6 +6,7 @@ import IncidentsPage from '../pages/IncidentsPage';
 import IncidentDetailsPage from '../pages/IncidentDetailsPage';
 import DebuggingPage from '../pages/DebuggingPage';
 import KnowledgePage from '../pages/KnowledgePage';
+import SettingsPage from '../pages/SettingsPage';
 import AgentsPage from '../pages/AgentsPage';
 import AgentWorkspacePage from '../pages/AgentWorkspacePage';
 import { IssuesProvider } from '../context/IssuesContext';
@@ -37,6 +38,7 @@ export default function App() {
 
             <Route path="/knowledge" element={<KnowledgePage />} />
             <Route path="/debug" element={<DebuggingPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
 
             <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />
           </Routes>

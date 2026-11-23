@@ -99,9 +99,13 @@ describe('nodeConfigSchema', () => {
     expect(() => nodeConfigSchema.parse(spaced)).toThrow(/NODE_NAME/);
   });
 
-  it('requires GitHub credentials when real adapters are on', () => {
-    const env = { ...nodeEnvFixture, GITHUB_TOKEN: undefined };
-    expect(() => nodeConfigSchema.parse(env)).toThrow(/GITHUB_TOKEN/);
+  it('requires the demo repo when real adapters are on, but not a token', () => {
+    const env = { ...nodeEnvFixture, GITHUB_REPO: undefined };
+    expect(() => nodeConfigSchema.parse(env)).toThrow(/GITHUB_REPO/);
+    // The GitHub App's installation tokens come from the orchestrator.
+    expect(() =>
+      nodeConfigSchema.parse({ ...nodeEnvFixture, GITHUB_TOKEN: undefined }),
+    ).not.toThrow();
   });
 
   it('defaults the pg-boss schema, sandbox image and sandbox runtime', () => {

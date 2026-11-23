@@ -14,3 +14,4 @@ export * from './webhook.ts';
 export * from './xml.ts';
 export * from './knowledge.ts';
 export * from './decisions.ts';
+export * from './github.ts';

@@ -80,10 +80,17 @@ demo app --errors--> PostHog --webhook--> orchestrator --call + SMS--> on-call (
 A Tier 1 agent can't push, so when its fix succeeds the daemon pushes it and opens the PR
 itself. Every successful code fix reaches a person as a PR to merge.
 
-The PR is where a fix is reviewed. Merging it approves the fix; requesting changes or
-closing it rejects the fix, and the review, its inline comments and the PR's conversation
-become the next tier's starting note. The dashboard's Approve and Reject remain only for a
-fix with no PR.
+The PR is where a fix is reviewed. Approving or merging it approves the fix; requesting
+changes or closing it rejects the fix, and the review, its inline comments and the PR's
+conversation become the next tier's starting note. On a PR you opened yourself, comment
+`/approve` or `/reject`. Ask the bot a question in a comment and it answers there, from the
+run's steps, its diff and the knowledge graph. The dashboard's Approve and Reject remain only
+for a fix with no PR.
+
+The agents act on GitHub as a GitHub App, created from the dashboard's Settings page with
+GitHub's manifest flow, so their PRs come from `<app>[bot]`. The orchestrator keeps the app's
+private key encrypted (`SECRETS_KEY`) and hands the node hour-long installation tokens; no
+personal token is needed once it is installed.
 
 `typesafe/jev-1.14`, a decisions model, classifies each issue and picks the tier its first
 fix starts at. When a fix scores under its tier's threshold, jev decides whether to retry

@@ -77,6 +77,8 @@ const schema = envSchema(
     JEV_MODEL: z.string().min(1).default('typesafe/jev-1.14'),
     // Embeds the knowledge graph's nodes and search queries.
     EMBEDDING_MODEL: z.string().min(1).default('qwen/qwen3-embedding-8b'),
+    // Answers reviewers' questions on the bot's PRs.
+    ANSWER_MODEL: z.string().min(1).default('deepseek/deepseek-v4.1-flash'),
     // The demo repo's PRs: their merges and reviews approve or reject a fix. Set together.
     GITHUB_TOKEN: z.string().trim().min(1).optional(),
     GITHUB_REPO: z
@@ -84,6 +86,9 @@ const schema = envSchema(
       .regex(/^[\w.-]+\/[\w.-]+$/, 'must be owner/name')
       .optional(),
     GITHUB_WEBHOOK_SECRET: z.string().trim().min(16).optional(),
+    // Encrypts the GitHub App's private key and webhook secret in Postgres. Without it, the
+    // dashboard can't create the app.
+    SECRETS_KEY: z.string().trim().min(32).optional(),
     TRIAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(8_000),
     // Triage sends start_fix after classifying, so a node daemon picks the issue up (#136).
     // Off by default: each fix run spends model budget, so a deploy opts in.
@@ -152,8 +157,11 @@ export interface Config {
   triageTimeoutMs: number;
   jevModel: string;
   embeddingModel: string;
+  answerModel: string;
   /** Set when the demo repo's PR webhook is set up; unset, only the dashboard decides. */
   github: GitHubReview | undefined;
+  /** Encrypts the GitHub App's secrets at rest. */
+  secretsKey: string | undefined;
   /** Start a Tier 1 fix as soon as triage has classified an issue. */
   autoStartFix: boolean;
   /** Fix starts in the last hour, manual ones included, past which triage won't start one. */
@@ -249,7 +257,9 @@ export function loadConfig(env: Env = process.env): Config {
     triageTimeoutMs: config.TRIAGE_TIMEOUT_MS,
     jevModel: config.JEV_MODEL,
     embeddingModel: config.EMBEDDING_MODEL,
+    answerModel: config.ANSWER_MODEL,
     github: githubReview(config),
+    secretsKey: config.SECRETS_KEY,
     autoStartFix: config.AUTO_START_FIX,
     autoStartFixMaxPerHour: config.AUTO_START_FIX_MAX_PER_HOUR,
     dashboardUrl: config.DASHBOARD_URL,

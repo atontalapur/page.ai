@@ -3,8 +3,10 @@ import { ApiTokens } from './auth/api-tokens.ts';
 import type { AppDeps } from './deps.ts';
 import { IssueUpdates } from './issues/issue-updates.ts';
 import { DecisionsService } from './decisions/decisions.service.ts';
+import { GitHubAppService } from './github/github-app.service.ts';
 import { IssuesService } from './issues/issues.service.ts';
 import {
+  ANSWERER,
   CLASSIFIER,
   CONFIG,
   DB,
@@ -35,11 +37,13 @@ export class CoreModule {
         { provide: DECIDER, useValue: deps.decider },
         { provide: EMBEDDER, useValue: deps.embedder },
         { provide: GITHUB, useValue: deps.github },
+        { provide: ANSWERER, useValue: deps.answerer },
         // One instance, so HTTP and the UI socket count an address's wrong tokens together.
         { provide: ApiTokens, useValue: new ApiTokens(deps.config, deps.logger) },
         IssueUpdates,
         IssuesService,
         DecisionsService,
+        GitHubAppService,
       ],
       exports: [
         ApiTokens,
@@ -53,9 +57,11 @@ export class CoreModule {
         DECIDER,
         EMBEDDER,
         GITHUB,
+        ANSWERER,
         IssueUpdates,
         IssuesService,
         DecisionsService,
+        GitHubAppService,
       ],
     };
   }

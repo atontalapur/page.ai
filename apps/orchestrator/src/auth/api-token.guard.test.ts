@@ -31,6 +31,8 @@ const routes = [
   { method: 'GET', url: '/kg/node?key=file:x.ts' },
   { method: 'POST', url: '/kg/search', payload: { query: 'cart' } },
   { method: 'POST', url: '/kg/seed' },
+  { method: 'GET', url: '/github/app' },
+  { method: 'POST', url: '/github/app/manifest' },
 ] as const;
 
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -94,5 +96,21 @@ describe('API token', () => {
   it('answers 404 on the GitHub webhook while GitHub is not set up', async () => {
     const res = await app.inject({ method: 'POST', url: '/ingest/github', payload: {} });
     expect(res.statusCode).toBe(404);
+  });
+
+  it("hands GitHub tokens only to a node with the node's secret", async () => {
+    const withApiToken = await app.inject({
+      method: 'GET',
+      url: '/github/token',
+      headers: bearer(testConfig.apiToken ?? ''),
+    });
+    expect(withApiToken.statusCode).toBe(401);
+    // Past the guard: no app is installed in tests.
+    const withSecret = await app.inject({
+      method: 'GET',
+      url: '/github/token',
+      headers: bearer(testConfig.nodeSharedSecret ?? ''),
+    });
+    expect(withSecret.statusCode).toBe(404);
   });
 });

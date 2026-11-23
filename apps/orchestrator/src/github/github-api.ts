@@ -14,6 +14,12 @@ export interface GitHubApi {
   files(commitSha: string): Promise<{ path: string; sha: string; size: number }[]>;
   /** A blob's text. */
   text(blobSha: string): Promise<string>;
+  /** A PR's branch, for a comment event, whose payload names only the PR's number. */
+  headRef(pr: number): Promise<string>;
+  /** Posts to the PR's conversation. */
+  comment(pr: number, body: string): Promise<void>;
+  /** Replies in the thread of an inline review comment. */
+  replyToReviewComment(pr: number, commentId: number, body: string): Promise<void>;
 }
 
 export interface ReviewComment {
@@ -44,12 +50,22 @@ const issueCommentsSchema = z.array(
 
 const TIMEOUT_MS = 15_000;
 
-/** GitHub's REST API with a token that can read and close the demo repo's PRs. */
+/**
+ * GitHub's REST API with a token that can read and close the demo repo's PRs: a fixed one,
+ * or a function asked before each request, for a GitHub App's installation token.
+ */
 export class RestGitHubApi implements GitHubApi {
   constructor(
-    private readonly token: string,
+    private readonly token: string | (() => Promise<string>),
     private readonly repo: string,
   ) {}
+
+  async headRef(pr: number): Promise<string> {
+    const body = z
+      .object({ head: z.object({ ref: z.string() }) })
+      .parse(await this.request('GET', `/pulls/${pr}`));
+    return body.head.ref;
+  }
 
   async reviewComments(pr: number, reviewId: number): Promise<ReviewComment[]> {
     const rows = reviewCommentsSchema.parse(
@@ -68,6 +84,14 @@ export class RestGitHubApi implements GitHubApi {
       await this.request('GET', `/issues/${pr}/comments?per_page=100`),
     );
     return rows.map((c) => ({ author: c.user?.login ?? 'ghost', body: c.body ?? '' }));
+  }
+
+  async comment(pr: number, body: string): Promise<void> {
+    await this.request('POST', `/issues/${pr}/comments`, { body });
+  }
+
+  async replyToReviewComment(pr: number, commentId: number, body: string): Promise<void> {
+    await this.request('POST', `/pulls/${pr}/comments/${commentId}/replies`, { body });
   }
 
   async close(pr: number, comment: string): Promise<void> {
@@ -110,10 +134,11 @@ export class RestGitHubApi implements GitHubApi {
   }
 
   private async request(method: string, path: string, body?: object): Promise<unknown> {
+    const token = typeof this.token === 'string' ? this.token : await this.token();
     const res = await fetch(`https://api.github.com/repos/${this.repo}${path}`, {
       method,
       headers: {
-        authorization: `Bearer ${this.token}`,
+        authorization: `Bearer ${token}`,
         accept: 'application/vnd.github+json',
         'x-github-api-version': '2022-11-28',
         ...(body ? { 'content-type': 'application/json' } : {}),

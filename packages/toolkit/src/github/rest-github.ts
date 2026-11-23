@@ -15,8 +15,11 @@ export const GITHUB_TIMEOUT_MS = 15_000;
 const API_VERSION = '2022-11-28';
 
 export interface RestGitHubOptions {
-  /** A fine-grained token for `repo` alone: contents and pull requests, read and write. */
-  token: string;
+  /**
+   * A token for `repo`: contents and pull requests, read and write. A function is asked
+   * before each request, for a short-lived GitHub App installation token it may refresh.
+   */
+  token: string | (() => Promise<string>);
   /** `owner/name`. */
   repo: string;
   endpoint?: string;
@@ -169,11 +172,12 @@ export class RestGitHub implements GitHub {
     const timeout = AbortSignal.timeout(timeoutMs);
     let res: Response;
     try {
+      const bearer = typeof token === 'string' ? token : await token();
       res = await doFetch(`${endpoint}/repos/${repo}${path}`, {
         method,
         headers: {
           accept: 'application/vnd.github+json',
-          authorization: `Bearer ${token}`,
+          authorization: `Bearer ${bearer}`,
           'x-github-api-version': API_VERSION,
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },

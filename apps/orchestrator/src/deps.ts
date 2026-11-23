@@ -1,4 +1,4 @@
-import type { Decider, Embedder } from '@page/model-client';
+import type { Decider, Embedder, ModelClient } from '@page/model-client';
 import type { GitHubApi } from './github/github-api.ts';
 import type { Config } from './config.ts';
 import type { Db } from './db/database.ts';
@@ -23,4 +23,6 @@ export interface AppDeps {
   embedder: Embedder;
   /** The demo repo's PRs. Null when GITHUB_* is unset: the dashboard alone decides. */
   github: GitHubApi | null;
+  /** Answers reviewers' questions on the bot's PRs. Null leaves them unanswered. */
+  answerer: ModelClient | null;
 }

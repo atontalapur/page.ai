@@ -31,8 +31,10 @@ function ReviewOnGitHub({ prUrl }: { prUrl: string }) {
       <div className="space-y-1">
         <h3 className="font-semibold">This fix is waiting for review on GitHub</h3>
         <p className="text-sm text-muted-foreground">
-          Merging the PR approves the fix and resolves the incident. Requesting changes or closing
-          it rejects the fix: the next tier starts from your review and its comments.
+          Approving or merging the PR approves the fix and resolves the incident. Requesting changes
+          or closing it rejects the fix: the next tier starts from your review and its comments. On
+          a PR opened with your own token, comment <code>/approve</code> or <code>/reject</code>{' '}
+          instead.
         </p>
       </div>
       <a

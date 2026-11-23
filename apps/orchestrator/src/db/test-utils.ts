@@ -1,4 +1,4 @@
-import { HashEmbedder, type Decider, type Embedder } from '@page/model-client';
+import { HashEmbedder, type Decider, type Embedder, type ModelClient } from '@page/model-client';
 import type { GitHubApi } from '../github/github-api.ts';
 import { randomBytes } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
@@ -41,7 +41,9 @@ export const testConfig: Config = {
   debug: undefined,
   jevModel: 'typesafe/jev-1.14',
   embeddingModel: 'qwen/qwen3-embedding-8b',
+  answerModel: 'deepseek/deepseek-v4.1-flash',
   github: undefined,
+  secretsKey: 'test-secrets-key-0123456789abcdef0123',
 };
 
 export interface TestDeps {
@@ -57,6 +59,7 @@ export interface TestDeps {
   decider: Decider | null;
   embedder: Embedder;
   github: GitHubApi | null;
+  answerer: ModelClient | null;
   close(): Promise<void>;
 }
 
@@ -100,6 +103,7 @@ async function start(db: Db, boss: PgBoss, close: () => Promise<void>): Promise<
       decider: null,
       embedder: new HashEmbedder(),
       github: null,
+      answerer: null,
       async close() {
         await close();
         if (errors.length) throw new AggregateError(errors, 'pg-boss reported errors');
