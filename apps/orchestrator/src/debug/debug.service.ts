@@ -3,6 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { DebugErrorKind, DebugResult, DebugState } from '@page/contracts';
 import type { Config, DebugTools } from '../config.ts';
 import type { Logger } from '../logger.ts';
+import { GitHubAppService } from '../github/github-app.service.ts';
 import { CONFIG, LOGGER } from '../tokens.ts';
 
 // Scenario 029's bug: valid as a setting, but past int4 once a checkout stores it.
@@ -13,6 +14,38 @@ const CHECKOUT_PRODUCT = 'field-notebook';
 // How long a restarted demo app gets to answer /api/health again.
 const HEALTHY_WITHIN_MS = 90_000;
 const REQUEST_TIMEOUT_MS = 15_000;
+// A checkout break clears itself after this, so a test can't leave the shop broken.
+const CHECKOUT_RESET_MS = 15 * 60_000;
+// The gentle test bug, scenario 012: the home page builds a RegExp from its search, so a
+// search for "(" throws. Only that search fails; the shop and checkout keep working.
+const SEARCH_BUG_PATH = '/?q=%28';
+const SEARCH_BUG_EDITS = [
+  {
+    path: 'apps/demo-app/src/app/page.tsx',
+    pairs: [
+      [
+        'export default async function HomePage() {\n  const { db } = await shop();\n  const products = await listProducts(db);\n',
+        "export default async function HomePage(props: PageProps<'/'>) {\n" +
+          '  const { q } = await props.searchParams;\n' +
+          "  const query = typeof q === 'string' ? q.trim() : '';\n" +
+          '  const { db } = await shop();\n' +
+          '  const all = await listProducts(db);\n' +
+          "  const products = query ? all.filter((p) => new RegExp(query, 'i').test(p.name)) : all;\n",
+      ],
+      [
+        '      <h1>Products</h1>\n',
+        '      <h1>Products</h1>\n' +
+          '      <form>\n' +
+          '        <input type="search" name="q" defaultValue={query} placeholder="Search" />\n' +
+          '      </form>\n',
+      ],
+    ],
+  },
+  {
+    path: 'apps/demo-app/src/app/pages.test.tsx',
+    pairs: [['await HomePage()', 'await HomePage(props({}))']],
+  },
+] as const;
 
 /** Off: the Debugging page's routes answer 404. */
 export class DebugToolsOff extends Error {
@@ -35,12 +68,15 @@ const asProducts = (body: unknown): Products => (Array.isArray(body) ? (body as 
 @Injectable()
 export class DebugService {
   private readonly tools: DebugTools | undefined;
+  private resetTimer: NodeJS.Timeout | undefined;
+  private checkoutResetAt: Date | undefined;
   /** Waits between restart checks. Tests make it immediate. */
   sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
   constructor(
     @Inject(CONFIG) config: Config,
     @Inject(LOGGER) private readonly logger: Logger,
+    private readonly github: GitHubAppService,
   ) {
     this.tools = config.debug;
   }
@@ -53,6 +89,7 @@ export class DebugService {
       healthy,
       overrides: healthy ? await this.overrides(tools) : [],
       codeBugLive: healthy ? await this.codeBugLive(tools) : null,
+      checkoutResetAt: this.checkoutResetAt?.toISOString() ?? null,
       canSendSynthetic: tools.posthog !== undefined,
     };
   }
@@ -73,6 +110,9 @@ export class DebugService {
   /** Clears every runtime override and restarts the app, so it serves its own settings. */
   async reset(): Promise<DebugResult> {
     const tools = this.on();
+    clearTimeout(this.resetTimer);
+    this.resetTimer = undefined;
+    this.checkoutResetAt = undefined;
     const overrides = await this.overrides(tools);
     for (const { key } of overrides) {
       await this.ops(tools, 'DELETE', `/api/ops/config/${encodeURIComponent(key)}`);
@@ -88,6 +128,18 @@ export class DebugService {
     };
   }
 
+  /** Clears the checkout break in CHECKOUT_RESET_MS, unless someone resets it first. */
+  private scheduleReset(): void {
+    clearTimeout(this.resetTimer);
+    this.checkoutResetAt = new Date(Date.now() + CHECKOUT_RESET_MS);
+    this.resetTimer = setTimeout(() => {
+      this.reset().catch((error: unknown) => {
+        this.logger.error({ err: error }, 'could not clear the checkout break on its timer');
+      });
+    }, CHECKOUT_RESET_MS);
+    this.resetTimer.unref();
+  }
+
   private on(): DebugTools {
     if (!this.tools) throw new DebugToolsOff();
     return this.tools;
@@ -97,11 +149,12 @@ export class DebugService {
     await this.ops(tools, 'PUT', `/api/ops/config/${SHIPPING_KEY}`, { value: SHIPPING_TOO_BIG });
     await this.restart(tools);
     const status = await this.checkout(tools);
+    this.scheduleReset();
     return status === 500
       ? {
           ok: true,
           status,
-          message: `Set ${SHIPPING_KEY} to ${SHIPPING_TOO_BIG} and checked out a ${CHECKOUT_PRODUCT}: the order failed with 500. The demo app reports it to PostHog, which opens an issue. Reset the demo app when you are done.`,
+          message: `Set ${SHIPPING_KEY} to ${SHIPPING_TOO_BIG} and checked out a ${CHECKOUT_PRODUCT}: the order failed with 500. The demo app reports it to PostHog, which opens an issue. It resets itself in 15 minutes.`,
         }
       : {
           ok: false,
@@ -110,19 +163,48 @@ export class DebugService {
         };
   }
 
+  /**
+   * Opens a PR on the demo repo that plants the search bug. Merging it puts the bug live once
+   * the demo app redeploys; then hitCodeBug triggers it.
+   */
+  async plant(): Promise<DebugResult> {
+    this.on();
+    const api = await this.github.api();
+    if (!api) {
+      return {
+        ok: false,
+        status: null,
+        message:
+          'GitHub is not set up, so the bug cannot be planted. Install the GitHub App in Settings.',
+      };
+    }
+    const url = await api.plantPr({
+      branch: `debug/plant-search-bug-${Date.now()}`,
+      title: 'chore(debug): plant a test bug in the home page search',
+      body: "Opened from the dashboard's Debugging page. It makes the home page search build a regular expression from the query, so searching for `(` fails with a 500. Merge it to put the bug live; a Tier 1 fix then repairs it. Nothing else in the shop changes.",
+      edits: SEARCH_BUG_EDITS,
+    });
+    return {
+      ok: true,
+      status: null,
+      message:
+        'Opened a PR that plants the search bug. Merge it, wait for the demo app to redeploy, then trigger it.',
+      url,
+    };
+  }
+
   private async hitCodeBug(tools: DebugTools): Promise<DebugResult> {
-    const slug = (await this.productSlug(tools)) ?? CHECKOUT_PRODUCT;
-    const res = await this.get(tools, `/api/products/${encodeURIComponent(slug)}`);
+    const res = await this.get(tools, SEARCH_BUG_PATH);
     return res.status >= 500
       ? {
           ok: true,
           status: res.status,
-          message: `GET /api/products/${slug} failed with ${res.status}: the code bug is live, and PostHog will open an issue for it.`,
+          message: `Searched the home page for "(": it failed with ${res.status}, so PostHog will open an issue for it.`,
         }
       : {
           ok: false,
           status: res.status,
-          message: `GET /api/products/${slug} answered ${res.status}, so no code bug is live. Seed one with infra/sandbox/demo-sync.sh.`,
+          message: `Searching the home page for "(" answered ${res.status}, so the test bug isn't live. Plant it first, and merge its PR.`,
         };
   }
 
@@ -215,16 +297,11 @@ export class DebugService {
   }
 
   private async codeBugLive(tools: DebugTools): Promise<boolean | null> {
-    const slug = await this.productSlug(tools);
-    if (!slug) return null;
-    return (await this.get(tools, `/api/products/${encodeURIComponent(slug)}`)).status >= 500;
-  }
-
-  private async productSlug(tools: DebugTools): Promise<string | undefined> {
-    const res = await this.get(tools, '/api/products');
-    if (!res.ok) return undefined;
-    const slug = asProducts(await res.json())[0]?.slug;
-    return typeof slug === 'string' ? slug : undefined;
+    try {
+      return (await this.get(tools, SEARCH_BUG_PATH)).status >= 500;
+    } catch {
+      return null;
+    }
   }
 
   private async healthy(tools: DebugTools): Promise<boolean> {

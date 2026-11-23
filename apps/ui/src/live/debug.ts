@@ -69,3 +69,6 @@ export const createDebugError = (kind: DebugErrorKind) => post('/debug/errors', 
 
 /** Clears the demo app's overrides and restarts it. */
 export const resetDemoApp = () => post('/debug/reset');
+
+/** Opens the PR that plants the gentle test bug on the demo repo. */
+export const plantBug = () => post('/debug/plant');

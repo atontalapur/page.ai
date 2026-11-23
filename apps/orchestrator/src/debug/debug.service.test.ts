@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DebugTools } from '../config.ts';
 import { testConfig } from '../db/test-utils.ts';
 import { createLogger } from '../logger.ts';
+import type { GitHubAppService } from '../github/github-app.service.ts';
 import { DebugService, DebugToolsOff } from './debug.service.ts';
 
 const APP = 'https://demo.example.com';
@@ -29,7 +30,8 @@ function fakeApp(
     if (url.host === 'ph.example.com') return json({ status: 1 });
     if (url.pathname === '/api/health') return json({ ok: true });
     if (url.pathname === '/api/products') return json([{ id: 7, slug: 'field-notebook' }]);
-    if (url.pathname.startsWith('/api/products/')) return json({}, app.productStatus ?? 200);
+    // The home page search, where the test bug lives.
+    if (url.pathname === '/') return json({}, app.productStatus ?? 200);
     if (url.pathname === '/api/cart/items')
       return json({}, 201, { 'set-cookie': 'cart=abc; Path=/' });
     if (url.pathname === '/api/orders') {
@@ -67,7 +69,9 @@ function fakeApp(
 
 /** Off when `tools` is null. */
 function service(tools: DebugTools | null = debug) {
-  const s = new DebugService({ ...testConfig, debug: tools ?? undefined }, createLogger('fatal'));
+  const s = new DebugService({ ...testConfig, debug: tools ?? undefined }, createLogger('fatal'), {
+    api: () => Promise.resolve(null),
+  } as unknown as GitHubAppService);
   s.sleep = () => Promise.resolve();
   return s;
 }
@@ -96,7 +100,7 @@ describe('DebugService', () => {
     expect(await service().create('checkout')).toMatchObject({ ok: false, status: 201 });
   });
 
-  it('reports the code bug only when the product route fails', async () => {
+  it('reports the code bug only when the home page search fails', async () => {
     fakeApp({ productStatus: 500 });
     expect(await service().create('code_bug')).toMatchObject({ ok: true, status: 500 });
     fakeApp({ productStatus: 200 });
@@ -132,6 +136,7 @@ describe('DebugService', () => {
       healthy: true,
       overrides: [{ key: 'SHIPPING_FLAT_CENTS', value: '2500000000' }],
       codeBugLive: true,
+      checkoutResetAt: null,
       canSendSynthetic: true,
     });
   });

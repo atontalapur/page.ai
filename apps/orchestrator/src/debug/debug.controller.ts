@@ -48,6 +48,13 @@ export class DebugController {
     return orNotFound(this.debug.create(body.kind));
   }
 
+  /** Opens the PR that plants the gentle test bug on the demo repo. */
+  @Post('plant')
+  @HttpCode(200)
+  plant() {
+    return orNotFound(this.debug.plant());
+  }
+
   @Post('reset')
   @HttpCode(200)
   reset(): Promise<DebugResult> {

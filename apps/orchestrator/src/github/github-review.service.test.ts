@@ -40,6 +40,7 @@ class FakeGitHubApi implements GitHubApi {
     return Promise.resolve('');
   }
   headRef = () => Promise.resolve(this.ref);
+  plantPr = () => Promise.resolve('https://github.com/o/r/pull/1');
   ref = '';
   posted: { pr: number; body: string; thread?: number }[] = [];
   comment(pr: number, body: string) {
