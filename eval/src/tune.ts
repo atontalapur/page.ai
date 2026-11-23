@@ -2,8 +2,9 @@
 // attempts ended, what fixes used, and how many fixes a lower limit would have cut.
 // Dev bugs only: the preregistration (docs/report/eval-prereg.md) keeps the held-out
 // results unread until the threshold is frozen.
-import { ESCALATION_THRESHOLD, type TierBudget } from '@page/agent';
+import { CONFIDENCE_THRESHOLD, ESCALATION_THRESHOLD, type TierBudget } from '@page/agent';
 import type { Tier } from '@page/contracts';
+import { renderConfidence } from './calibrate.ts';
 import {
   incomplete,
   percentile,
@@ -169,11 +170,13 @@ function tierSection(tier: Tier, attempts: Attempt[], limits: Readonly<TierBudge
 
 /**
  * Per-tier tuning tables over every attempt in `files`, against the current limits in
- * `threshold`. Run assertDevOnly first.
+ * `threshold`, then the confidence tables against the current `confidence` thresholds.
+ * Run assertDevOnly first.
  */
 export function renderTune(
   files: readonly EvalResults[],
   threshold: Threshold = ESCALATION_THRESHOLD,
+  confidence: Readonly<Record<Tier, number>> = CONFIDENCE_THRESHOLD,
 ): string {
   if (files.length === 0) throw new ReportError('no results files');
   // A threshold tuned on two models' runs fits neither, so a mix is refused, as in byConfig.
@@ -203,5 +206,6 @@ export function renderTune(
     );
     out.push('');
   }
+  out.push(renderConfidence(attempts, confidence));
   return `${out.join('\n').trimEnd()}\n`;
 }
