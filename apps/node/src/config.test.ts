@@ -1,6 +1,21 @@
 import { nodeEnvFixture } from '@page/contracts/fixtures';
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from './config.ts';
+import { loadConfig, nodeName } from './config.ts';
+
+describe('nodeName', () => {
+  it('is NODE_NAME when set', () => {
+    expect(nodeName({ NODE_NAME: 'railway-node' }, 'a1b2c3d4e5f6')).toBe('railway-node');
+  });
+
+  it('falls back on the hostname, made into a valid name', () => {
+    expect(nodeName({}, 'Advaiths-MacBook-Pro.local')).toBe('Advaiths-MacBook-Pro.local');
+    expect(nodeName({}, 'my laptop')).toBe('my-laptop');
+  });
+
+  it("reads this machine's hostname by default", () => {
+    expect(nodeName({})).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+  });
+});
 
 describe('loadConfig', () => {
   it('parses a full env', () => {

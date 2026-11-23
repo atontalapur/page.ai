@@ -91,15 +91,25 @@ describe('SocketIoLink', () => {
     const received = new Promise<unknown>((resolve) => {
       nodes.on('connection', (socket) => socket.on('node.step', resolve));
     });
-    const link = new SocketIoLink({ url, secret: 's3cret', logger });
+    const link = new SocketIoLink({ url, secret: 's3cret', name: 'test-node', logger });
     link.send('node.step', step);
     expect(await received).toEqual({ v: 1, step: stepFixture });
     await link.close();
   });
 
+  it('sends its name in the handshake, beside the secret', async () => {
+    const { url, nodes } = await orchestrator('s3cret');
+    const auth = new Promise<unknown>((resolve) => {
+      nodes.on('connection', (socket) => resolve(socket.handshake.auth));
+    });
+    const link = new SocketIoLink({ url, secret: 's3cret', name: 'railway-node', logger });
+    expect(await auth).toEqual({ token: 's3cret', name: 'railway-node' });
+    await link.close();
+  });
+
   it('keeps events sent before it connects', async () => {
     const { url, nodes } = await orchestrator('s3cret');
-    const link = new SocketIoLink({ url, secret: 's3cret', logger });
+    const link = new SocketIoLink({ url, secret: 's3cret', name: 'test-node', logger });
     link.send('node.step', step);
     link.send('node.diff', nodeToServerEventFixtures['node.diff']);
     const events: string[] = [];
@@ -121,7 +131,7 @@ describe('SocketIoLink', () => {
       socket.emit('run.kill', { ...kill, runId: 'not-a-uuid' });
       socket.emit('run.kill', kill);
     });
-    const link = new SocketIoLink({ url, secret: 's3cret', logger });
+    const link = new SocketIoLink({ url, secret: 's3cret', name: 'test-node', logger });
     const kills: unknown[] = [];
     link.on('run.kill', (payload) => kills.push(payload));
     await expect.poll(() => kills).toEqual([kill]);
@@ -130,7 +140,7 @@ describe('SocketIoLink', () => {
 
   it('refuses to send a payload the contract rejects', async () => {
     const { url } = await orchestrator('s3cret');
-    const link = new SocketIoLink({ url, secret: 's3cret', logger });
+    const link = new SocketIoLink({ url, secret: 's3cret', name: 'test-node', logger });
     expect(() => link.send('node.step', { v: 1, step: { ...stepFixture, seq: -1 } })).toThrow();
     await link.close();
   });
@@ -141,6 +151,7 @@ describe('SocketIoLink', () => {
     const link = new SocketIoLink({
       url,
       secret: 'wrong',
+      name: 'test-node',
       logger: pino({}, { write: (line: string) => lines.push(line) }),
       retry: fast,
     });
@@ -158,7 +169,13 @@ describe('SocketIoLink', () => {
     const received = new Promise<unknown>((resolve) => {
       nodes.on('connection', (socket) => socket.on('node.step', resolve));
     });
-    const link = new SocketIoLink({ url, secret: 's3cret', logger, retry: fast });
+    const link = new SocketIoLink({
+      url,
+      secret: 's3cret',
+      name: 'test-node',
+      logger,
+      retry: fast,
+    });
     // Sent while refused, and kept until the link connects.
     link.send('node.step', step);
     expect(await received).toEqual(step);
@@ -172,14 +189,26 @@ describe('SocketIoLink', () => {
       connections++;
       if (connections === 1) socket.disconnect(true);
     });
-    const link = new SocketIoLink({ url, secret: 's3cret', logger, retry: fast });
+    const link = new SocketIoLink({
+      url,
+      secret: 's3cret',
+      name: 'test-node',
+      logger,
+      retry: fast,
+    });
     await expect.poll(() => connections).toBe(2);
     await link.close();
   });
 
   it('connects again after the orchestrator restarts', async () => {
     const first = await orchestrator('s3cret');
-    const link = new SocketIoLink({ url: first.url, secret: 's3cret', logger, retry: fast });
+    const link = new SocketIoLink({
+      url: first.url,
+      secret: 's3cret',
+      name: 'test-node',
+      logger,
+      retry: fast,
+    });
     await once(first.nodes, 'connection');
     await first.stop();
     const second = await orchestrator('s3cret', first.port);
@@ -200,7 +229,13 @@ describe('SocketIoLink', () => {
       handshakes++;
       next(new Error('rate_limited'));
     });
-    const link = new SocketIoLink({ url, secret: 's3cret', logger, retry: fast });
+    const link = new SocketIoLink({
+      url,
+      secret: 's3cret',
+      name: 'test-node',
+      logger,
+      retry: fast,
+    });
     await expect.poll(() => handshakes).toBe(1);
     await link.close();
     await new Promise((resolve) => setTimeout(resolve, 200));

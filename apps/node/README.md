@@ -33,6 +33,7 @@ pnpm --filter @page/node start
 | `PGBOSS_SCHEMA`               | `pgboss`       | Must match the orchestrator's           |
 | `ORCHESTRATOR_URL`            |                | The daemon connects out to `<url>/node` |
 | `NODE_SHARED_SECRET`          |                | Sent as `auth.token` in the handshake   |
+| `NODE_NAME`                   | the hostname   | Sent as `auth.name`; names it in the UI |
 | `SANDBOX_IMAGE`               | `page-sandbox` | Built from `infra/sandbox/Dockerfile`   |
 | `SANDBOX_RUNTIME`             | `docker`       | `local` on hosts without Docker (below) |
 | `OPENROUTER_API_KEY`          |                | Required unless `USE_FAKE_ADAPTERS`     |
@@ -83,7 +84,8 @@ On Railway the service builds that Dockerfile from the repo root
 variables above: `DATABASE_URL` from the `db` service, `ORCHESTRATOR_URL` and
 `NODE_SHARED_SECRET` from the orchestrator, and `OPS_APP_URL` and `OPS_SECRET` for the demo
 app, with the `OPS_RAILWAY_*` vars for its service if Tier 3 may roll it back. It needs no
-port.
+port. Give it a `NODE_NAME` too: its hostname changes with each deploy, and the agents page
+would list each deploy as a new daemon.
 
 ## Tier 2: pushing the fix and opening a PR
 
@@ -236,6 +238,9 @@ Docker and model and check the `steps` row, and start and remove a real containe
   `NODE_SHARED_SECRET` as `auth.token`. It relays `node.step`, `node.diff` and
   `node.run.finished` to the UI. The daemon writes steps itself, because `execute()` must
   not run a command whose step it couldn't record, so the server doesn't insert them again.
+- The handshake also carries the daemon's name as `auth.name`: `NODE_NAME`, or the
+  hostname. The orchestrator records it with each run the daemon works, and the UI's agents
+  page lists daemons by it. Two daemons with the same name show as one agent.
 - A kill reaches the daemon as `run.kill`: at once when its socket has named the run, or on
   its next event for a run killed while it was away. A kill for a run this daemon isn't
   holding is logged and ignored.
