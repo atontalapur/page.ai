@@ -48,8 +48,11 @@ RUN git init -q -b main \
 
 FROM node:24-alpine
 # su-exec runs each command as the sandbox user; busybox gives timeout, pkill and find.
+# The UID is unusual on purpose: `ulimit -u` counts a UID's processes across the whole
+# kernel, and on a shared host such as Railway a common one like 1000 is already in use by
+# other containers, so every fork failed with EAGAIN.
 RUN apk add --no-cache git ripgrep su-exec tini \
-  && adduser -D -H -h /tmp sandbox
+  && adduser -D -H -h /tmp -u 47269 sandbox
 ENV NODE_ENV=production \
     SANDBOX_RUNTIME=local \
     COREPACK_HOME=/opt/corepack \
