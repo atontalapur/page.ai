@@ -5,7 +5,9 @@ export type Action =
   | { kind: 'exec'; call: ExecCall }
   | { kind: 'edit'; call: EditCall }
   | { kind: 'host_tool'; call: HostToolCall }
-  | { kind: 'submit' };
+  | { kind: 'submit' }
+  // The agent hands the fix to the tier above, saying why this tier can't make it.
+  | { kind: 'escalate'; reason: string };
 
 export type ParseResult = { ok: true; action: Action } | { ok: false; error: string };
 
@@ -28,6 +30,8 @@ export const ACTION_TAGS = {
   kgSearch: 'page_kg_search',
   kgRead: 'page_kg_read',
   kgWrite: 'page_kg_write',
+  // Below Tier 3: hand the fix up when it needs what this tier can't reach.
+  escalate: 'page_escalate',
 } as const;
 
 const SEARCH = '<<<<<<< SEARCH';
@@ -127,6 +131,16 @@ export function parseAction(reply: string): ParseResult {
   const { tag, body } = blocks[0]!;
 
   if (tag === ACTION_TAGS.submit) return { ok: true, action: { kind: 'submit' } };
+  if (tag === ACTION_TAGS.escalate) {
+    const reason = body.join('\n').trim();
+    if (reason === '') {
+      return {
+        ok: false,
+        error: `A ${ACTION_TAGS.escalate} block says why this tier can't make the fix.`,
+      };
+    }
+    return { ok: true, action: { kind: 'escalate', reason } };
+  }
   if (tag === ACTION_TAGS.edit) return parseEdit(body);
   if (tag === ACTION_TAGS.pushBranch) return parsePushBranch(body);
   if (tag === ACTION_TAGS.openPr) return parseOpenPr(body);

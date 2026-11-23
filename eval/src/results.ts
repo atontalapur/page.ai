@@ -5,6 +5,8 @@ import { z } from 'zod';
 
 // Every way an agent run ends. The check below fails typecheck if @page/agent adds one.
 const EXIT_STATUSES = [
+  // Only the daemon offers the hand-off; the eval's runs never end this way.
+  'escalated',
   'submitted',
   'step_limit',
   'cost_limit',

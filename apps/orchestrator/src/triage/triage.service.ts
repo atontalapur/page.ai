@@ -120,7 +120,15 @@ export class TriageService {
         confidence: Math.min(cls.confidence, severity.confidence),
       },
     });
-    await this.decisions.record({ ...base, question: 'start_tier', answer: startTier });
+    // The tier the fix actually starts at: a settings class overrides jev's own pick.
+    const chosen = verdict.startTier;
+    await this.decisions.record({
+      ...base,
+      question: 'start_tier',
+      answer: chosen
+        ? { ...startTier, choice: String(chosen.tier), confidence: chosen.confidence }
+        : startTier,
+    });
     if (verdict.startTier && verdict.startTier.confidence >= MIN_JEV_CONFIDENCE) {
       await this.issues.setStartTier(issueId, verdict.startTier.tier);
     }

@@ -70,9 +70,14 @@ export function finishedEvent(
     blocker,
   };
   if (end.kind === 'killed') return { ...base, status: 'killed', note };
-  if (end.kind === 'agent' && (isBudget(end.run) || lowScore) && tier < 3) {
+  const handedUp = end.kind === 'agent' && end.run.exitStatus === 'escalated';
+  if (end.kind === 'agent' && (isBudget(end.run) || lowScore || handedUp) && tier < 3) {
     const toTier = (tier + 1) as Tier;
-    const reason = lowScore ? 'low_confidence' : 'budget_exhausted';
+    const reason = handedUp
+      ? 'needs_higher_tier'
+      : lowScore
+        ? 'low_confidence'
+        : 'budget_exhausted';
     return { ...base, status: 'escalated', reason, toTier, note };
   }
   return { ...base, status: 'failed', note };
@@ -106,6 +111,9 @@ function describe(end: RunEnd): { summary: string; blocker: string } {
       return describeAgent(end.run);
   }
 }
+
+// The most of an agent's own hand-off reason the next tier gets.
+const BLOCKER_CHARS = 2_000;
 
 const spentBy = (run: AgentRun) => `${run.modelCalls} model calls, $${run.costUsd.toFixed(2)}`;
 
@@ -165,6 +173,11 @@ function describeAgent(run: AgentRun): { summary: string; blocker: string } {
       };
     case 'aborted':
       return { summary: `The run was stopped (${spent}).`, blocker: 'Stopped before it finished.' };
+    case 'escalated':
+      return {
+        summary: `The agent handed the fix to the tier above (${spent}).`,
+        blocker: clip(run.handoff ?? 'It said this tier cannot make the fix.', BLOCKER_CHARS),
+      };
     case 'submitted':
       // Handled by the caller; here only so the switch covers every status.
       return { summary: 'The agent submitted.', blocker: 'none' };

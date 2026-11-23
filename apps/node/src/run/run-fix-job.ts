@@ -301,6 +301,8 @@ export async function runFixJob(
           rollback,
           personApproves,
           knowledge: knowledgeTools !== undefined,
+          // Below Tier 3 the agent may hand the fix up instead of spending its steps.
+          canHandOff: true,
         },
         {
           model: deps.model,
