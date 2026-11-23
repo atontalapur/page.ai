@@ -2,22 +2,35 @@ import {
   issueEventRecordSchema,
   issueRunSchema,
   issueSchema,
+  nodeRunSchema,
+  nodeSummarySchema,
   UI_NAMESPACE,
   type Issue,
   type IssueEvent,
   type IssueEventRecord,
   type IssueRun,
+  type NodeRun,
+  type NodeSummary,
   type ServerToUiEvents,
   type SocketRefusal,
   type UiToServerEvents,
 } from '@page/contracts';
 import { io, type Socket } from 'socket.io-client';
 
-import { parseIssueUpdated, type IssueFeed, type IssueSource } from './source';
+import {
+  parseIssueUpdated,
+  parseNodeUpdated,
+  parseRunEvent,
+  RUN_EVENTS,
+  type IssueFeed,
+  type IssueSource,
+} from './source';
 
 const issueList = issueSchema.array();
 const runList = issueRunSchema.array();
 const eventList = issueEventRecordSchema.array();
+const nodeList = nodeSummarySchema.array();
+const nodeRunList = nodeRunSchema.array();
 
 // The server counts handshakes per minute; one that refuses for that is waited out.
 const RATE_LIMIT_RETRY_MS = 60_000;
@@ -25,10 +38,11 @@ const RATE_LIMIT_RETRY_MS = 60_000;
 class Unauthorized extends Error {}
 
 /**
- * The orchestrator this page was served from. The socket connects first, then the list is
- * loaded from GET /issues, so no change made during the load is missed: the store keeps
- * whichever copy of an issue is newer. Each reconnect loads the list again, for the changes
- * made while the socket was down.
+ * The orchestrator this page was served from. The socket connects first, then the lists are
+ * loaded from GET /issues and GET /nodes, so no change made during the load is missed: the
+ * store keeps whichever copy of an issue is newer, and a `node.updated` that lands during the
+ * load is applied again after it. Each reconnect loads both lists again, for the changes made
+ * while the socket was down, and tells the store (`synced`) so loaded runs are loaded again.
  */
 export function serverSource(token: string): IssueSource {
   const headers = { authorization: `Bearer ${token}`, accept: 'application/json' };
@@ -47,6 +61,9 @@ export function serverSource(token: string): IssueSource {
       });
       feed.status('connecting');
 
+      // The node.updated events that arrive while GET /nodes is loading, to apply after it.
+      let nodesLoading: NodeSummary[] | undefined;
+
       async function load() {
         try {
           const res = await get('/issues');
@@ -59,14 +76,50 @@ export function serverSource(token: string): IssueSource {
         }
       }
 
+      async function loadNodes() {
+        const during: NodeSummary[] = [];
+        nodesLoading = during;
+        try {
+          const res = await get('/nodes');
+          const nodes = nodeList.safeParse(await res.json());
+          if (!nodes.success) {
+            console.warn('GET /nodes returned daemons that break the contract');
+            return;
+          }
+          feed.resetNodes(nodes.data);
+          for (const node of during) feed.node(node);
+        } catch (err) {
+          // A refused token shows up on GET /issues, which asks for a new one.
+          if (!(err instanceof Unauthorized)) console.warn('could not load node daemons', err);
+        } finally {
+          if (nodesLoading === during) nodesLoading = undefined;
+        }
+      }
+
       socket.on('connect', () => {
         feed.status('live');
+        feed.synced();
         void load();
+        void loadNodes();
       });
       socket.on('issue.updated', (payload: unknown) => {
         const issue = parseIssueUpdated(payload);
         if (issue) feed.update(issue);
       });
+      socket.on('node.updated', (payload: unknown) => {
+        const node = parseNodeUpdated(payload);
+        if (!node) return;
+        nodesLoading?.push(node);
+        feed.node(node);
+      });
+      // The typed on() wants each event as a literal; the payload is parsed here.
+      const on = socket.on.bind(socket) as (event: string, fn: (payload: unknown) => void) => void;
+      for (const event of RUN_EVENTS) {
+        on(event, (payload) => {
+          const parsed = parseRunEvent(event, payload);
+          if (parsed) feed.run(parsed);
+        });
+      }
       socket.on('disconnect', () => feed.status('reconnecting'));
       socket.on('connect_error', (err) => {
         // A refusal from the server's middleware is final for socket.io-client; anything
@@ -133,6 +186,17 @@ export function serverSource(token: string): IssueSource {
         const res = await get(`/issues/${encodeURIComponent(id)}/runs`);
         if (!res.ok) return undefined;
         const runs = runList.safeParse(await res.json());
+        return runs.success ? runs.data : undefined;
+      } catch {
+        return undefined;
+      }
+    },
+
+    async fetchNodeRuns(name: string): Promise<NodeRun[] | undefined> {
+      try {
+        const res = await get(`/nodes/${encodeURIComponent(name)}/runs`);
+        if (!res.ok) return undefined;
+        const runs = nodeRunList.safeParse(await res.json());
         return runs.success ? runs.data : undefined;
       } catch {
         return undefined;

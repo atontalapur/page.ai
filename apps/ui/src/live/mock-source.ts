@@ -171,7 +171,9 @@ export function mockSource({
     start(next) {
       feed = next;
       feed.status('mock');
+      feed.synced();
       feed.reset(sorted());
+      feed.resetNodes([]);
       const timer = intervalMs > 0 ? setInterval(tick, intervalMs) : undefined;
       return () => {
         clearInterval(timer);
@@ -184,6 +186,7 @@ export function mockSource({
     // The mock plays issues only; its fixes have no runs to show.
     fetchRuns: () => Promise.resolve([]),
     fetchEvents: () => Promise.resolve([]),
+    fetchNodeRuns: () => Promise.resolve([]),
     applyEvent: () => Promise.reject(new Error('Mock data has no orchestrator to review with.')),
   };
 }

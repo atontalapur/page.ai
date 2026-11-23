@@ -15,6 +15,7 @@ export default defineConfig({
         proxy: {
           '/health': orchestrator,
           '/issues': orchestrator,
+          '/nodes': orchestrator,
           '/socket.io': { target: orchestrator, ws: true },
         },
       }

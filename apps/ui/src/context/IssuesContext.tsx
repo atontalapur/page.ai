@@ -4,14 +4,23 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
-import type { Issue, IssueEvent, IssueEventRecord, IssueRun } from '@page/contracts';
+import type {
+  Issue,
+  IssueEvent,
+  IssueEventRecord,
+  IssueRun,
+  NodeRun,
+  NodeSummary,
+} from '@page/contracts';
 
 import { mockSource } from '../live/mock-source';
+import { applyToNode } from '../live/runs';
 import { serverPresent, serverSource } from '../live/server-source';
-import type { FeedStatus, IssueFeed, IssueSource } from '../live/source';
+import type { FeedStatus, IssueFeed, IssueSource, RunEvent } from '../live/source';
 import { clearToken, readToken, saveToken } from '../live/token';
 
 /** `detecting` until the page knows whether an orchestrator served it. */
@@ -36,6 +45,31 @@ interface IssuesContextType {
 
 const IssuesContext = createContext<IssuesContextType | undefined>(undefined);
 
+interface AgentsContextType {
+  /** Every node daemon the source knows, by name. */
+  nodes: NodeSummary[];
+  /** The first full list has arrived. */
+  loaded: boolean;
+  getNode: (name: string) => NodeSummary | undefined;
+  fetchNodeRuns: (name: string) => Promise<NodeRun[] | undefined>;
+}
+
+const AgentsContext = createContext<AgentsContextType | undefined>(undefined);
+
+type RunListener = (event: RunEvent) => void;
+
+interface RunFeedContextType {
+  /**
+   * How many times the source has (re)connected. A run loaded before the latest may have
+   * missed steps sent while the socket was down, so whatever holds one loads it again.
+   */
+  syncs: number;
+  /** Calls `listener` with every run event from now on, and returns the function that stops. */
+  subscribeRuns: (listener: RunListener) => () => void;
+}
+
+const RunFeedContext = createContext<RunFeedContextType | undefined>(undefined);
+
 /** Keeps `incoming` unless the store already has a newer copy of the issue. */
 function upsert(store: Map<string, Issue>, incoming: Issue): void {
   const current = store.get(incoming.id);
@@ -43,9 +77,11 @@ function upsert(store: Map<string, Issue>, incoming: Issue): void {
 }
 
 /**
- * The issues every page reads, kept current by a source: the orchestrator that served the
- * page (GET /issues, then `issue.updated` on the socket), or the mock source when there is
- * none. Tests pass a source directly.
+ * The issues and node daemons every page reads, kept current by a source: the orchestrator
+ * that served the page (GET /issues and GET /nodes, then `issue.updated`, `node.updated` and
+ * the run events on the socket), or the mock source when there is none. Run events are also
+ * passed to whatever subscribed, such as a page showing a run's steps. Tests pass a source
+ * directly.
  */
 export function IssuesProvider({
   children,
@@ -59,6 +95,10 @@ export function IssuesProvider({
   const [store, setStore] = useState<Map<string, Issue>>(() => new Map());
   const [loaded, setLoaded] = useState(false);
   const [tokenRefused, setTokenRefused] = useState(false);
+  const [nodeStore, setNodeStore] = useState<Map<string, NodeSummary>>(() => new Map());
+  const [nodesLoaded, setNodesLoaded] = useState(false);
+  const [syncs, setSyncs] = useState(0);
+  const runListeners = useRef(new Set<RunListener>());
 
   // Pick a source once, unless one was passed in.
   useEffect(() => {
@@ -102,9 +142,39 @@ export function IssuesProvider({
           setActive(undefined);
         }
       },
+      synced() {
+        setSyncs((n) => n + 1);
+      },
+      run(event) {
+        setNodeStore((previous) => {
+          let changed = false;
+          const next = new Map<string, NodeSummary>();
+          for (const [name, node] of previous) {
+            const after = applyToNode(node, event);
+            changed ||= after !== node;
+            next.set(name, after);
+          }
+          return changed ? next : previous;
+        });
+        for (const listener of runListeners.current) listener(event);
+      },
+      resetNodes(nodes) {
+        setNodeStore(new Map(nodes.map((node) => [node.name, node])));
+        setNodesLoaded(true);
+      },
+      node(node) {
+        setNodeStore((previous) => new Map(previous).set(node.name, node));
+      },
     };
     return active.start(feed);
   }, [active]);
+
+  const subscribeRuns = useCallback((listener: RunListener) => {
+    runListeners.current.add(listener);
+    return () => {
+      runListeners.current.delete(listener);
+    };
+  }, []);
 
   const submitToken = useCallback((token: string) => {
     saveToken(token);
@@ -140,6 +210,11 @@ export function IssuesProvider({
 
   const fetchEvents = useCallback(
     (id: string) => active?.fetchEvents(id) ?? Promise.resolve(undefined),
+    [active],
+  );
+
+  const fetchNodeRuns = useCallback(
+    (name: string) => active?.fetchNodeRuns(name) ?? Promise.resolve(undefined),
     [active],
   );
 
@@ -184,7 +259,24 @@ export function IssuesProvider({
     ],
   );
 
-  return <IssuesContext.Provider value={value}>{children}</IssuesContext.Provider>;
+  const nodes = useMemo(
+    () => [...nodeStore.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    [nodeStore],
+  );
+  const getNode = useCallback((name: string) => nodeStore.get(name), [nodeStore]);
+  const agents = useMemo(
+    () => ({ nodes, loaded: nodesLoaded, getNode, fetchNodeRuns }),
+    [nodes, nodesLoaded, getNode, fetchNodeRuns],
+  );
+  const runFeed = useMemo(() => ({ syncs, subscribeRuns }), [syncs, subscribeRuns]);
+
+  return (
+    <IssuesContext.Provider value={value}>
+      <AgentsContext.Provider value={agents}>
+        <RunFeedContext.Provider value={runFeed}>{children}</RunFeedContext.Provider>
+      </AgentsContext.Provider>
+    </IssuesContext.Provider>
+  );
 }
 
 export function useIssues(): IssuesContextType {
@@ -194,6 +286,20 @@ export function useIssues(): IssuesContextType {
     throw new Error('useIssues must be used inside IssuesProvider');
   }
 
+  return context;
+}
+
+/** The node daemons, kept current like the issues. */
+export function useAgents(): AgentsContextType {
+  const context = useContext(AgentsContext);
+  if (!context) throw new Error('useAgents must be used inside IssuesProvider');
+  return context;
+}
+
+/** The run events and the reconnect count, for hooks that keep a run's steps current. */
+export function useRunFeed(): RunFeedContextType {
+  const context = useContext(RunFeedContext);
+  if (!context) throw new Error('useRunFeed must be used inside IssuesProvider');
   return context;
 }
 

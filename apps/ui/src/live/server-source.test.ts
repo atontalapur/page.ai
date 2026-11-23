@@ -1,8 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { issueFixture } from '@page/contracts/fixtures';
-import type { Issue } from '@page/contracts';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import {
+  issueFixture,
+  nodeRunFixture,
+  nodeSummaryFixture,
+  runFixture,
+  serverToUiEventFixtures,
+  stepFixture,
+} from '@page/contracts/fixtures';
+import type { Issue, NodeSummary } from '@page/contracts';
 
-import type { FeedStatus, IssueFeed } from './source';
+import { RUN_EVENTS, type FeedStatus, type IssueFeed, type RunEvent } from './source';
 
 type Handler = (arg?: unknown) => void;
 
@@ -43,9 +50,14 @@ function json(body: unknown, status = 200) {
   });
 }
 
-let fetchMock: ReturnType<typeof vi.fn>;
+let fetchMock: Mock<(url: string, init?: RequestInit) => Promise<Response>>;
+// What GET /nodes answers, unless a test queues something else.
+let nodesBody: unknown[] = [];
 beforeEach(() => {
-  fetchMock = vi.fn(() => Promise.resolve(json([issueFixture])));
+  nodesBody = [];
+  fetchMock = vi.fn((url: string) =>
+    Promise.resolve(json(url === '/nodes' ? nodesBody : [issueFixture])),
+  );
   vi.stubGlobal('fetch', fetchMock);
 });
 afterEach(() => {
@@ -60,12 +72,30 @@ function recorder() {
   const statuses: FeedStatus[] = [];
   const lists: Issue[][] = [];
   const updates: Issue[] = [];
+  const runs: RunEvent[] = [];
+  const nodeLists: NodeSummary[][] = [];
+  const nodes: NodeSummary[] = [];
+  // Every feed call in order, for the ones whose order matters.
+  const calls: string[] = [];
+  let syncs = 0;
   const feed: IssueFeed = {
     status: (status) => statuses.push(status),
     reset: (issues) => lists.push(issues),
     update: (issue) => updates.push(issue),
+    synced: () => {
+      syncs += 1;
+    },
+    run: (event) => runs.push(event),
+    resetNodes: (list) => {
+      calls.push('resetNodes');
+      nodeLists.push(list);
+    },
+    node: (node) => {
+      calls.push(`node ${node.name}`);
+      nodes.push(node);
+    },
   };
-  return { feed, statuses, lists, updates };
+  return { feed, statuses, lists, updates, runs, nodeLists, nodes, calls, syncs: () => syncs };
 }
 
 describe('serverSource', () => {
@@ -95,6 +125,94 @@ describe('serverSource', () => {
     socket.fire('issue.updated', { v: 1, issue: { ...issueFixture, status: 'done' } });
 
     expect(updates).toEqual([issueFixture]);
+  });
+
+  it('passes on run events that meet the contract, by name, and drops the rest', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { feed, runs } = recorder();
+    serverSource('s3cret').start(feed);
+    const socket = sockets[0]!;
+
+    for (const event of RUN_EVENTS) socket.fire(event, serverToUiEventFixtures[event]);
+    socket.fire('run.step', { v: 1, step: { ...stepFixture, seq: -1 } });
+    socket.fire('run.finished', { v: 2, run: runFixture, note: null });
+
+    expect(runs).toEqual(
+      RUN_EVENTS.map((event) => ({ event, payload: serverToUiEventFixtures[event] })),
+    );
+  });
+
+  it('loads the daemons on each connect, applies node.updated, and says it synced', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    nodesBody = [nodeSummaryFixture];
+    const { feed, nodeLists, nodes, syncs } = recorder();
+    serverSource('s3cret').start(feed);
+    const socket = sockets[0]!;
+
+    socket.fire('connect');
+    expect(syncs()).toBe(1);
+    await vi.waitFor(() => expect(nodeLists).toEqual([[nodeSummaryFixture]]));
+    expect(fetchMock).toHaveBeenCalledWith('/nodes', {
+      headers: { authorization: 'Bearer s3cret', accept: 'application/json' },
+    });
+
+    const gone = { ...nodeSummaryFixture, connected: false, current: [] };
+    socket.fire('node.updated', { v: 1, node: gone });
+    socket.fire('node.updated', { v: 1, node: { ...gone, name: 'not a name' } });
+    expect(nodes).toEqual([gone]);
+
+    socket.fire('disconnect', 'transport close');
+    socket.fire('connect');
+    expect(syncs()).toBe(2);
+    await vi.waitFor(() => expect(nodeLists).toHaveLength(2));
+  });
+
+  it('applies a node.updated that lands while GET /nodes loads again after the list', async () => {
+    let answer: (res: Response) => void = () => undefined;
+    fetchMock.mockImplementation((url: string) =>
+      url === '/nodes'
+        ? new Promise<Response>((resolve) => (answer = resolve))
+        : Promise.resolve(json([issueFixture])),
+    );
+    const { feed, calls } = recorder();
+    serverSource('s3cret').start(feed);
+    const socket = sockets[0]!;
+    socket.fire('connect');
+
+    const newer = { ...nodeSummaryFixture, current: [] };
+    socket.fire('node.updated', { v: 1, node: newer });
+    answer(json([nodeSummaryFixture]));
+    await vi.waitFor(() => expect(calls).toHaveLength(3));
+    // The list was read before the update, so the update goes on top of it again.
+    expect(calls).toEqual([`node ${newer.name}`, 'resetNodes', `node ${newer.name}`]);
+  });
+
+  it('keeps going when GET /nodes fails or breaks the contract', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    nodesBody = [{ name: 'x' }];
+    const { feed, nodeLists, lists } = recorder();
+    serverSource('s3cret').start(feed);
+    sockets[0]!.fire('connect');
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
+    expect(nodeLists).toEqual([]);
+    await vi.waitFor(() => expect(lists).toHaveLength(1));
+  });
+
+  it("fetches a daemon's runs with the token, and finds nothing for a 404 or a bad body", async () => {
+    const source = serverSource('s3cret');
+
+    fetchMock.mockResolvedValueOnce(json([nodeRunFixture]));
+    expect(await source.fetchNodeRuns('railway-node')).toEqual([nodeRunFixture]);
+    expect(fetchMock).toHaveBeenLastCalledWith('/nodes/railway-node/runs', {
+      headers: { authorization: 'Bearer s3cret', accept: 'application/json' },
+    });
+
+    fetchMock.mockResolvedValueOnce(json({ statusCode: 400 }, 400));
+    expect(await source.fetchNodeRuns('railway-node')).toBeUndefined();
+    fetchMock.mockResolvedValueOnce(json([{ ...nodeRunFixture, stepCount: -1 }]));
+    expect(await source.fetchNodeRuns('railway-node')).toBeUndefined();
+    fetchMock.mockRejectedValueOnce(new TypeError('network'));
+    expect(await source.fetchNodeRuns('railway-node')).toBeUndefined();
   });
 
   it('asks for a token when the socket or the list refuses this one', async () => {

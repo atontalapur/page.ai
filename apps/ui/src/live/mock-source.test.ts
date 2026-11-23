@@ -17,6 +17,10 @@ function recorder() {
     status: (status) => statuses.push(status),
     reset: (issues) => lists.push(issues),
     update: (issue) => updates.push(issue),
+    synced: () => undefined,
+    run: () => undefined,
+    resetNodes: () => undefined,
+    node: () => undefined,
   };
   return { feed, statuses, lists, updates };
 }
