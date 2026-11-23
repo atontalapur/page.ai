@@ -6,15 +6,15 @@ through Kysely, moves them through a state machine, and queues fix jobs on pg-bo
 
 ## Modules
 
-`AppModule` serves `/health`, `/issues` and `/ingest/posthog`, and imports seven feature modules.
-Ingest, triage, runs, notify and the gateway are wired. Tiers and approvals are still stubs.
+`AppModule` serves `/health`, `/issues` and `/ingest/posthog`, and imports six feature modules.
+Ingest, triage, runs, notify and the gateway are wired. Approvals is still a stub. Escalation
+between tiers is part of the issue state machine (`src/issues/transitions.ts`), not a module.
 
 | Module            | Owns                                                                       |
 | ----------------- | -------------------------------------------------------------------------- |
 | `IngestModule`    | `POST /ingest/posthog`: secret check, upsert by fingerprint, queue triage  |
 | `TriageModule`    | Class and severity by model with a rule fallback, then notify              |
 | `RunsModule`      | `run_finished` jobs from the node daemon: runs row, issue event, next tier |
-| `TiersModule`     | Escalation after a run: up a tier, or to failed past Tier 3. Stub.         |
 | `ApprovalsModule` | Tier 3 requests to run gated host tools, and their decisions. Stub.        |
 | `NotifyModule`    | Twilio call and SMS to on-call, one notify job per fingerprint and phone   |
 | `GatewayModule`   | Socket.IO for the UI: `issue.updated` on every issue change (#34)          |

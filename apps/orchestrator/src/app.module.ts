@@ -10,7 +10,6 @@ import { IngestModule } from './ingest/ingest.module.ts';
 import { IssuesController } from './issues/issues.controller.ts';
 import { NotifyModule } from './notify/notify.module.ts';
 import { RunsModule } from './runs/runs.module.ts';
-import { TiersModule } from './tiers/tiers.module.ts';
 import { TriageModule } from './triage/triage.module.ts';
 
 @Module({})
@@ -23,7 +22,6 @@ export class AppModule {
         IngestModule,
         TriageModule,
         RunsModule,
-        TiersModule,
         ApprovalsModule,
         NotifyModule,
         GatewayModule,

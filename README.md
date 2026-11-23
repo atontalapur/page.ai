@@ -87,9 +87,8 @@ Not built yet:
 - Confidence scoring. Runs escalate only on the step, cost and time limits, and a submitted run
   reports `confidence: null`.
 - The dashboard. `apps/ui` renders placeholder data and doesn't read the orchestrator.
-- Three orchestrator modules are stubs: `TiersModule`, `ApprovalsModule` and `GatewayModule`
-  (Socket.IO). Without the gateway, the UI gets no live events and a kill can't stop a run a
-  daemon has already claimed.
+- `ApprovalsModule` is a stub, and `GatewayModule` serves the UI but not the node daemons, so a
+  kill can't stop a run a daemon has already claimed.
 - A rollback tool for Tier 3, so scenario 024 (a bad deploy) has no agent fix.
 
 ## Results

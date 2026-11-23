@@ -5,8 +5,10 @@
     "dockerfilePath": "apps/orchestrator/Dockerfile",
     "watchPatterns": [
       "apps/orchestrator/**",
+      "apps/ui/**",
       "packages/config/**",
       "packages/contracts/**",
+      "packages/design-system/**",
       "packages/db-migrations/**",
       "packages/model-client/**",
       "pnpm-lock.yaml",
