@@ -4,7 +4,14 @@ import { DEFAULT_TIMEOUT_MS, execute } from './execute.ts';
 import { InMemoryAuditSink } from '../audit/memory-sink.ts';
 import { FakeRunner } from './fake-runner.ts';
 import { trimOutput } from './trim.ts';
-import type { HostToolCall, HostToolOutcome, HostTools } from './types.ts';
+import { autoApprove } from './approval.ts';
+import type {
+  ApprovalVerdict,
+  Approve,
+  HostToolCall,
+  HostToolOutcome,
+  HostTools,
+} from './types.ts';
 
 const exec = (command: string) => ({ kind: 'exec' as const, command });
 
@@ -302,7 +309,147 @@ describe('execute host tools', () => {
       runner: new FakeRunner(),
       steps: testSteps(sink),
       hostTools: hostTools().tools,
+      approve: autoApprove('test'),
     });
     expect(sink.steps).toEqual([expect.objectContaining({ input, allowed: true })]);
+  });
+});
+
+describe('execute gated host tools', () => {
+  const restart = { kind: 'host_tool' as const, tool: 'ops.restart' as const };
+
+  function hostTools(refusal: string | null = null) {
+    const calls: { call: HostToolCall; timeoutMs: number }[] = [];
+    const tools: HostTools = {
+      refusal: () => refusal,
+      run(call, timeoutMs) {
+        calls.push({ call, timeoutMs });
+        return Promise.resolve(
+          refusal === null ? { ok: true, output: 'restarted' } : { ok: false, output: refusal },
+        );
+      },
+    };
+    return { tools, calls };
+  }
+
+  function approver(verdict: ApprovalVerdict | Error) {
+    const asked: { call: HostToolCall; timeoutMs: number }[] = [];
+    const approve: Approve = (call, { timeoutMs }) => {
+      asked.push({ call, timeoutMs });
+      return verdict instanceof Error ? Promise.reject(verdict) : Promise.resolve(verdict);
+    };
+    return { approve, asked };
+  }
+
+  it('refuses a gated tool when the run has no way to ask, and runs nothing', async () => {
+    const sink = new InMemoryAuditSink();
+    const { tools, calls } = hostTools();
+    const result = await execute(restart, {
+      tier: 3,
+      runner: new FakeRunner(),
+      steps: testSteps(sink),
+      hostTools: tools,
+    });
+    const message =
+      "refused: ops.restart needs a person's approval, and this run has no way to ask for it";
+    expect(result).toMatchObject({ ok: false, error: { type: 'refused', message } });
+    expect(calls).toEqual([]);
+    expect(sink.steps).toEqual([
+      expect.objectContaining({ allowed: false, outputTrimmed: message, exitCode: null }),
+    ]);
+  });
+
+  it('runs an approved call with the time its approval left', async () => {
+    const sink = new InMemoryAuditSink();
+    const { tools, calls } = hostTools();
+    const { approve, asked } = approver({ approved: true, by: 'ui:arjun' });
+    const result = await execute(restart, {
+      tier: 3,
+      runner: new FakeRunner(),
+      steps: testSteps(sink),
+      hostTools: tools,
+      approve,
+      timeoutMs: 60_000,
+    });
+    expect(asked).toEqual([{ call: restart, timeoutMs: 60_000 }]);
+    expect(result).toMatchObject({ ok: true, value: { output: 'restarted' } });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.timeoutMs).toBeGreaterThan(59_000);
+    expect(calls[0]!.timeoutMs).toBeLessThanOrEqual(60_000);
+    expect(sink.steps).toEqual([expect.objectContaining({ allowed: true, exitCode: 0 })]);
+  });
+
+  it('refuses a rejected call, which the agent reads as a refusal, and runs nothing', async () => {
+    const sink = new InMemoryAuditSink();
+    const { tools, calls } = hostTools();
+    const { approve } = approver({ approved: false, reason: 'arjun rejected it' });
+    const result = await execute(restart, {
+      tier: 3,
+      runner: new FakeRunner(),
+      steps: testSteps(sink),
+      hostTools: tools,
+      approve,
+    });
+    const message = 'refused: ops.restart was not approved: arjun rejected it';
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: 'host_tool', input: '{"tool":"ops.restart"}', type: 'refused', message },
+    });
+    expect(calls).toEqual([]);
+    expect(sink.steps).toEqual([
+      expect.objectContaining({ allowed: false, outputTrimmed: message, exitCode: null }),
+    ]);
+  });
+
+  it('refuses the call when asking breaks', async () => {
+    const { tools, calls } = hostTools();
+    const { approve } = approver(new Error('socket gone'));
+    const result = await execute(restart, {
+      tier: 3,
+      runner: new FakeRunner(),
+      steps: testSteps(),
+      hostTools: tools,
+      approve,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        type: 'refused',
+        message: 'refused: ops.restart was not approved: asking for approval failed',
+      },
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it('asks no one for a call the tool would refuse, and lets the tool refuse it', async () => {
+    const { tools, calls } = hostTools('this run has restarted the app 3 times');
+    const { approve, asked } = approver({ approved: true, by: 'ui:arjun' });
+    const result = await execute(restart, {
+      tier: 3,
+      runner: new FakeRunner(),
+      steps: testSteps(),
+      hostTools: tools,
+      approve,
+    });
+    expect(asked).toEqual([]);
+    expect(calls).toHaveLength(1);
+    expect(result).toMatchObject({ ok: false, error: { type: 'failed', exitCode: 1 } });
+  });
+
+  it.each([
+    { kind: 'host_tool' as const, tool: 'ops.getConfig' as const },
+    { kind: 'host_tool' as const, tool: 'ops.planRollback' as const },
+  ])('asks no one for $tool, a read', async (call) => {
+    const { tools, calls } = hostTools();
+    const { approve, asked } = approver({ approved: false, reason: 'no' });
+    await execute(call, {
+      tier: 3,
+      runner: new FakeRunner(),
+      steps: testSteps(),
+      hostTools: tools,
+      approve,
+    });
+    expect(asked).toEqual([]);
+    expect(calls).toHaveLength(1);
   });
 });

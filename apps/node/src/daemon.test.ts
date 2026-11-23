@@ -24,6 +24,7 @@ import {
 import { FakeJobSource } from './jobs/fake-job-source.ts';
 import { FakeLink } from './link/fake-link.ts';
 import { ScriptedModel, submitReply } from './model/scripted-model.ts';
+import { autoApprovals } from './run/approvals.ts';
 import { FakeRunResults } from './run/results.ts';
 import { DockerSandboxes } from './sandbox/docker-sandboxes.ts';
 import { FakeSandboxes, fakeWorkspace } from './sandbox/fake-sandboxes.ts';
@@ -180,8 +181,8 @@ describe('createDaemon', () => {
     expect(ops.calls).toEqual(['getConfig']);
   });
 
-  it('gives a Tier 3 job the deployer for a rollback', async () => {
-    const deployer = new FakeDeployer([
+  const deploys = () =>
+    new FakeDeployer([
       {
         id: 'bad',
         status: 'SUCCESS',
@@ -197,20 +198,36 @@ describe('createDaemon', () => {
         canRollback: true,
       },
     ]);
+  const rollbackModel = () =>
+    new ScriptedModel([
+      '```page_ops_rollback_plan\n```',
+      '```page_ops_rollback\ngood\n```',
+      submitReply(),
+    ]);
+
+  it('gives a Tier 3 job the deployer for a rollback, and its approvals', async () => {
+    const deployer = deploys();
     const a = {
       ...adapters(),
       ops: new FakeOps(),
       deployer,
-      model: new ScriptedModel([
-        '```page_ops_rollback_plan\n```',
-        '```page_ops_rollback\ngood\n```',
-        submitReply(),
-      ]),
+      approvals: autoApprovals('test'),
+      model: rollbackModel(),
     };
     const daemon = createDaemon(a, pino({ enabled: false }));
     await daemon.start();
     await a.jobs.deliver({ ...jobFixtures.fix, tier: 3 });
     expect(deployer.rollbacks).toEqual(['good']);
+  });
+
+  it('refuses a Tier 3 rollback on a daemon that has no way to ask a person', async () => {
+    const deployer = deploys();
+    const a = { ...adapters(), ops: new FakeOps(), deployer, model: rollbackModel() };
+    const daemon = createDaemon(a, pino({ enabled: false }));
+    await daemon.start();
+    await a.jobs.deliver({ ...jobFixtures.fix, tier: 3 });
+    expect(deployer.rollbacks).toEqual([]);
+    expect(a.sink.steps.at(-1)).toMatchObject({ allowed: false });
   });
 });
 

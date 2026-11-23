@@ -3,6 +3,7 @@ import type { StepOutcome } from '../audit/sink.ts';
 import { writePathRefusal } from '../policy/paths.ts';
 import { checkCommand, checkHostTool } from '../policy/policy.ts';
 import { err, ok, type Result } from '../result.ts';
+import { approvalGate, needsApproval } from './approval.ts';
 import { runEdit } from './edit.ts';
 import { combineOutput, DEFAULT_OUTPUT_BUDGET, trimOutput } from './trim.ts';
 import type {
@@ -31,6 +32,10 @@ type ExecResult = Result<ExecOk, ExecErr>;
  * before the runner sees it; a refusal comes back as an error the agent can read, and the
  * runner is never called. Output is trimmed to the budget, keeping head and tail.
  *
+ * A gated host tool (APPROVAL_TOOLS) then waits for a person's approval, before its step
+ * opens. A rejection is a refusal like the policy's, so the agent can try something else or
+ * escalate.
+ *
  * Every call, refused or not, is one step in the audit log. An allowed call's step is
  * written before it runs, so if that write fails the call doesn't run at all. If the write
  * after it fails, the call returns `audit_failed` with what the command did in `result`.
@@ -48,7 +53,13 @@ export async function execute(call: ToolCall, ctx: ExecContext): Promise<ExecRes
   };
   let log = steps.logger.child({ tier: ctx.tier, kind: base.kind });
 
-  const refusal = refusalFor(call, ctx);
+  let refusal = refusalFor(call, ctx);
+  let timeoutMs = ctx.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  if (refusal === null && call.kind === 'host_tool') {
+    const gate = await approvalGate(call, ctx, timeoutMs, log);
+    if (gate !== undefined && 'refusal' in gate) refusal = gate.refusal;
+    else if (gate !== undefined) timeoutMs = gate.timeoutMs;
+  }
   if (refusal !== null) {
     const message = `refused: ${refusal}`;
     const refused = { ...base, type: 'refused' as const, message };
@@ -81,7 +92,8 @@ export async function execute(call: ToolCall, ctx: ExecContext): Promise<ExecRes
 
   let result: RunOutcome;
   try {
-    result = await run(call, ctx, base);
+    // An approved call gets the time its approval left.
+    result = await run(call, { ...ctx, timeoutMs }, base);
   } catch (error) {
     // The runner itself broke. Close the step so it doesn't read as still running.
     const outcome = {
@@ -178,13 +190,16 @@ function loggedInput(call: ToolCall): string | Record<string, unknown> {
   return trimOutput(call.command, LOG_INPUT_BUDGET);
 }
 
-function refusalFor(call: ToolCall, { tier, hostTools }: ExecContext): string | null {
+function refusalFor(call: ToolCall, { tier, hostTools, approve }: ExecContext): string | null {
   if (call.kind === 'edit') return writePathRefusal(call.path);
   const verdict =
     call.kind === 'host_tool' ? checkHostTool(call.tool, tier) : checkCommand(call.command, tier);
   if (!verdict.allowed) return verdict.reason;
   if (call.kind === 'host_tool' && !canRun(hostTools, call.tool)) {
     return `${call.tool} is not set up on this node`;
+  }
+  if (call.kind === 'host_tool' && needsApproval(call.tool) && approve === undefined) {
+    return `${call.tool} needs a person's approval, and this run has no way to ask for it`;
   }
   return null;
 }
@@ -221,9 +236,9 @@ async function runExec(call: ExecCall, ctx: ExecContext, base: StepBase): Promis
 }
 
 /**
- * Every host tool call runs here and nowhere else, after the tier check and with its step
- * open. The call is plain data, and hostToolArgs(call) is its tool and arguments, so a gate
- * such as a person's approval can wrap this one call.
+ * Every host tool call runs here and nowhere else, after the tier check, after a gated
+ * tool's approval (approvalGate in execute()) and with its step open. The call is plain
+ * data, and hostToolArgs(call) is its tool and arguments.
  */
 async function runHostTool(
   call: HostToolCall,

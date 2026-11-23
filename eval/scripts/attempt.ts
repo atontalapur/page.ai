@@ -21,6 +21,7 @@ import {
   OpsHostTools,
   StepLog,
 } from '@page/toolkit';
+import { evalApprove } from '../src/approve.ts';
 import type { Attempt } from '../src/results.ts';
 import { AttemptError, ProviderError, type AgentAttempt, type AttemptFn } from '../src/runner.ts';
 import type { Scenario } from '../src/scenario.ts';
@@ -122,6 +123,8 @@ export function dockerAttempt(
                 steps,
                 timeoutMs: Math.min(DEFAULT_TIMEOUT_MS, timeoutMs),
                 ...(hostTools === undefined ? {} : { hostTools }),
+                // No one watches an eval run, so its gated ops calls are approved at once.
+                approve: evalApprove,
                 ...(thought === undefined ? {} : { thought }),
               }),
           },

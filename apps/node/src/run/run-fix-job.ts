@@ -28,6 +28,7 @@ import type { Logger } from 'pino';
 import type { ClaimedJob } from '../jobs/job-source.ts';
 import type { OrchestratorLink } from '../link/link.ts';
 import type { Sandbox, Sandboxes } from '../sandbox/sandbox.ts';
+import { approvalArgs, type Approvals } from './approvals.ts';
 import type { OpsLock, ReleaseOps } from './ops-lock.ts';
 import {
   finishedEvent,
@@ -75,6 +76,11 @@ export interface RunDeps {
    * throws leaves the run unscored, and an unscored run never escalates on confidence.
    */
   score?: (run: SubmittedRun) => Confidence;
+  /**
+   * How the run asks a person before a gated ops tool runs (APPROVAL_TOOLS). Without it,
+   * those calls are refused, so a node that can't ask never changes the live app.
+   */
+  approvals?: Approvals;
   logger: Logger;
   agentConfig?: Partial<AgentConfig>;
   /** Milliseconds; injectable so tests control the wall clock. */
@@ -216,6 +222,12 @@ export async function runFixJob(
     const hostTools = hostToolsFor(tier, { github: githubTools, ops: opsTools });
     // The prompt offers the rollback blocks only to a run that has the tool.
     const rollback = hostTools?.handles?.('ops.rollback') === true;
+    // A kill or expiry ends a wait for approval as a refusal.
+    const approve = deps.approvals?.forRun({
+      runId,
+      signal: stopped,
+      args: (call) => approvalArgs(call, opsTools),
+    });
     const run: ExecuteFn = (call, { timeoutMs = Infinity, thought }) =>
       execute(call, {
         tier,
@@ -223,6 +235,7 @@ export async function runFixJob(
         steps,
         timeoutMs: Math.min(DEFAULT_TIMEOUT_MS, timeoutMs),
         ...(hostTools === undefined ? {} : { hostTools }),
+        ...(approve === undefined ? {} : { approve }),
         ...(thought === undefined ? {} : { thought }),
       });
 

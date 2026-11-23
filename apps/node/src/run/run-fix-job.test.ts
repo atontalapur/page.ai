@@ -21,6 +21,7 @@ import { describe, expect, it } from 'vitest';
 import { FakeLink } from '../link/fake-link.ts';
 import { bashReply, ScriptedModel, submitReply } from '../model/scripted-model.ts';
 import { FakeSandboxes } from '../sandbox/fake-sandboxes.ts';
+import { autoApprovals, type Approvals } from './approvals.ts';
 import type { OpsLock } from './ops-lock.ts';
 import { FakeRunResults, type RunResults } from './results.ts';
 import { runFixJob, type RunDeps } from './run-fix-job.ts';
@@ -56,6 +57,8 @@ function setup(
     link,
     results,
     model: new ScriptedModel(replies),
+    // Gated ops calls run here unless a test says otherwise; approvals.test.ts covers asking.
+    approvals: autoApprovals('test'),
     logger: pino({ enabled: false }),
     // A confident score, so tests about something else see a submitted run succeed. Tests of
     // the score itself pass scoreRun or a low one.
@@ -677,6 +680,65 @@ describe('runFixJob', () => {
       ]);
     });
 
+    it("refuses the gated ops tools on a node that can't ask a person, and still reads", async () => {
+      const ops = new FakeOps();
+      const { deps, sink } = setup(
+        [configReply, setReply, restartReply, submitReply()],
+        undefined,
+        {
+          ops,
+        },
+      );
+      delete deps.approvals;
+      await runFixJob(atTier(3), deps);
+
+      expect(ops.calls).toEqual(['getConfig']);
+      const why = "needs a person's approval, and this run has no way to ask for it";
+      expect(sink.steps).toMatchObject([
+        { allowed: true, exitCode: 0 },
+        { allowed: false, outputTrimmed: `refused: ops.setConfig ${why}` },
+        { allowed: false, outputTrimmed: `refused: ops.restart ${why}` },
+      ]);
+    });
+
+    it('asks before each gated call with what it would do, and runs only what is approved', async () => {
+      const ops = new FakeOps();
+      const asked: { runId: string; args: Record<string, unknown> }[] = [];
+      const approvals: Approvals = {
+        forRun:
+          ({ runId, args }) =>
+          (call) => {
+            asked.push({ runId, args: args(call) });
+            return Promise.resolve(
+              call.tool === 'ops.restart'
+                ? { approved: false, reason: 'arjun rejected it' }
+                : { approved: true, by: 'ui:arjun' },
+            );
+          },
+      };
+      const { deps, sink } = setup([setReply, restartReply, submitReply()], undefined, {
+        ops,
+        approvals,
+      });
+      await runFixJob(atTier(3), deps);
+
+      expect(asked).toEqual([
+        {
+          runId: job.runId,
+          args: { tool: 'ops.setConfig', key: 'SHIPPING_FLAT_CENTS', value: '500' },
+        },
+        { runId: job.runId, args: { tool: 'ops.restart' } },
+      ]);
+      expect(ops.calls).toEqual(['setConfig SHIPPING_FLAT_CENTS=500']);
+      expect(sink.steps).toMatchObject([
+        { allowed: true, exitCode: 0 },
+        {
+          allowed: false,
+          outputTrimmed: 'refused: ops.restart was not approved: arjun rejected it',
+        },
+      ]);
+    });
+
     it('refuses the ops tools when the node has no ops API', async () => {
       const { deps, sink } = setup([configReply, submitReply()]);
       await runFixJob(atTier(3), deps);
@@ -979,6 +1041,46 @@ describe('runFixJob', () => {
         // Its deployment went live with no restart, which scores as the fix being live.
         expect(finished.confidence).toMatchObject({ score: 1, liveAfterChange: true });
         expect(results.sent).toMatchObject([{ diff: '', result: { opsOnly: true } }]);
+      });
+
+      it('asks to roll back from the live deployment to the planned one', async () => {
+        const asked: Record<string, unknown>[] = [];
+        const approvals: Approvals = {
+          forRun:
+            ({ args }) =>
+            (call) => {
+              asked.push(args(call));
+              return Promise.resolve({ approved: true, by: 'ui:arjun' });
+            },
+        };
+        const model = new PromptedModel([planReply, rollbackReply('good'), submitReply()]);
+        const { deps } = setup([], undefined, {
+          ops: new FakeOps(),
+          deployer: deploys(),
+          model,
+          approvals,
+        });
+        await runFixJob(atTier(3), deps);
+
+        expect(asked).toEqual([
+          {
+            tool: 'ops.rollback',
+            to: 'good',
+            from: 'bad',
+            live: {
+              id: 'bad',
+              status: 'SUCCESS',
+              commit: 'b1',
+              createdAt: '2026-11-20T10:00:00.000Z',
+            },
+            rollBackTo: {
+              id: 'good',
+              status: 'REMOVED',
+              commit: 'g1',
+              createdAt: '2026-11-19T10:00:00.000Z',
+            },
+          },
+        ]);
       });
 
       it('is neither offered nor run on a node without a deployer', async () => {

@@ -119,8 +119,27 @@ export interface HostTools {
    * there are no host tools at all. Left out, every host tool is taken to be there.
    */
   handles?(tool: HostToolName): boolean;
+  /**
+   * Why run() would refuse `call` without sending anything, or null. execute() asks before it
+   * asks a person to approve the call, so no one approves a call that won't run. Left out,
+   * every call counts as one that will.
+   */
+  refusal?(call: HostToolCall): string | null;
   run(call: HostToolCall, timeoutMs: number): Promise<HostToolOutcome>;
 }
+
+/** A person's answer to a gated host tool call (APPROVAL_TOOLS). */
+export type ApprovalVerdict = { approved: true; by: string } | { approved: false; reason: string };
+
+/**
+ * Asks a person to approve `call`, and resolves with their answer within `timeoutMs`. No
+ * answer in time, or a stopped run, resolves as a rejection with its reason. It rejects only
+ * when something is broken, which execute() turns into a refusal.
+ */
+export type Approve = (
+  call: HostToolCall,
+  options: { timeoutMs: number },
+) => Promise<ApprovalVerdict>;
 
 export type ToolCall = ExecCall | EditCall | HostToolCall;
 
@@ -129,6 +148,12 @@ export interface ExecContext {
   runner: ExecRunner;
   /** Tier 2 and up. Unset, every host tool call is refused. */
   hostTools?: HostTools;
+  /**
+   * Asks a person before a gated host tool runs (APPROVAL_TOOLS). Unset, those calls are
+   * refused: nothing changes the live app without someone saying yes, or a caller that
+   * chose autoApprove.
+   */
+  approve?: Approve;
   /** The run's audit trail. Every call writes one step to it. */
   steps: StepLog;
   timeoutMs?: number;

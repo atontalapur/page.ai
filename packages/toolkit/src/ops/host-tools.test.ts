@@ -16,6 +16,7 @@ const set = (key: string, value: string): HostToolCall => ({
   value,
 });
 const unset = (key: string): HostToolCall => ({ kind: 'host_tool', tool: 'ops.deleteConfig', key });
+const fail = (output: string) => ({ ok: false, output });
 
 /** A FakeOps with some methods swapped out. */
 function opsWith(over: Partial<OpsApi>): OpsApi {
@@ -161,6 +162,47 @@ describe('OpsHostTools', () => {
     expect(await tools.run(get, 1000)).toEqual({ ok: false, output: 'the app is in use' });
     expect(ops.calls).toEqual([]);
     expect(await tools.undo()).toMatchObject({ unknown: [], restarted: false });
+  });
+
+  describe('refusal', () => {
+    // execute() asks this before a person approves a call, so it must say what run() would
+    // refuse, and send nothing.
+    it('says what run() would refuse, without calling the app', async () => {
+      const ops = new FakeOps();
+      const tools = new OpsHostTools({ ops, maxRestarts: 1 });
+      const push: HostToolCall = { kind: 'host_tool', tool: 'git.pushBranch', message: 'm' };
+      const rollBack: HostToolCall = { kind: 'host_tool', tool: 'ops.rollback', to: 'd' };
+      const cases: [HostToolCall, string | null][] = [
+        [push, 'git.pushBranch is not an ops tool'],
+        [rollBack, 'ops.rollback is not set up on this node'],
+        [set('bad key', '1'), expect.stringContaining('is not a setting name') as string],
+        [
+          set('A', 'x'.repeat(MAX_SETTING_VALUE + 1)),
+          `a setting value is at most ${MAX_SETTING_VALUE} characters`,
+        ],
+        [unset('../x'), expect.stringContaining('is not a setting name') as string],
+        [set('A', '1'), null],
+        [unset('A'), null],
+        [restart, null],
+        [get, null],
+      ];
+      for (const [call, refusal] of cases) {
+        expect(tools.refusal(call)).toEqual(refusal);
+        if (refusal !== null) expect(await tools.run(call, 1000)).toEqual(fail(refusal));
+      }
+      expect(ops.calls).toEqual([]);
+
+      await tools.run(restart, 1000);
+      expect(tools.refusal(restart)).toBe(
+        'this run has restarted the app 1 times, the most one run may',
+      );
+    });
+
+    it('refuses everything when given a refusal', () => {
+      const tools = new OpsHostTools({ ops: new FakeOps(), refusal: 'the app is in use' });
+      expect(tools.refusal(get)).toBe('the app is in use');
+      expect(tools.refusal(restart)).toBe('the app is in use');
+    });
   });
 
   describe('changedApp', () => {
@@ -403,8 +445,30 @@ describe('OpsHostTools', () => {
       expect(tools.changedApp).toBe(true);
     });
 
+    it('names the planned rollback, for the person approving it, until it is sent', async () => {
+      const { live, previous, tools } = setup();
+      expect(tools.plannedRollback).toBeNull();
+      await tools.run(plan, 1000);
+      expect(tools.plannedRollback).toEqual({
+        live: { id: live.id, status: 'SUCCESS', commit: 'bad', createdAt: live.createdAt },
+        rollBackTo: {
+          id: previous.id,
+          status: previous.status,
+          commit: 'good',
+          createdAt: previous.createdAt,
+        },
+      });
+      expect(tools.refusal(rollBack(previous.id))).toBeNull();
+      await tools.run(rollBack(previous.id), 1000);
+      expect(tools.plannedRollback).toBeNull();
+      expect(tools.refusal(rollBack(previous.id))).toBe(
+        'this run has rolled the app back once, the most one run may',
+      );
+    });
+
     it('refuses a rollback with no plan, or to a target the plan did not name', async () => {
       const { live, previous, deployer, tools } = setup();
+      expect(tools.refusal(rollBack(previous.id))).toMatch(/^plan the rollback first/);
       expect(await tools.run(rollBack(previous.id), 1000)).toEqual({
         ok: false,
         output:

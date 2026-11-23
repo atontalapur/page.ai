@@ -20,6 +20,17 @@ describe('combineHostTools', () => {
     expect(ops.calls).toEqual(['restart']);
   });
 
+  it("asks the owning part whether it would refuse a call, so approval isn't asked for one", () => {
+    const tools = combineHostTools(github, new OpsHostTools({ ops: new FakeOps() }));
+    const push: HostToolCall = { kind: 'host_tool', tool: 'git.pushBranch', message: 'm' };
+    const badKey: HostToolCall = { kind: 'host_tool', tool: 'ops.setConfig', key: 'x', value: '' };
+    // The GitHub part has no refusal check, and no part owns the rollback without a deployer.
+    expect(tools.refusal?.(push)).toBeNull();
+    expect(tools.refusal?.({ kind: 'host_tool', tool: 'ops.rollback', to: 'd' })).toBeNull();
+    expect(tools.refusal?.(badKey)).toMatch(/is not a setting name/);
+    expect(tools.refusal?.({ kind: 'host_tool', tool: 'ops.restart' })).toBeNull();
+  });
+
   it('handles only what some part handles', async () => {
     const tools = combineHostTools(github);
     expect(tools.handles?.('github.openPr')).toBe(true);
