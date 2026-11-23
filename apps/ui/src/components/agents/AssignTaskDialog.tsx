@@ -1,7 +1,17 @@
-import { useState, type FormEvent } from 'react';
-import { X } from 'lucide-react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Button } from '@page/design-system/components/ui/button';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@page/design-system/components/ui/dialog';
 import { Input } from '@page/design-system/components/ui/input';
+import { Label } from '@page/design-system/components/ui/label';
+import { NativeSelect, NativeSelectOption } from '@page/design-system/components/ui/native-select';
+import { Textarea } from '@page/design-system/components/ui/textarea';
 import { mockAgents } from '../../data/mockAgents';
 import { mockIncidents } from '../../data/mockIncidents';
 import { type TaskPriority } from '../../data/mockTasks';
@@ -12,16 +22,17 @@ interface AssignTaskDialogProps {
   onClose: () => void;
 }
 
+const priorities: TaskPriority[] = ['Low', 'Medium', 'High', 'Critical'];
+
 export default function AssignTaskDialog({ open, onClose }: AssignTaskDialogProps) {
   const { createTask } = useTasks();
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   const [title, setTitle] = useState('');
   const [instructions, setInstructions] = useState('');
   const [agentId, setAgentId] = useState('');
   const [incidentId, setIncidentId] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('Medium');
-
-  if (!open) return null;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,31 +58,22 @@ export default function AssignTaskDialog({ open, onClose }: AssignTaskDialogProp
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      role="presentation"
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose();
+      }}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="assign-task-title"
-        className="w-full max-w-lg rounded-lg border bg-background p-6 shadow-lg"
-      >
-        <div className="mb-5 flex items-center justify-between">
-          <h2 id="assign-task-title" className="text-xl font-semibold">
-            Assign New Task
-          </h2>
-          <button type="button" onClick={onClose} aria-label="Close dialog">
-            <X className="size-5" />
-          </button>
-        </div>
+      <DialogContent initialFocus={titleInputRef} className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-semibold">Assign New Task</DialogTitle>
+        </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label htmlFor="task-title" className="text-sm font-medium">
-              Task Title
-            </label>
+            <Label htmlFor="task-title">Task Title</Label>
             <Input
+              ref={titleInputRef}
               id="task-title"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
@@ -81,83 +83,74 @@ export default function AssignTaskDialog({ open, onClose }: AssignTaskDialogProp
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="task-instructions" className="text-sm font-medium">
-              Instructions
-            </label>
-            <textarea
+            <Label htmlFor="task-instructions">Instructions</Label>
+            <Textarea
               id="task-instructions"
               value={instructions}
               onChange={(event) => setInstructions(event.target.value)}
               placeholder="Describe what the agent should investigate..."
-              className="min-h-24 w-full rounded-md border bg-background p-3 text-sm"
+              className="min-h-24"
               required
             />
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="task-agent" className="text-sm font-medium">
-              Assign Agent
-            </label>
-            <select
+            <Label htmlFor="task-agent">Assign Agent</Label>
+            <NativeSelect
               id="task-agent"
               value={agentId}
               onChange={(event) => setAgentId(event.target.value)}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              className="w-full"
               required
             >
-              <option value="">Select an agent</option>
+              <NativeSelectOption value="">Select an agent</NativeSelectOption>
               {mockAgents.map((agent) => (
-                <option key={agent.id} value={agent.id}>
+                <NativeSelectOption key={agent.id} value={agent.id}>
                   {agent.name} ({agent.id})
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="task-incident" className="text-sm font-medium">
-              Related Incident (Optional)
-            </label>
-            <select
+            <Label htmlFor="task-incident">Related Incident (Optional)</Label>
+            <NativeSelect
               id="task-incident"
               value={incidentId}
               onChange={(event) => setIncidentId(event.target.value)}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              className="w-full"
             >
-              <option value="">No incident</option>
+              <NativeSelectOption value="">No incident</NativeSelectOption>
               {mockIncidents.map((incident) => (
-                <option key={incident.id} value={incident.id}>
+                <NativeSelectOption key={incident.id} value={incident.id}>
                   {incident.id} — {incident.title}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="task-priority" className="text-sm font-medium">
-              Priority
-            </label>
-            <select
+            <Label htmlFor="task-priority">Priority</Label>
+            <NativeSelect
               id="task-priority"
               value={priority}
               onChange={(event) => setPriority(event.target.value as TaskPriority)}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              className="w-full"
             >
-              <option value="Low">Low</option>
-              <option value="Medium">Medium</option>
-              <option value="High">High</option>
-              <option value="Critical">Critical</option>
-            </select>
+              {priorities.map((level) => (
+                <NativeSelectOption key={level} value={level}>
+                  {level}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
           </div>
 
-          <div className="flex justify-end gap-3 pt-3">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
+          <DialogFooter className="pt-3">
+            <DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose>
             <Button type="submit">Assign Task</Button>
-          </div>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
