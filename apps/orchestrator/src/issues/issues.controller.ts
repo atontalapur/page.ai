@@ -30,7 +30,12 @@ const issueId = z.uuid();
  * Run outcomes. They reach an issue only from the node's run_finished jobs (RunsService),
  * which also write the runs and escalations rows and pass the escalation note on.
  */
-const RUN_EVENTS: ReadonlySet<IssueEvent['type']> = new Set(['patch_ready', 'escalate', 'fail']);
+const RUN_EVENTS: ReadonlySet<IssueEvent['type']> = new Set([
+  'patch_ready',
+  'ops_fixed',
+  'escalate',
+  'fail',
+]);
 
 async function asHttp<T>(work: Promise<T>): Promise<T> {
   try {

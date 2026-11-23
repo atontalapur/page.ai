@@ -27,6 +27,13 @@ describe('issue contracts', () => {
         runId: '7f6c2c1e-3d5b-4f0a-9a43-1c2b3d4e5f60',
       }).success,
     ).toBe(true);
+    expect(issueEventSchema.safeParse({ type: 'ops_fixed' }).success).toBe(false);
+    expect(
+      issueEventSchema.safeParse({
+        type: 'ops_fixed',
+        runId: '7f6c2c1e-3d5b-4f0a-9a43-1c2b3d4e5f60',
+      }).success,
+    ).toBe(true);
     expect(issueEventSchema.safeParse({ type: 'fail', reason: 'sandbox' }).success).toBe(false);
     expect(
       issueEventSchema.safeParse({

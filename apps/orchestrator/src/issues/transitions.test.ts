@@ -47,6 +47,16 @@ describe('issue transitions', () => {
     expect(transition(fixing(3), escalate)).toMatchObject({ status: 'failed', currentTier: 3 });
   });
 
+  it('resolves a Tier 3 fix made live through the ops API, with nothing to approve', () => {
+    const opsFixed: IssueEvent = { type: 'ops_fixed', runId };
+    expect(transition(fixing(3), opsFixed)).toEqual({ ...fixing(3), status: 'resolved' });
+    // Only Tier 3 has the ops tools.
+    expect(() => transition(fixing(1), opsFixed)).toThrow(
+      'cannot ops_fixed an issue that is fixing',
+    );
+    expect(() => transition(fixing(2), opsFixed)).toThrow(TransitionError);
+  });
+
   it('refuses to escalate an issue with no tier', () => {
     const state: IssueState = { ...fixing(1), currentTier: null };
     expect(() => transition(state, { type: 'escalate', runId, reason: 'x' })).toThrow(
@@ -101,6 +111,7 @@ describe('issue transitions', () => {
       [triaged, { type: 'start_fix' }, 'fixing'],
       [triaged, { type: 'kill' }, 'killed'],
       [fixing(1), { type: 'patch_ready', runId }, 'awaiting_approval'],
+      [fixing(3), { type: 'ops_fixed', runId }, 'resolved'],
       [fixing(1), { type: 'escalate', runId, reason: 'x' }, 'fixing'],
       [fixing(3), { type: 'escalate', runId, reason: 'x' }, 'failed'],
       [fixing(1), { type: 'fail', runId, reason: 'x' }, 'failed'],
@@ -139,6 +150,11 @@ describe('issue transitions', () => {
         { ...fixing(1), status: 'pr_open' },
         { type: 'patch_ready', runId },
       ],
+      [
+        { ...fixing(3), status: 'awaiting_approval' },
+        { type: 'ops_fixed', runId },
+      ],
+      [triaged, { type: 'ops_fixed', runId }],
     ];
     for (const [state, event] of illegal) {
       expect(() => machine.apply(state, event)).toThrow(TransitionError);

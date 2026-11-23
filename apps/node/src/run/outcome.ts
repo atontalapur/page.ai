@@ -20,7 +20,8 @@ const SUMMARY_CHARS = 500;
 
 /**
  * The `node.run.finished` event for a run. `tried` is what the agent ran, in order, and
- * `prUrl` the PR it opened, if it got that far.
+ * `prUrl` the PR it opened, if it got that far. `opsOnly` says a submitted Tier 3 run fixed
+ * the live app through the ops API and left no code change; it is dropped for any other end.
  *
  * A submitted run is a success with no confidence: nothing scores runs yet. A run that ran
  * out of budget escalates a tier (Tier 3 has nowhere to go, so it fails). A killed run is
@@ -33,10 +34,11 @@ export function finishedEvent(
   end: RunEnd,
   tried: readonly string[],
   prUrl: string | null = null,
+  opsOnly = false,
 ): RunFinished {
   const base = { v: 1 as const, runId, prUrl, confidence: null };
   if (end.kind === 'agent' && end.run.exitStatus === 'submitted') {
-    return { ...base, status: 'succeeded', note: null };
+    return { ...base, status: 'succeeded', note: null, opsOnly };
   }
 
   const { summary, blocker } = describe(end);

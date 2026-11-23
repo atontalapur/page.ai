@@ -64,6 +64,10 @@ const rules: Record<IssueStatus, Rule> = {
     switch (event.type) {
       case 'patch_ready':
         return { ...state, status: 'awaiting_approval' };
+      // The Tier 3 run's fix is live already and left no patch, so there is nothing to approve.
+      // Only Tier 3 has the ops tools.
+      case 'ops_fixed':
+        return state.currentTier === MAX_TIER ? { ...state, status: 'resolved' } : undefined;
       case 'escalate':
         return escalate(state);
       // A run a higher tier can't help (a broken sandbox, model or audit log).

@@ -138,6 +138,7 @@ export const jobFixtures: { [Q in QueueName]: JobPayload<Q> } = {
       prUrl: null,
       confidence: null,
       note: null,
+      opsOnly: false,
     },
   },
 };
@@ -172,6 +173,7 @@ export const nodeToServerEventFixtures: Payloads<NodeToServerEvents> = {
     prUrl: 'https://github.com/atontalapur/page-demo/pull/7',
     confidence: confidenceFixture,
     note: null,
+    opsOnly: false,
   },
   'node.approval.request': {
     v: 1,

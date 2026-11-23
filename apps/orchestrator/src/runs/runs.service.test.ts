@@ -88,6 +88,30 @@ describe('RunsService', () => {
     });
   });
 
+  it('resolves the issue for a Tier 3 run that fixed the live app and changed no code', async () => {
+    const { issue, job } = await fixing();
+    await runs.record(finished(job, escalation));
+    const tier2 = await liveJob(issue.id);
+    await runs.record(finished(tier2, { ...escalation, toTier: 3 }));
+    const tier3 = await liveJob(issue.id);
+    expect(tier3.tier).toBe(3);
+
+    const outcome = await runs.record({ ...finished(tier3, { opsOnly: true }), diff: '' });
+    expect(outcome).toEqual({ kind: 'applied', event: 'ops_fixed' });
+    expect(await issues.get(issue.id)).toMatchObject({ status: 'resolved', currentTier: 3 });
+    expect(await runRow(tier3.runId)).toMatchObject({
+      tier: 3,
+      status: 'succeeded',
+      pr_url: null,
+      diff: '',
+    });
+    expect((await issues.events(issue.id)).at(-1)).toMatchObject({
+      event: { type: 'ops_fixed', runId: tier3.runId },
+      fromStatus: 'fixing',
+      toStatus: 'resolved',
+    });
+  });
+
   it('keeps the PR link and the confidence of a run', async () => {
     const { job } = await fixing();
     const prUrl = 'https://github.com/atontalapur/page-demo/pull/7';
@@ -360,8 +384,12 @@ describe('issueEventFor', () => {
   const base = { v: 1, runId, prUrl: null, confidence: null } as const;
 
   it('maps each outcome to its issue event', () => {
-    expect(issueEventFor({ ...base, status: 'succeeded', note: null })).toEqual({
+    expect(issueEventFor({ ...base, status: 'succeeded', note: null, opsOnly: false })).toEqual({
       type: 'patch_ready',
+      runId,
+    });
+    expect(issueEventFor({ ...base, status: 'succeeded', note: null, opsOnly: true })).toEqual({
+      type: 'ops_fixed',
       runId,
     });
     expect(issueEventFor({ ...base, status: 'failed', note: null })).toEqual({
