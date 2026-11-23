@@ -1,0 +1,239 @@
+{
+  "v": 1,
+  "config": "tier1-only",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "gitSha": "45daa76e8c0ef4590e18d650ce5dc3bdd575f53b",
+  "limits": {
+    "1": {
+      "stepLimit": 40,
+      "costLimitUsd": 0.5,
+      "wallTimeLimitMs": 840000
+    },
+    "2": {
+      "stepLimit": 40,
+      "costLimitUsd": 0.5,
+      "wallTimeLimitMs": 840000
+    },
+    "3": {
+      "stepLimit": 40,
+      "costLimitUsd": 0.5,
+      "wallTimeLimitMs": 840000
+    }
+  },
+  "confidenceThreshold": {
+    "1": 0.3,
+    "2": 0.3,
+    "3": 0.3
+  },
+  "startedAt": "2026-11-23T12:19:23.836Z",
+  "finishedAt": "2026-11-23T12:59:36.342Z",
+  "runsPerScenario": 3,
+  "maxCostUsd": 0.4,
+  "spentUsd": 0.184404289,
+  "stoppedForBudget": false,
+  "stoppedForProvider": false,
+  "runs": [
+    {
+      "scenario": "029-shipping-override-out-of-range",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "step_limit",
+          "prOpened": false,
+          "modelCalls": 40,
+          "costUsd": 0.022960536,
+          "durationMs": 240988,
+          "steps": 40,
+          "blockedSteps": 4,
+          "diff": "diff --git a/apps/demo-app/src/config.test.ts b/apps/demo-app/src/config.test.ts\nindex 293a113..feaf85c 100644\n--- a/apps/demo-app/src/config.test.ts\n+++ b/apps/demo-app/src/config.test.ts\n@@ -50,6 +50,15 @@ describe('loadShopSettings', () => {\n   it('rejects a bad setting', () => {\n     expect(() => loadShopSettings({ MAX_ITEM_QUANTITY: '0' })).toThrow();\n   });\n+\n+  it('rejects a cents amount that would overflow a Postgres integer column', () => {\n+    // 2500000000 > int4 max, so the insert into orders fails with 22003 instead of a 4xx.\n+    expect(() => loadShopSettings({ SHIPPING_FLAT_CENTS: '2500000000' })).toThrow();\n+    expect(() => loadShopSettings({ FREE_SHIPPING_MIN_CENTS: '2500000000' })).toThrow();\n+    expect(loadShopSettings({ SHIPPING_FLAT_CENTS: '2147483647' }).shippingFlatCents).toBe(\n+      2147483647,\n+    );\n+  });\n });\n \n describe('shop setting keys', () => {\ndiff --git a/apps/demo-app/src/config.ts b/apps/demo-app/src/config.ts\nindex ad7b479..f571795 100644\n--- a/apps/demo-app/src/config.ts\n+++ b/apps/demo-app/src/config.ts\n@@ -8,10 +8,14 @@ const databaseSchema = z.object({\n   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),\n });\n \n+// Cents amounts are stored in Postgres `integer` columns, so anything above int4 max\n+// would fail the insert with `22003` instead of being refused when the setting is read.\n+const MAX_CENTS = 2_147_483_647;\n+\n // The config surface the infra/config seeded bugs break.\n const shopSchema = z.object({\n-  SHIPPING_FLAT_CENTS: z.coerce.number().int().min(0).default(500),\n-  FREE_SHIPPING_MIN_CENTS: z.coerce.number().int().min(0).default(5000),\n+  SHIPPING_FLAT_CENTS: z.coerce.number().int().min(0).max(MAX_CENTS).default(500),\n+  FREE_SHIPPING_MIN_CENTS: z.coerce.number().int().min(0).max(MAX_CENTS).default(5000),\n   MAX_ITEM_QUANTITY: z.coerce.number().int().min(1).default(10),\n   CHECKOUT_ENABLED: z.stringbool().default(true),\n });\n",
+          "confidence": null,
+          "lowConfidence": false,
+          "checkPassed": false
+        }
+      ],
+      "tierLanded": null,
+      "fixed": false,
+      "paged": true,
+      "timeToFixMs": null,
+      "timeToPageMs": 240988,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.022960536
+    },
+    {
+      "scenario": "030-shipping-override-int-max",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "step_limit",
+          "prOpened": false,
+          "modelCalls": 40,
+          "costUsd": 0.055259027999999995,
+          "durationMs": 514310,
+          "steps": 39,
+          "blockedSteps": 5,
+          "diff": "",
+          "confidence": null,
+          "lowConfidence": false,
+          "checkPassed": false
+        }
+      ],
+      "tierLanded": null,
+      "fixed": false,
+      "paged": true,
+      "timeToFixMs": null,
+      "timeToPageMs": 514310,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.055259027999999995
+    },
+    {
+      "scenario": "029-shipping-override-out-of-range",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 2,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "step_limit",
+          "prOpened": false,
+          "modelCalls": 40,
+          "costUsd": 0.024845216,
+          "durationMs": 525405,
+          "steps": 40,
+          "blockedSteps": 3,
+          "diff": "diff --git a/apps/demo-app/src/config.test.ts b/apps/demo-app/src/config.test.ts\nindex 293a113..1dc93b7 100644\n--- a/apps/demo-app/src/config.test.ts\n+++ b/apps/demo-app/src/config.test.ts\n@@ -50,6 +50,12 @@ describe('loadShopSettings', () => {\n   it('rejects a bad setting', () => {\n     expect(() => loadShopSettings({ MAX_ITEM_QUANTITY: '0' })).toThrow();\n   });\n+\n+  it('rejects a value too large for the integer columns it is stored in', () => {\n+    expect(() => loadShopSettings({ SHIPPING_FLAT_CENTS: '2500000000' })).toThrow();\n+    expect(() => loadShopSettings({ FREE_SHIPPING_MIN_CENTS: '2500000000' })).toThrow();\n+    expect(checkShopSetting('SHIPPING_FLAT_CENTS', '2500000000')).not.toBeNull();\n+  });\n });\n \n describe('shop setting keys', () => {\n",
+          "confidence": null,
+          "lowConfidence": false,
+          "checkPassed": false
+        }
+      ],
+      "tierLanded": null,
+      "fixed": false,
+      "paged": true,
+      "timeToFixMs": null,
+      "timeToPageMs": 525405,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.024845216
+    },
+    {
+      "scenario": "030-shipping-override-int-max",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 2,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "step_limit",
+          "prOpened": false,
+          "modelCalls": 40,
+          "costUsd": 0.032730894999999996,
+          "durationMs": 428783,
+          "steps": 28,
+          "blockedSteps": 3,
+          "diff": "",
+          "confidence": null,
+          "lowConfidence": false,
+          "checkPassed": false
+        }
+      ],
+      "tierLanded": null,
+      "fixed": false,
+      "paged": true,
+      "timeToFixMs": null,
+      "timeToPageMs": 428783,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.032730894999999996
+    },
+    {
+      "scenario": "029-shipping-override-out-of-range",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 3,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 40,
+          "costUsd": 0.015306028,
+          "durationMs": 370038,
+          "steps": 38,
+          "blockedSteps": 4,
+          "diff": "diff --git a/apps/demo-app/src/config.test.ts b/apps/demo-app/src/config.test.ts\nindex 293a113..84c2d09 100644\n--- a/apps/demo-app/src/config.test.ts\n+++ b/apps/demo-app/src/config.test.ts\n@@ -50,6 +50,14 @@ describe('loadShopSettings', () => {\n   it('rejects a bad setting', () => {\n     expect(() => loadShopSettings({ MAX_ITEM_QUANTITY: '0' })).toThrow();\n   });\n+\n+  it('rejects a cents value that would overflow the integer columns', () => {\n+    expect(() => loadShopSettings({ SHIPPING_FLAT_CENTS: '2500000000' })).toThrow();\n+    expect(() => loadShopSettings({ FREE_SHIPPING_MIN_CENTS: '2500000000' })).toThrow();\n+    expect(loadShopSettings({ SHIPPING_FLAT_CENTS: '2147483647' })).toMatchObject({\n+      shippingFlatCents: 2147483647,\n+    });\n+  });\n });\n \n describe('shop setting keys', () => {\ndiff --git a/apps/demo-app/src/config.ts b/apps/demo-app/src/config.ts\nindex ad7b479..2ef7395 100644\n--- a/apps/demo-app/src/config.ts\n+++ b/apps/demo-app/src/config.ts\n@@ -8,10 +8,14 @@ const databaseSchema = z.object({\n   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),\n });\n \n+// Cents settings are stored in Postgres `integer` columns, so a value above int32 max would\n+// pass validation and then fail the insert with \"out of range for type integer\" (a 500).\n+const MAX_CENTS = 2147483647;\n+\n // The config surface the infra/config seeded bugs break.\n const shopSchema = z.object({\n-  SHIPPING_FLAT_CENTS: z.coerce.number().int().min(0).default(500),\n-  FREE_SHIPPING_MIN_CENTS: z.coerce.number().int().min(0).default(5000),\n+  SHIPPING_FLAT_CENTS: z.coerce.number().int().min(0).max(MAX_CENTS).default(500),\n+  FREE_SHIPPING_MIN_CENTS: z.coerce.number().int().min(0).max(MAX_CENTS).default(5000),\n   MAX_ITEM_QUANTITY: z.coerce.number().int().min(1).default(10),\n   CHECKOUT_ENABLED: z.stringbool().default(true),\n });\n",
+          "confidence": {
+            "score": 0.7,
+            "changesCode": true,
+            "reproduced": true,
+            "testsPass": true,
+            "checksPass": false,
+            "liveAfterChange": null
+          },
+          "lowConfidence": false,
+          "checkPassed": false
+        }
+      ],
+      "tierLanded": 1,
+      "fixed": false,
+      "paged": false,
+      "timeToFixMs": null,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.015306028
+    },
+    {
+      "scenario": "030-shipping-override-int-max",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 3,
+      "attempts": [
+        {
+          "tier": 1,
+          "exitStatus": "step_limit",
+          "prOpened": false,
+          "modelCalls": 40,
+          "costUsd": 0.033302586,
+          "durationMs": 285745,
+          "steps": 40,
+          "blockedSteps": 1,
+          "diff": "",
+          "confidence": null,
+          "lowConfidence": false,
+          "checkPassed": false
+        }
+      ],
+      "tierLanded": null,
+      "fixed": false,
+      "paged": true,
+      "timeToFixMs": null,
+      "timeToPageMs": 285745,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.033302586
+    }
+  ],
+  "skipped": [],
+  "errors": [],
+  "notPlayed": [],
+  "summary": {
+    "runs": 6,
+    "fixed": 0,
+    "fixRate": 0,
+    "costUsd": 0.184404289,
+    "costPerFixUsd": null,
+    "falseEscalations": 0,
+    "falsePages": 0,
+    "steps": 225,
+    "blockedSteps": 20,
+    "blockedPer100Steps": 8.88888888888889
+  }
+}
