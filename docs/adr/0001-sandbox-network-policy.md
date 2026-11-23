@@ -72,7 +72,9 @@ What doesn't:
   aren't in its reach.
 - **The CPU and memory limits** in decision 3 are the container's, shared with the
   daemon, not 1 CPU and 1 GB per run. A command that exhausts memory can take the daemon
-  down with it; Railway then restarts the service and pg-boss retries the job.
+  down with it. Railway then restarts the service, but the fix job isn't retried: the `fix`
+  queue has no retries, so the job expires after 20 minutes and the orchestrator fails the
+  issue as a run lost with no result (`recordLost`), for a person to take over.
 - **Decision 4's wall clock.** Nothing stops a run's processes if the daemon dies; the
   next start, or the restart's reap, kills them.
 
