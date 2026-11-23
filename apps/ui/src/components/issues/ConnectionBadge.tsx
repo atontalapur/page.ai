@@ -11,7 +11,11 @@ const states: Record<IssuesStatus, { label: string; dot: string; title: string }
     dot: 'bg-amber-9',
     title: 'Lost the orchestrator; retrying. The list reloads once it is back.',
   },
-  needs_token: { label: 'Token needed', dot: 'bg-red-9', title: 'Enter the API token' },
+  needs_token: {
+    label: 'Token needed',
+    dot: 'bg-red-9',
+    title: 'Enter your personal token or the API token',
+  },
   mock: {
     label: 'Mock data',
     dot: 'bg-blue-9',

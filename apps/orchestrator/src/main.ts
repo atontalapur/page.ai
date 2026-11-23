@@ -2,6 +2,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { loadMigrations } from '@page/db-migrations';
 import { PgBoss } from 'pg-boss';
 import { createApp } from './app.ts';
+import { tokenWarnings } from './auth/api-tokens.ts';
 import { ConfigError, loadConfig, type Config } from './config.ts';
 import { createDb } from './db/database.ts';
 import { migrate } from './db/migrate.ts';
@@ -57,8 +58,10 @@ try {
   const applied = await migrate(db, await loadMigrations());
   logger.info(applied.length ? `applied ${applied.join(', ')}` : 'migrations up to date');
   await boss.start();
-  if (!config.apiToken) {
-    logger.warn('ORCHESTRATOR_API_TOKEN is unset; every route but /health and /ingest returns 401');
+  for (const warning of tokenWarnings(config)) logger.warn(warning);
+  const people = config.dashboardTokens.map(({ name }) => name);
+  if (people.length > 0) {
+    logger.info({ people }, 'personal dashboard tokens loaded; only they decide Tier 3 approvals');
   }
   if (!config.nodeSharedSecret) {
     logger.warn('NODE_SHARED_SECRET is unset; every node daemon is refused');

@@ -40,6 +40,8 @@ export interface IssueEventsTable {
   from_status: IssueStatus;
   to_status: IssueStatus;
   current_tier: Tier | null;
+  // Who applied it (ISSUE_EVENT_ACTORS, or `ui:<name>`). Null on rows from before 012.
+  actor: ColumnType<string | null, string | null | undefined, never>;
   created_at: Generated<Date>;
 }
 

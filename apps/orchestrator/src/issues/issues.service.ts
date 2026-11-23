@@ -56,6 +56,11 @@ export interface ApplyOptions {
    * the reviewer's reason on instead.
    */
   escalationNote?: EscalationNote;
+  /**
+   * Who applied the event, kept in `issue_events.actor`: `ui:<name>` for a person, or one of
+   * ISSUE_EVENT_ACTORS. Left out, the row records none.
+   */
+  actor?: string;
 }
 
 /** A change `applyIn` made, logged and published once its transaction commits. */
@@ -84,6 +89,7 @@ function toEventRecord(row: Selectable<IssueEventsTable>): IssueEventRecord {
     fromStatus: row.from_status,
     toStatus: row.to_status,
     currentTier: row.current_tier,
+    actor: row.actor,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -224,7 +230,7 @@ export class IssuesService {
     trx: Transaction<Database>,
     id: string,
     event: IssueEvent,
-    { escalationNote }: ApplyOptions = {},
+    { escalationNote, actor }: ApplyOptions = {},
   ): Promise<Moved> {
     const current = await trx
       .selectFrom('issues')
@@ -299,6 +305,7 @@ export class IssuesService {
         from_status: current.status,
         to_status: next.status,
         current_tier: next.currentTier,
+        actor: actor ?? null,
       })
       .execute();
     return { event, issue: toIssue(updated), from: current.status, runId, cancelledRunId };

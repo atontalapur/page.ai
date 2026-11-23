@@ -29,6 +29,7 @@ import { Button } from '@page/design-system/components/ui/button';
 import { Avatar, AvatarFallback } from '@page/design-system/components/ui/avatar';
 
 import ConnectionBadge from '../issues/ConnectionBadge';
+import SignedInAs from '../issues/SignedInAs';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -122,7 +123,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <h1 className="text-base font-semibold text-balance">{activePage}</h1>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <SignedInAs />
+
             <ConnectionBadge />
 
             <Button variant="ghost" size="icon" aria-label="Notifications" disabled>

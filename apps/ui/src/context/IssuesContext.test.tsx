@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import ConnectionBadge from '../components/issues/ConnectionBadge';
+import SignedInAs from '../components/issues/SignedInAs';
 import TokenPrompt from '../components/issues/TokenPrompt';
-import { issue, testSource, type TestSource } from '../test-utils';
+import { issue, testSource, withSession, type TestSource } from '../test-utils';
 import { IssuesProvider, useIssues } from './IssuesContext';
 
 interface FakeServer {
@@ -64,14 +65,16 @@ describe('IssuesProvider', () => {
     server.present = true;
     renderApp();
 
-    fireEvent.change(await screen.findByLabelText('API token'), { target: { value: ' s3cret ' } });
+    fireEvent.change(await screen.findByLabelText('Personal or API token'), {
+      target: { value: ' s3cret ' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     expect(await screen.findByText('Live')).toBeTruthy();
     expect(server.sources.map((s) => s.token)).toEqual(['s3cret']);
     expect(sessionStorage.getItem('page-ai-api-token')).toBe('s3cret');
     expect(screen.getByText('1 issues')).toBeTruthy();
-    expect(screen.queryByLabelText('API token')).toBeNull();
+    expect(screen.queryByLabelText('Personal or API token')).toBeNull();
   });
 
   it('connects with a token kept from earlier in the tab', async () => {
@@ -93,6 +96,47 @@ describe('IssuesProvider', () => {
     expect(screen.getByText('The orchestrator refused that token.')).toBeTruthy();
     expect(screen.getByText('Token needed')).toBeTruthy();
     expect(sessionStorage.getItem('page-ai-api-token')).toBeNull();
+  });
+
+  it('shows who a personal token signs in, and forgets it with the token', async () => {
+    const source = withSession(testSource([issue(1)]), { token: 'personal', name: 'Nidheesh' });
+    let signOut: () => void = () => undefined;
+    function SignOut() {
+      signOut = useIssues().signOut;
+      return null;
+    }
+    sessionStorage.setItem('page-ai-api-token', 'personal');
+    render(
+      <IssuesProvider source={source}>
+        <SignedInAs />
+        <TokenPrompt />
+        <SignOut />
+      </IssuesProvider>,
+    );
+
+    expect((await screen.findByText(/^Signed in as/)).textContent).toBe('Signed in as Nidheesh');
+    act(() => signOut());
+    expect(screen.queryByText(/^Signed in as/)).toBeNull();
+    expect(screen.getByLabelText('Personal or API token')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(sessionStorage.getItem('page-ai-api-token')).toBeNull();
+  });
+
+  it('shows no one signed in for the shared token or the mock', async () => {
+    const shared = withSession(testSource([issue(1)]), { token: 'shared', canDecide: true });
+    const asked = vi.spyOn(shared, 'fetchSession');
+    render(
+      <IssuesProvider source={shared}>
+        <SignedInAs />
+        <Count />
+      </IssuesProvider>,
+    );
+    await waitFor(() => expect(asked).toHaveBeenCalled());
+    expect(screen.queryByText(/Signed in as/)).toBeNull();
+    cleanup();
+    renderApp();
+    expect(await screen.findByText('Mock data')).toBeTruthy();
+    expect(screen.queryByText(/Signed in as/)).toBeNull();
   });
 
   it('shows a source losing its connection', () => {

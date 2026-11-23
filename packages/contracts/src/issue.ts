@@ -55,6 +55,21 @@ export const issueEventSchema = z.discriminatedUnion('type', [
 ]);
 export type IssueEvent = z.infer<typeof issueEventSchema>;
 
+/**
+ * Who applied an issue event, as `issue_events.actor` keeps it, for the senders that are not
+ * a person. A person is `ui:<name>` (deciderFor): the name on their personal dashboard token,
+ * or with none configured, the name their tab gave on the socket. A name can't hold a colon,
+ * so no person passes for one of these.
+ */
+export const ISSUE_EVENT_ACTORS = {
+  // The shared ORCHESTRATOR_API_TOKEN, which names no one: a script, or a tab using it.
+  sharedToken: 'api:shared',
+  // Triage classifying an issue, and starting its fix under AUTO_START_FIX.
+  triage: 'system:triage',
+  // A run's outcome from its run_finished job, or a run the server failed once it was lost.
+  run: 'system:run',
+} as const;
+
 /** One applied event, as the audit log stores it. */
 export const issueEventRecordSchema = z.strictObject({
   id: z.string(),
@@ -63,6 +78,8 @@ export const issueEventRecordSchema = z.strictObject({
   fromStatus: issueStatusSchema,
   toStatus: issueStatusSchema,
   currentTier: tierSchema.nullable(),
+  // Null on events recorded before the actor was (migration 012).
+  actor: z.string().min(1).nullable(),
   createdAt: timestampSchema,
 });
 export type IssueEventRecord = z.infer<typeof issueEventRecordSchema>;

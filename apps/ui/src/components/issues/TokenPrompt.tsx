@@ -15,8 +15,9 @@ import { Label } from '@page/design-system/components/ui/label';
 import { useIssues } from '../../context/IssuesContext';
 
 /**
- * Asks for ORCHESTRATOR_API_TOKEN when the orchestrator has none for this tab, or refused
- * the one it had. Renders nothing otherwise.
+ * Asks for a token when the orchestrator has none for this tab, or refused the one it had: a
+ * person's dashboard token, which signs them in under their name, or the shared
+ * ORCHESTRATOR_API_TOKEN. Renders nothing otherwise.
  */
 export default function TokenPrompt() {
   const { status, tokenRefused, submitToken } = useIssues();
@@ -39,14 +40,15 @@ export default function TokenPrompt() {
           Connect to the orchestrator
         </CardTitle>
         <CardDescription>
-          Issues come from the orchestrator API, which needs its token. It stays in this tab and is
-          cleared when the tab closes.
+          Paste your personal token. It signs you in, and your approvals are recorded under your
+          name. The shared API token also connects, but it can&apos;t approve once personal tokens
+          are set up. The token stays in this tab and is cleared when the tab closes.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={submit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="min-w-0 flex-1 space-y-2">
-            <Label htmlFor="api-token">API token</Label>
+            <Label htmlFor="api-token">Personal or API token</Label>
             <Input
               id="api-token"
               type="password"

@@ -111,6 +111,7 @@ describe('RunsService', () => {
       event: { type: 'ops_fixed', runId: tier3.runId },
       fromStatus: 'fixing',
       toStatus: 'resolved',
+      actor: 'system:run',
     });
   });
 
@@ -384,6 +385,7 @@ describe('RunsService.recordFailedResult', () => {
       runId: job.runId,
       reason: "The node's result for the run could not be recorded: deadlock detected",
     });
+    expect((await issues.events(issue.id)).at(-1)?.actor).toBe('system:run');
     expect(await runRow(job.runId)).toMatchObject({
       issue_id: issue.id,
       tier: 1,

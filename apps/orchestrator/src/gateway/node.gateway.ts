@@ -29,6 +29,7 @@ import {
   guardHandshakes,
   limitMessages,
   listen,
+  secretAdmits,
   socketAddress,
   type SocketGuard,
 } from './socket-guard.ts';
@@ -117,7 +118,7 @@ export class NodeGateway
   ) {
     this.guard = {
       name: 'node',
-      secret: config.nodeSharedSecret,
+      admit: secretAdmits(config.nodeSharedSecret),
       handshakes: new RateLimiter(NODE_HANDSHAKES_PER_MINUTE, 60_000),
       messages: new RateLimiter(NODE_MESSAGES_PER_10_SECONDS, 10_000),
       logger,

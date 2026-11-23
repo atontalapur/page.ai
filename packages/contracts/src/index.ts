@@ -7,6 +7,7 @@ export * from './events.ts';
 export * from './jobs.ts';
 export * from './nodes.ts';
 export * from './scenario.ts';
+export * from './session.ts';
 export * from './issue.ts';
 export * from './webhook.ts';
 export * from './xml.ts';

@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ApprovalsModule } from './approvals/approvals.module.ts';
 import { CoreModule } from './core.module.ts';
 import { ApiTokenGuard } from './auth/api-token.guard.ts';
+import { MeController } from './auth/me.controller.ts';
 import type { AppDeps } from './deps.ts';
 import { GatewayModule } from './gateway/gateway.module.ts';
 import { HealthController } from './health/health.controller.ts';
@@ -26,7 +27,7 @@ export class AppModule {
         NotifyModule,
         GatewayModule,
       ],
-      controllers: [HealthController, IssuesController],
+      controllers: [HealthController, IssuesController, MeController],
       providers: [{ provide: APP_GUARD, useClass: ApiTokenGuard }],
     };
   }

@@ -129,8 +129,16 @@ function Request({
  * one leaves every tab once it is decided, by anyone, or the server closes it.
  */
 export default function ApprovalRequests({ issue }: { issue: Issue }) {
-  const { pendingApprovals, loadApprovals, decideApproval, approverName, setApproverName, status } =
-    useIssues();
+  const {
+    pendingApprovals,
+    loadApprovals,
+    decideApproval,
+    approverName,
+    setApproverName,
+    status,
+    session,
+    signOut,
+  } = useIssues();
   const [renaming, setRenaming] = useState(false);
   const live = status === 'live';
 
@@ -140,7 +148,12 @@ export default function ApprovalRequests({ issue }: { issue: Issue }) {
 
   const pending = pendingApprovals(issue.id);
   if (pending.length === 0) return null;
-  const asking = approverName === null || renaming;
+  // A personal token decides under its own name. The shared token can't decide once the
+  // orchestrator has personal tokens; until then it decides under a name the tab gives.
+  const signedIn = session?.token === 'personal' ? session.name : undefined;
+  const sharedOnly = session?.token === 'shared' && !session.canDecide;
+  const asking = signedIn === undefined && !sharedOnly && (approverName === null || renaming);
+  const canDecide = live && !sharedOnly && !asking;
 
   return (
     <section
@@ -159,7 +172,24 @@ export default function ApprovalRequests({ issue }: { issue: Issue }) {
         </p>
       </div>
 
-      {asking ? (
+      {signedIn !== undefined ? (
+        <p className="text-xs text-muted-foreground">
+          Signed in as <span className="font-medium text-foreground">{signedIn}</span>. Your
+          decision is recorded under this name.
+        </p>
+      ) : sharedOnly ? (
+        <p className="text-xs text-muted-foreground">
+          This tab connected with the shared API token, which can&apos;t approve or reject.{' '}
+          <button
+            type="button"
+            className="font-medium text-primary hover:underline"
+            onClick={signOut}
+          >
+            Connect with your personal token
+          </button>{' '}
+          to decide.
+        </p>
+      ) : asking ? (
         <NameForm
           onSave={(name) => {
             setApproverName(name);
@@ -189,7 +219,7 @@ export default function ApprovalRequests({ issue }: { issue: Issue }) {
           <Request
             key={approval.id}
             approval={approval}
-            canDecide={!asking && live}
+            canDecide={canDecide}
             onDecide={(decision) => decideApproval(approval.id, decision)}
           />
         ))}

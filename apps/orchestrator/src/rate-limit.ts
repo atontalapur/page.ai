@@ -38,6 +38,17 @@ export class RateLimiter {
     return { allowed: window.count <= this.limit, retryAfterMs: window.resetAt - now };
   }
 
+  /**
+   * Whether one more hit for `key` would still be allowed, without counting one: false once
+   * `key` has used every hit in its window.
+   */
+  peek(key: string): RateDecision {
+    const now = this.now();
+    const window = this.windows.get(key);
+    if (!window || window.resetAt <= now) return { allowed: true, retryAfterMs: 0 };
+    return { allowed: window.count < this.limit, retryAfterMs: window.resetAt - now };
+  }
+
   private sweep(now: number): void {
     if (now < this.nextSweep) return;
     for (const [key, window] of this.windows) {

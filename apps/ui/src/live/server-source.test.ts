@@ -288,6 +288,18 @@ describe('serverSource', () => {
     await vi.waitFor(() => expect(lists).toHaveLength(2));
   });
 
+  it('reports nothing for the disconnect its own stop causes', () => {
+    const { feed, statuses } = recorder();
+    const stop = serverSource('s3cret').start(feed);
+    const socket = sockets[0]!;
+    socket.fire('connect');
+    stop();
+    // socket.io-client fires disconnect when a connected socket is closed.
+    socket.fire('disconnect', 'io client disconnect');
+    expect(socket.closed).toBe(true);
+    expect(statuses.at(-1)).toBe('live');
+  });
+
   it('keeps going when the list fails or breaks the contract', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { feed, statuses, lists } = recorder();
@@ -438,6 +450,25 @@ describe('serverSource approvals', () => {
     expect(await source.fetchApprovals(issueFixture.id)).toBeUndefined();
     fetchMock.mockRejectedValueOnce(new TypeError('network'));
     expect(await source.fetchApprovals(issueFixture.id)).toBeUndefined();
+  });
+
+  it('asks who the token names, and finds nothing for an older server, a bad body or no network', async () => {
+    const source = serverSource('personal-token');
+
+    fetchMock.mockResolvedValueOnce(json({ token: 'personal', name: 'Arjun' }));
+    expect(await source.fetchSession!()).toEqual({ token: 'personal', name: 'Arjun' });
+    expect(fetchMock).toHaveBeenLastCalledWith('/me', {
+      headers: { authorization: 'Bearer personal-token', accept: 'application/json' },
+    });
+    fetchMock.mockResolvedValueOnce(json({ token: 'shared', canDecide: false }));
+    expect(await source.fetchSession!()).toEqual({ token: 'shared', canDecide: false });
+
+    fetchMock.mockResolvedValueOnce(json({ statusCode: 404 }, 404));
+    expect(await source.fetchSession!()).toBeUndefined();
+    fetchMock.mockResolvedValueOnce(json({ token: 'personal', name: 'ui:Arjun' }));
+    expect(await source.fetchSession!()).toBeUndefined();
+    fetchMock.mockRejectedValueOnce(new TypeError('network'));
+    expect(await source.fetchSession!()).toBeUndefined();
   });
 });
 

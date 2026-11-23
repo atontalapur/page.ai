@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   clip,
+  ISSUE_EVENT_ACTORS,
   MAX_REASON_CHARS,
   type IssueEvent,
   type IssueRun,
@@ -250,12 +251,10 @@ export class RunsService {
 
       if (!isCurrent(issue, result.runId)) return { outcome: { kind: 'stale' } };
       const event = issueEventFor(result);
-      const moved = await this.issues.applyIn(
-        trx,
-        job.issueId,
-        event,
-        result.note === null ? {} : { escalationNote: result.note },
-      );
+      const moved = await this.issues.applyIn(trx, job.issueId, event, {
+        actor: ISSUE_EVENT_ACTORS.run,
+        ...(result.note === null ? {} : { escalationNote: result.note }),
+      });
       // Only an escalation the issue took is recorded: a run that escalates after the issue
       // was killed never reached the next tier.
       if (result.status === 'escalated') {
@@ -371,7 +370,9 @@ export class RunsService {
         .onConflict((oc) => oc.column('id').doNothing())
         .execute();
       const event: IssueEvent = { type: 'fail', runId: run.id, reason: reason(why) };
-      const moved = await this.issues.applyIn(trx, run.issue_id, event);
+      const moved = await this.issues.applyIn(trx, run.issue_id, event, {
+        actor: ISSUE_EVENT_ACTORS.run,
+      });
       return { outcome: { kind: 'applied', event: event.type }, moved };
     });
     return this.committed(recorded);

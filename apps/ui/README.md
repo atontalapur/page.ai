@@ -52,13 +52,25 @@ jobs at Tier 1 to 3; there are no agent types, and no way to hand one a task of 
 - **Start a fix** sends `start_fix` for a triaged incident (`POST /issues/:id/events`). The
   orchestrator queues a Tier 1 fix job and the first free daemon claims it.
 
-## API token
+## Token and sign-in
 
-The orchestrator API and socket need `ORCHESTRATOR_API_TOKEN`. The UI asks for it the first
-time a tab connects, keeps it in `sessionStorage` (this tab only, gone when it closes), and
-sends it as `Authorization: Bearer <token>` on HTTP and as `auth.token` in the socket
+The orchestrator API and socket need a token: a person's dashboard token, or the shared
+`ORCHESTRATOR_API_TOKEN` (`apps/orchestrator/README.md`, Tokens). The UI asks for one the
+first time a tab connects, keeps it in `sessionStorage` (this tab only, gone when it closes),
+and sends it as `Authorization: Bearer <token>` on HTTP and as `auth.token` in the socket
 handshake. If the orchestrator refuses it, the UI forgets it and asks again. The static files
 themselves need no token.
+
+Once connected, the UI asks `GET /me` who the token names (`session` in `IssuesProvider`):
+
+- **A personal token** shows "Signed in as <name>" in the header, and the Tier 3 approval bar
+  decides under that name with no name to type.
+- **The shared token, once the orchestrator has personal tokens**, can't approve or reject.
+  The bar says so and offers to connect with a personal token, which forgets the shared one
+  and shows the prompt again.
+- **The shared token with no personal tokens configured**, an orchestrator from before
+  `/me`, or the mock source: the bar asks for a name, keeps it in `localStorage`, and sends it
+  as `auth.name`, as before.
 
 ## Run
 
@@ -68,6 +80,6 @@ ORCHESTRATOR_URL=http://localhost:4000 pnpm --filter @page/ui dev  # a local orc
 pnpm --filter @page/ui build                                       # dist/, which :4000 serves
 ```
 
-With `ORCHESTRATOR_URL` set, the dev server proxies `/health`, `/issues`, `/nodes` and
-`/socket.io` to it.
+With `ORCHESTRATOR_URL` set, the dev server proxies `/health`, `/issues`, `/nodes`,
+`/approvals`, `/me` and `/socket.io` to it.
 The orchestrator finds the build's files when it starts, so restart it after a rebuild.

@@ -5,6 +5,7 @@ import {
   issueSchema,
   nodeRunSchema,
   nodeSummarySchema,
+  sessionSchema,
   UI_NAMESPACE,
   type Approval,
   type Issue,
@@ -14,6 +15,7 @@ import {
   type NodeRun,
   type NodeSummary,
   type ServerToUiEvents,
+  type Session,
   type SocketRefusal,
   type UiToServerEvents,
 } from '@page/contracts';
@@ -49,8 +51,10 @@ class Unauthorized extends Error {}
  * load is applied again after it. Each reconnect loads both lists again, for the changes made
  * while the socket was down, and tells the store (`synced`) so loaded runs are loaded again.
  *
- * `name` is the person's, sent as `auth.name` in the handshake. The server records each Tier 3
- * decision this tab sends under it, and refuses decisions from a tab with none.
+ * `token` is the shared API token or a person's dashboard token. A personal token names its
+ * holder, and the server records this tab's Tier 3 decisions under that name. With the shared
+ * token, `name` (sent as `auth.name` in the handshake) is used instead while the server has no
+ * personal tokens, and a tab with none can't decide.
  */
 export function serverSource(token: string, name?: string): IssueSource {
   const headers = { authorization: `Bearer ${token}`, accept: 'application/json' };
@@ -67,6 +71,7 @@ export function serverSource(token: string, name?: string): IssueSource {
   return {
     start(feed: IssueFeed) {
       let retry: ReturnType<typeof setTimeout> | undefined;
+      let stopped = false;
       const current: Socket<ServerToUiEvents, UiToServerEvents> = io(UI_NAMESPACE, {
         auth: auth(),
       });
@@ -141,7 +146,11 @@ export function serverSource(token: string, name?: string): IssueSource {
           if (approval) feed.approval(approval);
         });
       }
-      current.on('disconnect', () => feed.status('reconnecting'));
+      // Closing a stopped source disconnects it too, and that is not a dropped connection: the
+      // tab may be asking for another token, and `reconnecting` would hide the prompt.
+      current.on('disconnect', () => {
+        if (!stopped) feed.status('reconnecting');
+      });
       current.on('connect_error', (err) => {
         // A refusal from the server's middleware is final for socket.io-client; anything
         // else (server down, network gone) it retries on its own.
@@ -154,6 +163,7 @@ export function serverSource(token: string, name?: string): IssueSource {
       });
 
       return () => {
+        stopped = true;
         clearTimeout(retry);
         current.close();
         if (socket === current) socket = undefined;
@@ -170,6 +180,17 @@ export function serverSource(token: string, name?: string): IssueSource {
       // The name goes in the handshake, so it takes a new connection.
       socket.auth = auth();
       socket.disconnect().connect();
+    },
+
+    async fetchSession(): Promise<Session | undefined> {
+      try {
+        const res = await get('/me');
+        if (!res.ok) return undefined;
+        const session = sessionSchema.safeParse(await res.json());
+        return session.success ? session.data : undefined;
+      } catch {
+        return undefined;
+      }
     },
 
     async fetchApprovals(id: string): Promise<Approval[] | undefined> {

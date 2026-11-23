@@ -134,9 +134,9 @@ describe('TriageService', () => {
         report: 'GET /\n\nRangeError: Invalid currency code : US',
       }),
     ]);
-    expect((await issues.events(issue.id)).map((e) => e.event.type)).toEqual([
-      'triage',
-      'start_fix',
+    expect((await issues.events(issue.id)).map(({ event, actor }) => [event.type, actor])).toEqual([
+      ['triage', 'system:triage'],
+      ['start_fix', 'system:triage'],
     ]);
   });
 

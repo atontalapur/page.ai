@@ -37,15 +37,15 @@ export class RunKills implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * The UI's `run.kill`. A run in progress kills its issue, as the issue `kill` event does,
-   * and the cancelled job reaches the daemon through the listener above. Any other run is
-   * only stopped at a daemon still holding it.
+   * The UI's `run.kill`, sent by `actor` (actorOf). A run in progress kills its issue, as the
+   * issue `kill` event does, recorded under `actor`, and the cancelled job reaches the daemon
+   * through the listener above. Any other run is only stopped at a daemon still holding it.
    */
-  async kill(runId: string): Promise<void> {
+  async kill(runId: string, actor: string): Promise<void> {
     const owner = await this.runs.owner(runId);
     if (owner?.current) {
       try {
-        await this.issues.apply(owner.issueId, { type: 'kill' });
+        await this.issues.apply(owner.issueId, { type: 'kill' }, { actor });
         return;
       } catch (err) {
         // The run finished, or the issue was killed, since the lookup.
