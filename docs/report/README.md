@@ -16,7 +16,7 @@ they're wrong.
 | System: dashboard                                          | Daniyal  | not started                  |                                                              |
 | Evaluation method                                          | Advaith  | reviewed (#17)               | [evaluation-method.md](evaluation-method.md)                 |
 | Results (dev, held-out and ops)                            | Advaith  | reviewed (#17)               | [evaluation-method.md#results](evaluation-method.md#results) |
-| Discussion and limitations                                 | open     | not started                  |                                                              |
+| Discussion and limitations                                 | Advaith  | drafted, not reviewed        | [discussion.md](discussion.md)                               |
 | Appendix: eval preregistration                             | Advaith  | done                         | [eval-prereg.md](eval-prereg.md)                             |
 | Final demo script                                          | Advaith  | done, kept outside this repo |                                                              |
 | Contributions                                              | everyone | ongoing, due Dec 4           | [contributions.md](../contributions.md)                      |
