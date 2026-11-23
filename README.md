@@ -57,7 +57,7 @@ demo app --errors--> PostHog --webhook--> orchestrator --call + SMS--> on-call (
 4. Escalate. Each tier gets 40 model calls, $0.50 and 14 minutes
    ([`threshold.ts`](packages/agent/src/threshold.ts)). A run that hits a limit before it
    submits a patch moves the issue up a tier. So does a submitted patch whose confidence score
-   is under the tier's threshold (0.3): the daemon scores it from what it can measure, such as
+   is under the tier's threshold (0.2): the daemon scores it from what it can measure, such as
    whether tests and checks passed after the last edit. Past Tier 3 the issue fails and stays
    with a human. A submitted patch that scores well enough puts the issue in
    `awaiting_approval`. A Tier 3 run that fixes
@@ -96,8 +96,9 @@ issue as its webhook arrived, without a reload.
 
 Known limits:
 
-- The confidence threshold (0.3) and the score's weights aren't calibrated, and none of the
-  results below used them.
+- The confidence threshold (0.2) was calibrated on dev bugs only, on one model, from data with
+  one failing fix in it (Amendment 5 in `docs/report/eval-prereg.md`). The score's weights
+  weren't fitted. None of the results below used either.
 - The rollback tool has run only against a fake deployer. Scenario 024 is held out and was
   never run.
 - Live events, daemon tracking and approval deadlines live in one orchestrator process, so the
