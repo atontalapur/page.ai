@@ -109,16 +109,11 @@ function exceptions(lines: string[]): Exception[] {
   return list;
 }
 
-function compiled(frames: Frame[]): Frame[] {
+// Turbopack puts the server side of pages under chunks/ssr and route handlers under chunks.
+function compiled(frames: Frame[], api: boolean): Frame[] {
+  const chunk = `/app/.next/server/chunks/${api ? '' : 'ssr/'}[root-of-the-server]__0q8x1m._.js`;
   return frames.map((frame, i) =>
-    frame.in_app
-      ? {
-          filename: '/app/.next/server/chunks/ssr/[root-of-the-server]__0q8x1m._.js',
-          lineno: 1,
-          colno: 1000 + i,
-          in_app: true,
-        }
-      : frame,
+    frame.in_app ? { filename: chunk, lineno: 1, colno: 1000 + i, in_app: true } : frame,
   );
 }
 
@@ -146,7 +141,7 @@ export function webhookFor(report: string, shape: FrameShape): PosthogWebhook {
           // PostHog lists frames outermost first; V8 prints them innermost first.
           stacktrace: {
             type: 'raw',
-            frames: [...(shape === 'compiled' ? compiled(e.frames) : e.frames)].reverse(),
+            frames: [...(shape === 'compiled' ? compiled(e.frames, api) : e.frames)].reverse(),
           },
         })),
         method,

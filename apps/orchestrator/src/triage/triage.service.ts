@@ -80,7 +80,12 @@ export class TriageService {
     // Railway's log parser drops a `severity` field (staging's `issue triaged` lines show only
     // the class), so the verdict's severity goes under another name.
     log.info(
-      { class: verdict.class, issueSeverity: verdict.severity, by: verdict.by },
+      {
+        class: verdict.class,
+        issueSeverity: verdict.severity,
+        by: verdict.by,
+        modelSeverity: verdict.modelSeverity,
+      },
       'issue triaged',
     );
     return triaged;

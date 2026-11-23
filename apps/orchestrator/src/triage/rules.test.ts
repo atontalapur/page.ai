@@ -27,7 +27,11 @@ describe('classifyByRules', () => {
     expect(classOf('TypeError: Cannot read properties of undefined', settings)).toBe(
       'infra-config',
     );
-    expect(classOf('Error: SMTP_HOST is required')).toBe('infra-config');
+    // A bad setting breaks every request that reads it, so it pages high.
+    expect(classifyByRules({ title: 'Error: SMTP_HOST is required', report: null })).toEqual({
+      class: 'infra-config',
+      severity: 'high',
+    });
     // A Node error code looks like an env var name but isn't one.
     expect(classOf('TypeError: Invalid URL ERR_INVALID_URL')).toBe('backend-api');
   });

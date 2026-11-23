@@ -140,7 +140,10 @@ function classOf(input: TriageInput): BugClass {
 
 /**
  * Class and severity from keywords in the title and report, its frames and its request line.
- * The model falls back to these, so they need no network and always answer.
+ * The model falls back to these, so they need no network and always answer. The severity is
+ * also the floor under the model's (classify.ts). A bad setting breaks every request that
+ * reads it, so infra-config is high, not low: with a low floor, naming an env var in a report
+ * would be enough to let the model page low.
  */
 export function classifyByRules(input: TriageInput): Verdict {
   const klass = classOf(input);
@@ -148,6 +151,5 @@ export function classifyByRules(input: TriageInput): Verdict {
   let severity: Severity = 'high';
   if (klass === 'database' || /fatal|payment|checkout/i.test(text)) severity = 'critical';
   else if (klass === 'frontend') severity = 'medium';
-  else if (klass === 'infra-config') severity = 'low';
   return { class: klass, severity };
 }
