@@ -161,13 +161,10 @@ export class GitHubReviewService {
   ): ReviewOutcome {
     if (author.endsWith('[bot]')) return { kind: 'ignored', why: "the bot's own comment" };
     this.answering = (async () => {
-      const run = await this.db
-        .selectFrom('runs')
-        .select('id')
-        .where('id', '=', runId)
-        .executeTakeFirst();
+      // The issue's latest finished run answers: the branch may be named after an earlier one.
+      const run = await this.latestRun(runId);
       if (!run || !(await this.answers.isQuestion(text))) return;
-      await this.answers.answer({ pr, runId, author, text, where });
+      await this.answers.answer({ pr, runId: run, author, text, where });
     })().catch((error: unknown) => {
       this.logger.warn({ err: error, pr }, 'could not answer a PR comment');
     });
@@ -190,9 +187,15 @@ export class GitHubReviewService {
   private async merged(runId: string, payload: PullRequestPayload): Promise<ReviewOutcome> {
     const by = payload.sender?.login ?? 'unknown';
     const sha = payload.pull_request.merge_commit_sha;
-    // The run's knowledge goes to main even if the issue moved on: the code it describes is
-    // on main now.
-    if (sha) await this.knowledge.promote(runBranch(runId), sha, `github:${by}`);
+    // Every run's knowledge on the PR goes to main, oldest first, even if the issue moved on:
+    // the code it describes is on main now.
+    if (sha) {
+      const latest = (await this.latestRun(runId)) ?? runId;
+      const branches = (await this.knowledge.chain(runBranch(latest))).filter((b) => b !== 'main');
+      for (const branch of branches.reverse()) {
+        await this.knowledge.promote(branch, sha, `github:${by}`);
+      }
+    }
     const issue = await this.awaiting(runId);
     if (!issue) return { kind: 'ignored', why: 'the run is not awaiting review' };
     await this.issues.apply(issue.id, { type: 'approve' }, { actor: `github:${by}` });
@@ -226,20 +229,23 @@ export class GitHubReviewService {
       { type: 'reject', reason },
       { actor: `github:${by}`, escalationNote: note },
     );
-    // The next tier opens its own PR; this one would only sit beside it.
+    // The next tier pushes to this same PR, so it stays open; past Tier 3 a person takes over.
     const api = await this.github.api();
     if (how === 'changes_requested' && api) {
       const next = (issue.current_tier ?? 0) + 1;
-      await api
-        .close(
-          pr,
-          next > 3
-            ? 'PageAgents closed this PR: changes were requested and no tier is left, so a person takes over.'
-            : `PageAgents closed this PR: changes were requested, so Tier ${next} takes the fix from here, starting from this review.`,
-        )
-        .catch((error: unknown) => {
-          this.logger.warn({ err: error, pr }, 'could not close the rejected PR');
-        });
+      const said =
+        next > 3
+          ? api.close(
+              pr,
+              'PageAgents closed this PR: changes were requested and no tier is left, so a person takes over.',
+            )
+          : api.comment(
+              pr,
+              `Changes requested, so Tier ${next} takes the fix from here, starting from this review. Its commits land on this PR.`,
+            );
+      await said.catch((error: unknown) => {
+        this.logger.warn({ err: error, pr }, 'could not answer the review on the PR');
+      });
     }
     this.logger.info({ issueId: issue.id, runId, pr, how }, 'PR rejected');
     return { kind: 'rejected', issueId: issue.id };
@@ -279,13 +285,47 @@ export class GitHubReviewService {
     return parts.join('\n\n');
   }
 
-  /** The issue whose current run is `runId` and whose fix waits on a reviewer. */
-  private async awaiting(runId: string) {
+  /**
+   * The issue whose fix waits on a reviewer, from the run the PR's branch is named after:
+   * that run is the issue's current one, or an earlier run whose PR later tiers pushed to.
+   */
+  private async awaiting(branchRunId: string) {
+    const issueId = await this.issueOf(branchRunId);
+    if (!issueId) return undefined;
     return this.db
       .selectFrom('issues')
-      .select(['id', 'status', 'current_tier'])
-      .where('current_run_id', '=', runId)
+      .select(['id', 'status', 'current_tier', 'current_run_id'])
+      .where('id', '=', issueId)
       .where('status', 'in', ['awaiting_approval', 'pr_open'])
       .executeTakeFirst();
+  }
+
+  private async issueOf(runId: string): Promise<string | undefined> {
+    const current = await this.db
+      .selectFrom('issues')
+      .select('id')
+      .where('current_run_id', '=', runId)
+      .executeTakeFirst();
+    if (current) return current.id;
+    const run = await this.db
+      .selectFrom('runs')
+      .select('issue_id')
+      .where('id', '=', runId)
+      .executeTakeFirst();
+    return run?.issue_id;
+  }
+
+  /** The issue's latest recorded run, for a PR named after `branchRunId`. */
+  private async latestRun(branchRunId: string): Promise<string | undefined> {
+    const issueId = await this.issueOf(branchRunId);
+    if (!issueId) return undefined;
+    const run = await this.db
+      .selectFrom('runs')
+      .select('id')
+      .where('issue_id', '=', issueId)
+      .orderBy('started_at', 'desc')
+      .limit(1)
+      .executeTakeFirst();
+    return run?.id;
   }
 }

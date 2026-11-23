@@ -123,7 +123,7 @@ describe('GitHubReviewService', () => {
     expect(versions[0]?.commitSha).toBe('d'.repeat(40));
   });
 
-  it('rejects on changes requested, hands the review to the next tier, and closes the PR', async () => {
+  it('rejects on changes requested, hands the review to the next tier, and keeps the PR open for it', async () => {
     const github = new FakeGitHubApi();
     const reviews = reviewService(access(github));
     const { issueId, runId } = await awaitingReview();
@@ -155,8 +155,40 @@ describe('GitHubReviewService', () => {
       'src/cart.ts:12 (@ana): Cap it at 99, not 100.',
     );
     expect(job?.data.escalationNote?.blocker).toContain('@ana: Also add a test for zero.');
-    expect(github.closed).toMatchObject([{ pr: 7 }]);
-    expect(github.closed[0]?.comment).toContain('Tier 2');
+    // Tier 2 pushes to this same PR, so it stays open with a note on who takes over.
+    expect(github.closed).toEqual([]);
+    expect(github.posted).toMatchObject([{ pr: 7 }]);
+    expect(github.posted[0]?.body).toContain('Tier 2');
+  });
+
+  it("sends the next tier to the PR's branch, so it adds to the same PR", async () => {
+    const reviews = reviewService(access(new FakeGitHubApi()));
+    const { issueId, runId } = await awaitingReview();
+    await deps.db
+      .insertInto('runs')
+      .values({
+        id: runId,
+        issue_id: issueId,
+        tier: 1,
+        status: 'succeeded',
+        started_at: new Date(),
+        finished_at: new Date(),
+        pr_url: 'https://github.com/o/r/pull/7',
+      })
+      .execute();
+    await reviews.handle(
+      'pull_request_review',
+      payload(runId, {
+        action: 'submitted',
+        review: { id: 8, state: 'changes_requested', body: 'Not yet.', user: { login: 'ana' } },
+      }),
+    );
+    const [job] = (
+      await deps.boss.findJobs<{ issueId: string; tier: number; prBranch?: string }>('fix', {
+        data: { issueId },
+      })
+    ).filter((j) => j.state !== 'cancelled' && j.data.tier === 2);
+    expect(job?.data.prBranch).toBe(`pageagents/${runId}`);
   });
 
   it('rejects a PR closed without merging, and leaves it closed', async () => {

@@ -40,6 +40,11 @@ const CLOSE_TIMEOUT_MS = 15_000;
 export const SAFE_GIT = 'git -c core.fsmonitor=false --no-optional-locks';
 
 export interface GitHubHostToolsOptions {
+  /**
+   * The branch to push to: the issue's PR branch from an earlier run, which this run then
+   * adds to. Unset, the run's own `pageagents/<runId>`.
+   */
+  branch?: string;
   github: GitHub;
   /** The run's sandbox, where the agent's changes are. Read only. */
   workspace: ExecRunner;
@@ -91,13 +96,15 @@ export class GitHubHostTools implements HostTools {
   readonly branch: string;
   /** The run's PR, once one is open. */
   pr: PullRequest | null = null;
+  /** The PR was the issue's already, from an earlier run: this run only adds to it. */
+  inherited = false;
   private readonly options: GitHubHostToolsOptions;
   private readonly base: string;
 
   constructor(options: GitHubHostToolsOptions) {
     this.options = options;
     this.base = options.base ?? 'main';
-    this.branch = `${AGENT_BRANCH_PREFIX}${options.runId}`;
+    this.branch = options.branch ?? `${AGENT_BRANCH_PREFIX}${options.runId}`;
   }
 
   get prUrl(): string | null {
@@ -138,7 +145,8 @@ export class GitHubHostTools implements HostTools {
    * whether it closed one; a GitHub failure rejects.
    */
   async closePr(comment: string): Promise<boolean> {
-    if (this.pr === null) return false;
+    // The issue's PR outlives this run: the next tier pushes to it.
+    if (this.pr === null || this.inherited) return false;
     await this.options.github.closePullRequest(
       this.pr.number,
       comment,
@@ -232,6 +240,7 @@ export class GitHubHostTools implements HostTools {
     const open = await github.findOpenPullRequest(this.branch, signal);
     if (open !== null) {
       this.pr = open;
+      this.inherited = this.inherited || this.options.branch !== undefined;
       return { ok: true, output: `PR #${open.number} is already open: ${open.url}` };
     }
     const pr = await github.createPullRequest(

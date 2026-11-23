@@ -231,6 +231,8 @@ export async function runFixJob(
         // The host tools send nothing to GitHub once the run is stopped.
         signal: stopped,
         ...(job.escalationNote === undefined ? {} : { escalationNote: job.escalationNote }),
+        // The issue's PR branch, so this run adds to the same PR.
+        ...(job.prBranch === undefined ? {} : { branch: job.prBranch }),
         // The run's knowledge written before this push now carries its commit.
         ...(knowledgeTools === undefined
           ? {}

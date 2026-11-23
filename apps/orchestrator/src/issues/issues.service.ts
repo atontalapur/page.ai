@@ -281,6 +281,15 @@ export class IssuesService {
       escalationNote ??
       (event.type === 'reject' ? rejectionNote(current.current_tier, event.reason) : undefined);
     if (enteredTier && next.currentTier !== null) {
+      // The first run that opened a PR named the issue's branch; every later run pushes to it.
+      const prRun = await trx
+        .selectFrom('runs')
+        .select('id')
+        .where('issue_id', '=', id)
+        .where('pr_url', 'is not', null)
+        .orderBy('started_at')
+        .limit(1)
+        .executeTakeFirst();
       const job = await this.fixJobs.send(
         {
           issueId: id,
@@ -290,6 +299,7 @@ export class IssuesService {
           // ingest masks one, since a Tier 2 PR is public.
           report: current.report ?? titleReport(current.title),
           ...(note === undefined ? {} : { escalationNote: note }),
+          ...(prRun ? { prBranch: `pageagents/${prRun.id}` } : {}),
           // A fix started on a named agent goes to it; every later tier goes to any agent.
           ...(event.type === 'start_fix' && event.node !== undefined ? { node: event.node } : {}),
         },

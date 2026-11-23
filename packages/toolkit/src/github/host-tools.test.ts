@@ -474,6 +474,28 @@ describe('GitHubHostTools github.openPr', () => {
     expect(tools.prUrl).toBeNull();
   });
 
+  it("adds a later run to the issue's PR, and never closes the PR it inherited", async () => {
+    const { github, workspace, tools: first } = await pushed();
+    await openPr(first);
+    // The next tier: its own run id, the issue's branch.
+    const next = new GitHubHostTools({
+      github,
+      workspace: workspace.runner,
+      issueId: ISSUE,
+      runId: '33333333-3333-4333-8333-333333333333',
+      branch: first.branch,
+    });
+    workspace.files = { 'apps/demo-app/lib/money.ts': 'y\n' };
+    expect((await push(next, 'fix: round cents at Tier 2')).ok).toBe(true);
+    expect(await openPr(next)).toEqual({
+      ok: true,
+      output: 'PR #1 is already open: https://github.com/page-demo/shop/pull/1',
+    });
+    expect(github.pullRequests).toHaveLength(1);
+    expect(await next.closePr('escalated')).toBe(false);
+    expect(github.pullRequests[0]).toMatchObject({ state: 'open' });
+  });
+
   it('opens a PR from the run branch to main, linking the issue and run', async () => {
     const { github, tools } = await pushed();
     const result = await openPr(tools);
