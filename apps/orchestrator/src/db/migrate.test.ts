@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { loadMigrations } from '@page/db-migrations';
+import type { Db } from './database.ts';
 import { migrate } from './migrate.ts';
-import { createTestDeps } from './test-utils.ts';
+import { createBareTestDb, createTestDeps } from './test-utils.ts';
 
 const deps = await createTestDeps();
 afterAll(() => deps.close());
@@ -30,5 +32,49 @@ describe('migrate', () => {
     await expect(migrate(deps.db, [broken])).rejects.toThrow();
     const rows = await deps.db.selectFrom('schema_migrations').select('name').execute();
     expect(rows.map((r) => r.name)).not.toContain('1000_broken.sql');
+  });
+});
+
+describe('007_escalation_low_confidence', () => {
+  const MIGRATION = '007_escalation_low_confidence.sql';
+  const note = JSON.stringify({ summary: 'x', tried: [], blocker: 'y' });
+
+  async function escalate(db: Db, reason: string) {
+    const issue = await db
+      .insertInto('issues')
+      .values({ fingerprint: `migrate-${randomUUID()}`, title: 'x' })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const run = await db
+      .insertInto('runs')
+      .values({ id: randomUUID(), issue_id: issue.id, tier: 1 })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    // Cast, since the test also writes reasons the column's type leaves out.
+    return db
+      .insertInto('escalations')
+      .values({ run_id: run.id, from_tier: 1, to_tier: 2, reason: reason as never, note })
+      .returning('reason')
+      .executeTakeFirstOrThrow();
+  }
+
+  it('lets escalations take low_confidence and keeps the rows written before it', async () => {
+    const { db } = await createBareTestDb();
+    try {
+      const all = await loadMigrations();
+      const index = all.findIndex((m) => m.name === MIGRATION);
+      expect(index).toBeGreaterThan(0);
+      await migrate(db, all.slice(0, index));
+      await escalate(db, 'budget_exhausted');
+      await expect(escalate(db, 'low_confidence')).rejects.toThrow();
+
+      expect(await migrate(db, all)).toContain(MIGRATION);
+      const kept = await db.selectFrom('escalations').select('reason').execute();
+      expect(kept).toEqual([{ reason: 'budget_exhausted' }]);
+      await expect(escalate(db, 'low_confidence')).resolves.toEqual({ reason: 'low_confidence' });
+      await expect(escalate(db, 'unsure')).rejects.toThrow();
+    } finally {
+      await db.destroy();
+    }
   });
 });

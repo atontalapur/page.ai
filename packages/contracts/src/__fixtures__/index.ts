@@ -56,10 +56,12 @@ export const runFixture: Run = {
 };
 
 export const confidenceFixture: Confidence = {
-  score: 0.82,
-  reproduced: true,
+  score: 0.8,
+  changesCode: true,
+  reproduced: false,
   testsPass: true,
-  selfAssessed: 0.7,
+  checksPass: true,
+  restartedAfterChange: null,
 };
 
 export const stepFixture: Step = {

@@ -7,6 +7,7 @@ import {
   runSchema,
   stepSchema,
 } from '@page/contracts';
+import { confidenceFixture } from '@page/contracts/fixtures';
 import { afterAll, describe, expect, it } from 'vitest';
 import { IssuesService } from '../issues/issues.service.ts';
 import { createSchemaDeps } from './test-utils.ts';
@@ -88,7 +89,6 @@ describe('orchestrator tables on real Postgres', () => {
 
   it('stores a run that parses as a contracts Run', async () => {
     const id = await newRun(2);
-    const confidence = { score: 0.8, reproduced: true, testsPass: true, selfAssessed: 0.7 };
     await db
       .updateTable('runs')
       .set({
@@ -96,7 +96,7 @@ describe('orchestrator tables on real Postgres', () => {
         started_at: new Date('2026-11-08T10:00:00Z'),
         finished_at: new Date('2026-11-08T10:05:00Z'),
         pr_url: 'https://github.com/atontalapur/page-demo/pull/5',
-        confidence: JSON.stringify(confidence),
+        confidence: JSON.stringify(confidenceFixture),
       })
       .where('id', '=', id)
       .execute();
@@ -121,7 +121,7 @@ describe('orchestrator tables on real Postgres', () => {
       tier: 2,
       status: 'succeeded',
       startedAt: '2026-11-08T10:00:00.000Z',
-      confidence,
+      confidence: confidenceFixture,
     });
   });
 
