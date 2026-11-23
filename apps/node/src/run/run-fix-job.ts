@@ -23,6 +23,7 @@ import {
   type AuditSink,
   type Deployer,
   type GitHub,
+  type GitHubToolCall,
   type OpsApi,
 } from '@page/toolkit';
 import type { Logger } from 'pino';
@@ -41,6 +42,12 @@ import {
 } from './outcome.ts';
 import type { RunResults } from './results.ts';
 import { StreamingAuditSink } from './streaming-sink.ts';
+
+// The PR the daemon opens for a Tier 1 fix: its title, the report lines in its body, and
+// how long each GitHub step gets.
+const TIER1_PR_TITLE_CHARS = 100;
+const TIER1_PR_REPORT_LINES = 40;
+const TIER1_PR_TIMEOUT_MS = 60_000;
 
 // The agent's diff, read after it submits. It goes to the UI, so it needn't be complete.
 const DIFF_TIMEOUT_MS = 30_000;
@@ -300,6 +307,9 @@ export async function runFixJob(
     const outcome = finishedEvent(runId, tier, final, [], facts());
     if (githubTools !== undefined) {
       await closeUnfinishedPr(githubTools, outcome, runId, tier, logger);
+      if (tier === 1 && outcome.status === 'succeeded' && !outcome.opsOnly) {
+        await openTier1Pr(githubTools, job.report, logger);
+      }
     }
     if (opsTools !== undefined && outcome.status !== 'succeeded') {
       await undoUnfinishedOps(opsTools, logger);
@@ -317,6 +327,41 @@ export async function runFixJob(
       await releaseOps?.();
     }
   }
+}
+
+/**
+ * Tier 1 has no host tools, so its agent can't push. A Tier 1 fix that succeeded is pushed
+ * and opened as a PR here instead, by the daemon, so the person approving it has something
+ * to merge. Best effort: a push or PR that fails is logged, and the run keeps its patch.
+ */
+async function openTier1Pr(
+  hostTools: GitHubHostTools,
+  report: string,
+  logger: Logger,
+): Promise<void> {
+  const title = `fix: ${report.split('\n')[0]!.trim()}`.slice(0, TIER1_PR_TITLE_CHARS);
+  const body = [
+    "The Tier 1 agent's fix for this report. Tier 1 can't push, so the daemon opened this PR.",
+    '',
+    '```',
+    report.split('\n').slice(0, TIER1_PR_REPORT_LINES).join('\n'),
+    '```',
+  ].join('\n');
+  const calls: GitHubToolCall[] = [
+    { kind: 'host_tool', tool: 'git.pushBranch', message: title },
+    { kind: 'host_tool', tool: 'github.openPr', title, body },
+  ];
+  for (const call of calls) {
+    const result = await hostTools.run(call, TIER1_PR_TIMEOUT_MS).catch((error: unknown) => ({
+      ok: false as const,
+      output: String(error),
+    }));
+    if (!result.ok) {
+      logger.warn({ tool: call.tool, output: result.output }, 'could not open the Tier 1 PR');
+      return;
+    }
+  }
+  logger.info({ pr: hostTools.prUrl }, 'opened the Tier 1 PR');
 }
 
 /**
