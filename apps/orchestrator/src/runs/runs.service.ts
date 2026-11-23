@@ -96,7 +96,7 @@ export function failureMessage(output: unknown): string {
 
 /**
  * Records what the node daemon reports for each fix run (#8, #136). The `run_finished` job
- * is the record; the gateway (#34) will relay the same result to the UI later.
+ * is the record; NodeGateway relays the same result to the UI from the daemon's socket.
  */
 @Injectable()
 export class RunsService {

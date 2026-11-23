@@ -50,8 +50,8 @@ export class UiGateway implements OnGatewayInit<UiNamespace>, OnGatewayConnectio
 
   /**
    * What each event a tab sends does once it passes its contract. An event with no handler
-   * is logged and dropped, so a new one goes here: `approval.decide` comes with Tier 3 approvals, and
-   * `run.chat` once the daemon handles it.
+   * is logged and dropped, so a new one goes here: `approval.decide` comes with Tier 3
+   * approvals, and `run.chat` once the daemon handles it.
    */
   private readonly handlers: { [E in TabEvent]?: Handler<E> } = {
     'run.kill': (_socket, { runId }) => this.kills.kill(runId),
