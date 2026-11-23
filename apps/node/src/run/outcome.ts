@@ -53,7 +53,8 @@ export function finishedEvent(
   { prUrl = null, opsOnly = false, confidence = null }: RunFacts = {},
 ): RunFinished {
   const scored = submitted(end) ? confidence : null;
-  const base = { v: 1 as const, runId, prUrl, confidence: scored };
+  const costUsd = end.kind === 'agent' ? end.run.costUsd : 0;
+  const base = { v: 1 as const, runId, prUrl, confidence: scored, costUsd };
   const lowScore = scored !== null && isLowConfidence(scored, tier);
   if (submitted(end) && !lowScore) {
     return { ...base, status: 'succeeded', note: null, opsOnly };

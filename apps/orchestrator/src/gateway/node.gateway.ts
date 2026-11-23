@@ -62,7 +62,7 @@ interface Link {
   owners: Map<string, RunOwner | null>;
 }
 
-const runIdOf = (payload: NodePayload<NodeEvent>) =>
+const runIdOf = (payload: NodePayload<Exclude<NodeEvent, 'node.holding'>>) =>
   'step' in payload ? payload.step.runId : payload.runId;
 
 /**
@@ -177,7 +177,14 @@ export class NodeGateway
   private receive(socket: NodeSocket, event: NodeEvent, payload: NodePayload<NodeEvent>): void {
     const link = this.links.get(socket.id);
     if (!link) return;
-    const runId = runIdOf(payload);
+    if (event === 'node.holding') {
+      const { runIds } = payload as NodePayload<'node.holding'>;
+      this.nodes.heartbeats(socket);
+      const changed = new Set(runIds.flatMap((id) => this.nodes.hold(id, socket)));
+      for (const name of changed) this.announce(name);
+      return;
+    }
+    const runId = runIdOf(payload as NodePayload<Exclude<NodeEvent, 'node.holding'>>);
     // At once, not in the queue, so a kill that lands while earlier events wait finds it.
     const finished = event === 'node.run.finished';
     const changed = finished ? this.nodes.release(runId, socket) : this.nodes.hold(runId, socket);

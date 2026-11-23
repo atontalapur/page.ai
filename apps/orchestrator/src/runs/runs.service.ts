@@ -7,6 +7,7 @@ import {
   type IssueRun,
   type JobPayload,
   type Step,
+  type EscalationNote,
   type Tier,
 } from '@page/contracts';
 import type { Insertable, Selectable, Transaction } from 'kysely';
@@ -20,6 +21,9 @@ import type { JobQueues } from '../queue/queues.ts';
 import { DB, JOB_QUEUES, LOGGER } from '../tokens.ts';
 
 export type RunFinishedJob = JobPayload<'run_finished'>;
+
+/** Lost runs at one tier before the issue fails rather than retry again. */
+export const MAX_LOST_RUNS_PER_TIER = 3;
 type RunResult = RunFinishedJob['result'];
 
 const reason = (text: string) => clip(text, MAX_REASON_CHARS);
@@ -260,6 +264,7 @@ export class RunsService {
         pr_url: result.prUrl,
         confidence: result.confidence === null ? null : JSON.stringify(result.confidence),
         diff: job.diff,
+        cost_usd: result.costUsd ?? 0,
       };
       await trx
         .insertInto('runs')
@@ -370,6 +375,75 @@ export class RunsService {
    * the run is still current. With `unlessResultPending`, a run_finished job still queued for
    * the run is left to move the issue instead.
    */
+  /**
+   * Retries a run whose daemon died mid-run: a restart or a crash left its job active with
+   * no one working it. Writes the run as failed and sends `retry`, which cancels the job and
+   * queues a fresh one at the same tier for any daemon to take. Past MAX_LOST_RUNS_PER_TIER
+   * at the tier, the issue fails instead, so a run that keeps killing its daemon can't loop.
+   * Leaves the issue alone when the run is no longer current or its result is queued.
+   */
+  async retryLost(
+    issueId: string,
+    runId: string,
+    tier: Tier,
+    startedAt: Date,
+    note?: EscalationNote,
+  ): Promise<RecordOutcome> {
+    const log = issueLogger(this.logger, { issueId, runId, tier });
+    const recorded = await this.db.transaction().execute(async (trx): Promise<Recorded> => {
+      const issue = await lockIssue(trx, issueId);
+      if (!issue) return { outcome: { kind: 'no_issue' } };
+      if (!isCurrent(issue, runId)) return { outcome: { kind: 'stale' } };
+      if (await this.jobs.runFinishedPending(runId, trx)) {
+        return { outcome: { kind: 'result_pending' } };
+      }
+      const lost = await trx
+        .selectFrom('runs')
+        .select((eb) => eb.fn.countAll<number>().as('n'))
+        .where('issue_id', '=', issueId)
+        .where('tier', '=', tier)
+        .where('status', '=', 'failed')
+        .executeTakeFirstOrThrow();
+      await trx
+        .insertInto('runs')
+        .values({
+          id: runId,
+          issue_id: issueId,
+          tier,
+          status: 'failed',
+          started_at: startedAt,
+          finished_at: new Date(),
+        })
+        .onConflict((oc) => oc.column('id').doNothing())
+        .execute();
+      const giveUp = Number(lost.n) + 1 >= MAX_LOST_RUNS_PER_TIER;
+      const event: IssueEvent = giveUp
+        ? {
+            type: 'fail',
+            runId,
+            reason: reason(
+              `The daemon working the Tier ${tier} run stopped ${MAX_LOST_RUNS_PER_TIER} times; a person takes over.`,
+            ),
+          }
+        : {
+            type: 'retry',
+            runId,
+            reason: reason(
+              `The daemon working the Tier ${tier} run stopped answering (a restart or a crash), so the tier runs again.`,
+            ),
+          };
+      // The retried job starts from the same note as the lost one.
+      const moved = await this.issues.applyIn(trx, issueId, event, {
+        actor: ISSUE_EVENT_ACTORS.run,
+        ...(note === undefined ? {} : { escalationNote: note }),
+      });
+      return { outcome: { kind: 'applied', event: event.type }, moved };
+    });
+    const { outcome } = this.committed(recorded);
+    if (outcome.kind === 'applied') log.warn({ event: outcome.event }, 'run lost its daemon');
+    return outcome;
+  }
+
   private async failRun(
     run: Insertable<RunsTable>,
     why: string,

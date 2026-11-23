@@ -14,3 +14,13 @@ export const issueDecisionSchema = z.strictObject({
   createdAt: z.string(),
 });
 export type IssueDecision = z.infer<typeof issueDecisionSchema>;
+
+/** Model spend over every session: the agents' runs and jev's decisions. */
+export const spendStatsSchema = z.strictObject({
+  totalUsd: z.number(),
+  runsUsd: z.number(),
+  decisionsUsd: z.number(),
+  runs: z.int(),
+  decisions: z.int(),
+});
+export type SpendStats = z.infer<typeof spendStatsSchema>;

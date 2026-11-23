@@ -20,6 +20,7 @@ export default defineConfig({
           '/debug': orchestrator,
           '/kg': orchestrator,
           '/github': orchestrator,
+          '/stats': orchestrator,
           // Exactly /me: a plain prefix would also send /media and the like.
           '^/me$': orchestrator,
           '/socket.io': { target: orchestrator, ws: true },

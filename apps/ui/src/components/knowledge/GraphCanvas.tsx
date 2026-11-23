@@ -241,7 +241,7 @@ export default function GraphCanvas({ nodes, edges, selected, highlighted, onSel
         1,
         Math.max(0, (view.scale - LABEL_FROM) / (LABEL_FULL - LABEL_FROM)),
       );
-      ctx.font = `${10.5 / view.scale}px Inter, system-ui, sans-serif`;
+      ctx.font = `${10.5 / view.scale}px Allo, system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       for (const b of s.bodies.values()) {
