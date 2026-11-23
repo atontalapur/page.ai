@@ -87,8 +87,23 @@ const schema = envSchema(
     // orchestrator starts (pnpm dev, the image, the stack image) runs it from
     // apps/orchestrator, so the default finds the build beside it.
     UI_DIST_DIR: z.string().min(1).default('../ui/dist'),
+    // The dashboard's Debugging page: test errors on the staging demo app. Off unless set,
+    // since one of them breaks that app on purpose. It needs the app and its ops secret;
+    // PostHog's project key and host only for the synthetic exception.
+    DEBUG_TOOLS: z.stringbool().default(false),
+    DEMO_APP_URL: z.url({ protocol: /^https?$/ }).optional(),
+    OPS_SECRET: z.string().trim().min(1).optional(),
+    POSTHOG_KEY: z.string().min(1).optional(),
+    POSTHOG_HOST: z.url().default('https://us.i.posthog.com'),
   }),
 );
+
+/** What the Debugging page needs. Undefined when the tools are off or the app isn't set. */
+export interface DebugTools {
+  demoAppUrl: string;
+  opsSecret: string;
+  posthog: { key: string; host: string } | undefined;
+}
 
 export interface TwilioCreds {
   accountSid: string;
@@ -126,6 +141,7 @@ export interface Config {
   dashboardUrl: string;
   /** Absolute path of the built UI. Without an index.html there, only the API is served. */
   uiDistDir: string;
+  debug: DebugTools | undefined;
 }
 
 /** A bad or missing env var. The message names every one, so main prints it alone. */
@@ -212,5 +228,20 @@ export function loadConfig(env: Env = process.env): Config {
     autoStartFixMaxPerHour: config.AUTO_START_FIX_MAX_PER_HOUR,
     dashboardUrl: config.DASHBOARD_URL,
     uiDistDir: resolve(config.UI_DIST_DIR),
+    debug: debugTools(config),
+  };
+}
+
+function debugTools(config: z.infer<typeof schema>): DebugTools | undefined {
+  if (!config.DEBUG_TOOLS) return undefined;
+  if (!config.DEMO_APP_URL || !config.OPS_SECRET) {
+    throw new ConfigError('invalid config: DEBUG_TOOLS needs DEMO_APP_URL and OPS_SECRET');
+  }
+  return {
+    demoAppUrl: config.DEMO_APP_URL.replace(/\/$/, ''),
+    opsSecret: config.OPS_SECRET,
+    posthog: config.POSTHOG_KEY
+      ? { key: config.POSTHOG_KEY, host: config.POSTHOG_HOST }
+      : undefined,
   };
 }

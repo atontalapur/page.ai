@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StopCircleIcon } from '@solar-icons/react/line-duotone';
+import { StopCircleIcon } from '@solar-icons/react/bold-duotone';
 import { Button } from '@page/design-system/components/ui/button';
 
 import { useIssues } from '../../context/IssuesContext';

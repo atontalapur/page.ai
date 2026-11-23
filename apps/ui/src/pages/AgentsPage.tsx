@@ -7,7 +7,7 @@ import {
   MagnifierIcon,
   PulseIcon,
   SleepingIcon,
-} from '@solar-icons/react/line-duotone';
+} from '@solar-icons/react/bold-duotone';
 import type { NodeSummary } from '@page/contracts';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';

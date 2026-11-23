@@ -17,7 +17,7 @@ import {
 } from '@page/design-system/components/ui/sheet';
 import { Skeleton } from '@page/design-system/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@page/design-system/components/ui/tooltip';
-import { SidebarMinimalisticIcon } from '@solar-icons/react/line-duotone';
+import { SidebarMinimalisticIcon } from '@solar-icons/react/bold-duotone';
 
 const SIDEBAR_COOKIE_NAME = 'sidebar_state';
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;

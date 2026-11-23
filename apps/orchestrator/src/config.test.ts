@@ -27,12 +27,33 @@ describe('loadConfig', () => {
       notifyTo: [],
       dashboardUrl: 'http://localhost:4000',
       uiDistDir: resolve('../ui/dist'),
+      debug: undefined,
     });
   });
 
   it('resolves UI_DIST_DIR against the working directory', () => {
     expect(loadConfig({ DATABASE_URL, UI_DIST_DIR: '/srv/ui' }).uiDistDir).toBe('/srv/ui');
     expect(loadConfig({ DATABASE_URL, UI_DIST_DIR: 'build' }).uiDistDir).toBe(resolve('build'));
+  });
+
+  it('turns the debugging tools on only when asked, and only with the demo app and its secret', () => {
+    expect(loadConfig({ DATABASE_URL }).debug).toBeUndefined();
+    expect(() => loadConfig({ DATABASE_URL, DEBUG_TOOLS: 'true' })).toThrow(
+      'DEBUG_TOOLS needs DEMO_APP_URL and OPS_SECRET',
+    );
+    expect(
+      loadConfig({
+        DATABASE_URL,
+        DEBUG_TOOLS: 'true',
+        DEMO_APP_URL: 'https://demo.example.com/',
+        OPS_SECRET: 's'.repeat(32),
+        POSTHOG_KEY: 'phc_test',
+      }).debug,
+    ).toEqual({
+      demoAppUrl: 'https://demo.example.com',
+      opsSecret: 's'.repeat(32),
+      posthog: { key: 'phc_test', host: 'https://us.i.posthog.com' },
+    });
   });
 
   it('reads overrides', () => {

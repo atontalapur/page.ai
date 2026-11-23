@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { cn } from 'cn';
-import { AltArrowDownIcon } from '@solar-icons/react/line-duotone';
+import { AltArrowDownIcon } from '@solar-icons/react/bold-duotone';
 
 type NativeSelectProps = Omit<React.ComponentProps<'select'>, 'size'> & {
   size?: 'sm' | 'default';

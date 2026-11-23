@@ -1,4 +1,4 @@
-import { MonitorIcon, MoonIcon, Sun2Icon } from '@solar-icons/react/line-duotone';
+import { MonitorIcon, MoonIcon, Sun2Icon } from '@solar-icons/react/bold-duotone';
 import { useTheme } from '@page/design-system/components/theme-provider';
 
 const options = [

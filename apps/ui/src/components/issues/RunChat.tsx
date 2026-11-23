@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { BotIcon, ChatRoundLineIcon } from '@solar-icons/react/line-duotone';
+import { BotIcon, ChatRoundLineIcon } from '@solar-icons/react/bold-duotone';
 import { MAX_CHAT_CHARS, type IssueRun, type RunChat } from '@page/contracts';
 import { Button } from '@page/design-system/components/ui/button';
 import { Label } from '@page/design-system/components/ui/label';

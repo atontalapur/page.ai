@@ -1,6 +1,7 @@
 export * from './approval-reason.ts';
 export * from './common.ts';
 export * from './config.ts';
+export * from './debug.ts';
 export * from './db.ts';
 export * from './escalation.ts';
 export * from './events.ts';
