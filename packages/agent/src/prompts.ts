@@ -44,6 +44,13 @@ export interface AgentTask {
    * deployer for it. Unset is false, and the prompt leaves the rollback blocks out.
    */
   rollback?: boolean;
+  /**
+   * Whether a person approves each of a Tier 3 run's changes to the live app before it runs
+   * (APPROVAL_TOOLS in @page/toolkit), so the run waits for them. Unset is false: the eval and
+   * a daemon with AUTO_APPROVE_OPS approve those calls at once, and the prompt stays the one
+   * the recorded eval runs saw (prompts.test.ts pins it).
+   */
+  personApproves?: boolean;
 }
 
 // Tier 2 and up push the fix and open a PR through the host tools.
@@ -179,7 +186,33 @@ The live app may run a build that differs from the code in this repository: a ba
 
 `;
 
-export function instancePrompt({ task, tier, rollback }: AgentTask): string {
+// Only when a person answers. An auto-approved run never waits, so it gets no section.
+const asksPerson = (tier: Tier | undefined, personApproves: boolean | undefined) =>
+  operates(tier) && personApproves === true;
+
+/**
+ * Which blocks wait for a person, what a wait costs, and what to do with a no. It names no
+ * setting either.
+ */
+function approvalSection(rollback: boolean): string {
+  const changes = rollback
+    ? `${OPS_SET}, ${OPS_UNSET}, ${OPS_RESTART} and ${OPS_ROLLBACK}`
+    : `${OPS_SET}, ${OPS_UNSET} and ${OPS_RESTART}`;
+  const reads = rollback
+    ? 'Reading the settings and planning a rollback need'
+    : 'Reading the settings needs';
+  return `## Changes a person approves
+
+A person approves each change to the live app before it runs: every ${changes} block. ${reads} no approval. The person sees the block and the THOUGHT before it, so say there what the change does and why it fixes the bug. An answer can take a few minutes, and the wait counts against your time.
+
+Ask for as few approvals as the fix needs. Read the settings and find the cause before you change anything. Then make every settings change the fix needs, and restart once, after the last one.${rollback ? ' A rollback needs no restart after it.' : ''}
+
+If the person rejects a change, or no one answers in time, the block comes back refused and does not run. Don't ask for the same change again hoping for a different answer. Try a different fix with the blocks you have. If there is none, submit: a run that submits without a working fix goes to a person, who sees each step you took and the THOUGHT before it.
+
+`;
+}
+
+export function instancePrompt({ task, tier, rollback, personApproves }: AgentTask): string {
   const publish = publishes(tier);
   return `Please fix this bug:
 
@@ -197,7 +230,7 @@ Work step by step so you can check each change as you go.
 4. Run the test again to confirm the fix, then the whole suite, lint and typecheck: \`${PNPM} test\`, \`${PNPM} lint\` and \`${PNPM} typecheck\`.
 ${publish ? `${PUBLISH_STEP}6` : '5'}. Submit with a ${SUBMIT} block. Do not put anything else in that response. After you submit, you cannot continue working on this task.
 
-${operates(tier) ? OPS_SECTION : ''}${rollsBack(tier, rollback) ? ROLLBACK_SECTION : ''}## Rules
+${operates(tier) ? OPS_SECTION : ''}${rollsBack(tier, rollback) ? ROLLBACK_SECTION : ''}${asksPerson(tier, personApproves) ? approvalSection(rollsBack(tier, rollback)) : ''}## Rules
 
 1. Every response must contain exactly one action block.
 2. Each command runs in a fresh shell in the repository root. The app is in \`${APP}\`. \`cd\` and environment variables do not carry over to the next command.

@@ -100,6 +100,87 @@ describe('instancePrompt at Tier 3 with a rollback', () => {
   });
 });
 
+const APPROVALS = '## Changes a person approves';
+
+describe('instancePrompt when a person approves the live app changes', () => {
+  const asked = (rollback = false) =>
+    instancePrompt({ task: 'x', tier: 3, rollback, personApproves: true });
+  const section = (prompt: string) =>
+    prompt.slice(prompt.indexOf(APPROVALS), prompt.indexOf('## Rules'));
+
+  it('names the blocks that wait for a person, and the ones that do not', () => {
+    const text = section(asked());
+    expect(text).toContain(
+      'A person approves each change to the live app before it runs: every page_ops_set, page_ops_unset and page_ops_restart block.',
+    );
+    expect(text).toContain('Reading the settings needs no approval.');
+    expect(text).not.toMatch(/rollback/i);
+  });
+
+  it('adds the rollback to the blocks that wait, and the plan to the ones that do not', () => {
+    const text = section(asked(true));
+    expect(text).toContain(
+      'every page_ops_set, page_ops_unset, page_ops_restart and page_ops_rollback block.',
+    );
+    expect(text).toContain('Reading the settings and planning a rollback need no approval.');
+    expect(text).toContain('A rollback needs no restart after it.');
+  });
+
+  it('says a wait takes minutes of its time, and the person reads its THOUGHT', () => {
+    const text = section(asked());
+    expect(text).toContain(
+      'An answer can take a few minutes, and the wait counts against your time.',
+    );
+    expect(text).toContain('The person sees the block and the THOUGHT before it');
+  });
+
+  it('asks it to batch its changes into as few approvals as it can', () => {
+    const text = section(asked());
+    expect(text).toContain('Ask for as few approvals as the fix needs.');
+    expect(text).toContain('restart once, after the last one');
+  });
+
+  it('says what a rejection or no answer looks like, and what to do then', () => {
+    const text = section(asked());
+    expect(text).toContain(
+      'If the person rejects a change, or no one answers in time, the block comes back refused and does not run.',
+    );
+    expect(text).toContain("Don't ask for the same change again hoping for a different answer.");
+    expect(text).toContain('Try a different fix with the blocks you have.');
+    expect(text).toContain('If there is none, submit');
+  });
+
+  it('comes after the ops and rollback sections and before the rules', () => {
+    const prompt = asked(true);
+    expect(prompt.indexOf('## A bad deploy')).toBeLessThan(prompt.indexOf(APPROVALS));
+    expect(prompt.indexOf(APPROVALS)).toBeLessThan(prompt.indexOf('## Rules'));
+  });
+
+  it('is left out when calls are approved at once, and below Tier 3', () => {
+    for (const rollback of [false, true]) {
+      const auto = instancePrompt({ task: 'x', tier: 3, rollback });
+      expect(auto).not.toContain(APPROVALS);
+      expect(instancePrompt({ task: 'x', tier: 3, rollback, personApproves: false })).toBe(auto);
+    }
+    for (const tier of [1, 2] as const) {
+      expect(instancePrompt({ task: 'x', tier, personApproves: true })).toBe(
+        instancePrompt({ task: 'x', tier }),
+      );
+    }
+    expect(instancePrompt({ task: 'x', personApproves: true })).not.toContain(APPROVALS);
+  });
+
+  it("names no setting, so it can't hint at a fix", () => {
+    expect(section(asked(true))).not.toMatch(/SHIPPING|FLAT_CENTS|FREE_SHIPPING/);
+  });
+
+  it('leaves the system prompt alone', () => {
+    // runAgent builds it from the tier and the rollback alone.
+    expect(systemPrompt(3)).not.toMatch(/approv/i);
+    expect(systemPrompt(3, true)).not.toMatch(/approv/i);
+  });
+});
+
 describe('instancePrompt', () => {
   it('asks a Tier 2 run to push and open a PR before it submits', () => {
     const prompt = instancePrompt({ task: 'x', tier: 2 });
