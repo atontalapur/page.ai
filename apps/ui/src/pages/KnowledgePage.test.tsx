@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 
 import KnowledgePage from './KnowledgePage';
+import { shortLabel } from '../components/knowledge/GraphCanvas';
 import { renderWithIssues, testSource } from '../test-utils';
 
 afterEach(() => {
@@ -22,6 +23,7 @@ const node = (key: string, title: string, body = '') => ({
 });
 const cart = node('file:cart.ts', 'Cart totals', 'Sums the lines.\n\nRounds at the end.');
 const money = node('file:money.ts', 'Money format');
+const cartTest = { ...node('file:cart.test.ts', 'Tests: cart.test.ts'), kind: 'test' };
 const edge = {
   id: 'e1',
   branch: 'main',
@@ -52,7 +54,15 @@ function orchestrator() {
         return json([{ name: 'main', versions: 3, unpushed: 1, updatedAt: null }]);
       }
       if (url.startsWith('/kg/graph')) {
-        return json({ branch: 'main', repo: 'o/page-demo', nodes: [cart, money], edges: [edge] });
+        return json({
+          branch: 'main',
+          repo: 'o/page-demo',
+          nodes: [cart, money, cartTest],
+          edges: [
+            edge,
+            { ...edge, id: 'e2', from: 'file:cart.test.ts', to: 'file:cart.ts', relation: 'tests' },
+          ],
+        });
       }
       if (url.startsWith('/kg/node')) {
         return json({
@@ -111,5 +121,23 @@ describe('KnowledgePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     expect(await screen.findByRole('heading', { name: 'Cart totals', level: 2 })).toBeTruthy();
     expect(calls).toContain('POST /kg/search');
+  });
+
+  it('keeps test files out of the view until asked for', async () => {
+    orchestrator();
+    renderWithIssues(<KnowledgePage />, testSource([]));
+    expect(await screen.findByText(/2 pages · 1 links/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Tests: cart.test.ts' })).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Show tests' }));
+    expect(await screen.findByText(/3 pages · 2 links/)).toBeTruthy();
+  });
+});
+
+describe('shortLabel', () => {
+  it('names a node by its file, without the path or a Tests prefix', () => {
+    expect(shortLabel({ key: 'file:apps/demo-app/src/shop/cart.ts', title: 'shop/cart.ts' })).toBe(
+      'cart.ts',
+    );
+    expect(shortLabel({ key: 'function:src/a.ts#total', title: 'total' })).toBe('a.ts');
   });
 });
