@@ -22,14 +22,17 @@ describe('TriageClassifier', () => {
     await expect(classifier.classify(rulesTitle)).resolves.toEqual({
       class: 'database',
       severity: 'critical',
+      by: 'model',
     });
   });
 
-  it('falls back when the reply is junk', async () => {
+  it('falls back when the reply is junk, and says why', async () => {
     const classifier = new TriageClassifier(model(ok('not json')), 1000);
     await expect(classifier.classify(rulesTitle)).resolves.toEqual({
       class: 'frontend',
       severity: 'medium',
+      by: 'rules',
+      fallback: 'reply is not a verdict: not json',
     });
   });
 
@@ -41,7 +44,21 @@ describe('TriageClassifier', () => {
     await expect(classifier.classify(rulesTitle)).resolves.toEqual({
       class: 'frontend',
       severity: 'medium',
+      by: 'rules',
+      fallback: 'aborted: timeout',
     });
+  });
+
+  it('names the status of a failed call', async () => {
+    const message = 'Insufficient credits. '.repeat(20);
+    const classifier = new TriageClassifier(
+      model({ ok: false, error: { kind: 'credits', status: 402, message } }),
+      1000,
+    );
+    const triage = await classifier.classify(rulesTitle);
+    expect(triage).toMatchObject({ by: 'rules', class: 'frontend' });
+    expect(triage.fallback).toMatch(/^credits 402: Insufficient credits\./);
+    expect(triage.fallback?.length).toBe(200);
   });
 
   it('classifies from the title when there is no model', async () => {
@@ -49,14 +66,17 @@ describe('TriageClassifier', () => {
     await expect(classifier.classify('relation "orders" does not exist')).resolves.toEqual({
       class: 'database',
       severity: 'critical',
+      by: 'rules',
     });
     await expect(classifier.classify('ECONNREFUSED 127.0.0.1:5432')).resolves.toEqual({
       class: 'infra-config',
       severity: 'low',
+      by: 'rules',
     });
     await expect(classifier.classify('TypeError in /api/cart')).resolves.toEqual({
       class: 'backend-api',
       severity: 'high',
+      by: 'rules',
     });
   });
 

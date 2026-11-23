@@ -51,6 +51,10 @@ export class TriageService {
 
   private async classify(issue: Issue): Promise<Issue> {
     const verdict = await this.classifier.classify(issue.title);
+    const log = issueLogger(this.logger, { issueId: issue.id });
+    if (verdict.fallback !== undefined) {
+      log.warn({ fallback: verdict.fallback }, 'triage model failed, rules classified the issue');
+    }
     const message = pageMessage({
       severity: verdict.severity,
       class: verdict.class,
@@ -60,9 +64,7 @@ export class TriageService {
     });
     // One job per phone, so a retry pages only the phone that missed it.
     const numbers = this.config.notifyTo;
-    if (numbers.length === 0) {
-      issueLogger(this.logger, { issueId: issue.id }).warn('no numbers configured, nobody paged');
-    }
+    if (numbers.length === 0) log.warn('no numbers configured, nobody paged');
     for (const to of numbers) {
       await this.jobs.sendNotify(
         { v: 2, issueId: issue.id, channel: 'call', to, message },
@@ -74,8 +76,10 @@ export class TriageService {
       class: verdict.class,
       severity: verdict.severity,
     });
-    issueLogger(this.logger, { issueId: issue.id }).info(
-      { class: verdict.class, severity: verdict.severity },
+    // Railway's log parser drops a `severity` field (staging's `issue triaged` lines show only
+    // the class), so the verdict's severity goes under another name.
+    log.info(
+      { class: verdict.class, issueSeverity: verdict.severity, by: verdict.by },
       'issue triaged',
     );
     return triaged;

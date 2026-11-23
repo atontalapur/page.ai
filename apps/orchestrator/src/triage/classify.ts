@@ -1,5 +1,11 @@
-import { bugClassSchema, severitySchema, type BugClass, type Severity } from '@page/contracts';
-import { OpenRouterClient, type ModelClient } from '@page/model-client';
+import {
+  bugClassSchema,
+  clip,
+  severitySchema,
+  type BugClass,
+  type Severity,
+} from '@page/contracts';
+import { OpenRouterClient, type ModelClient, type ModelError } from '@page/model-client';
 import { z } from 'zod';
 import type { Config } from '../config.ts';
 
@@ -9,6 +15,20 @@ const verdictSchema = z.object({
 });
 
 export type Verdict = z.infer<typeof verdictSchema>;
+
+/** A verdict and the path that reached it, for the triage log line. */
+export interface Triage extends Verdict {
+  by: 'model' | 'rules';
+  /** Why the rules ran though a model is configured. */
+  fallback?: string;
+}
+
+// The model's error or reply goes into a log line, so it is cut short.
+const FALLBACK_MAX = 200;
+
+function modelFailure({ kind, status, message }: ModelError): string {
+  return clip(`${kind}${status === null ? '' : ` ${status}`}: ${message}`, FALLBACK_MAX);
+}
 
 const SYSTEM = [
   'Classify one production exception for an on-call pipeline.',
@@ -54,8 +74,8 @@ export class TriageClassifier {
     private readonly timeoutMs: number,
   ) {}
 
-  async classify(title: string): Promise<Verdict> {
-    if (!this.model) return classifyByRules(title);
+  async classify(title: string): Promise<Triage> {
+    if (!this.model) return { ...classifyByRules(title), by: 'rules' };
     const result = await this.model.complete(
       [
         { role: 'system', content: SYSTEM },
@@ -63,8 +83,13 @@ export class TriageClassifier {
       ],
       { timeoutMs: this.timeoutMs },
     );
-    if (!result.ok) return classifyByRules(title);
-    return parseVerdict(result.completion.content) ?? classifyByRules(title);
+    if (!result.ok) {
+      return { ...classifyByRules(title), by: 'rules', fallback: modelFailure(result.error) };
+    }
+    const verdict = parseVerdict(result.completion.content);
+    if (verdict) return { ...verdict, by: 'model' };
+    const reply = clip(result.completion.content, FALLBACK_MAX);
+    return { ...classifyByRules(title), by: 'rules', fallback: `reply is not a verdict: ${reply}` };
   }
 }
 
