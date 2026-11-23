@@ -173,6 +173,7 @@ describe('TriageClassifier', () => {
       twilio: undefined,
       notifyTo: [],
       dashboardUrl: 'http://localhost:3000',
+      uiDistDir: '/nonexistent/ui/dist',
     };
     const rules = buildClassifier({ ...base, openRouterApiKey: undefined });
     await expect(rules.classify(titled('Hydration failed'))).resolves.toMatchObject({

@@ -426,6 +426,9 @@ importers:
       '@page/model-client':
         specifier: workspace:*
         version: link:../../packages/model-client
+      fastify:
+        specifier: 5.12.8
+        version: 5.12.8
       kysely:
         specifier: ^0.29.9
         version: 0.29.9

@@ -31,6 +31,8 @@ export const testConfig: Config = {
   twilio: undefined,
   notifyTo: ['+15550000001'],
   dashboardUrl: 'http://localhost:3000',
+  // No build here, so tests serve only the API. The static tests pass their own.
+  uiDistDir: '/nonexistent/ui/dist',
 };
 
 export interface TestDeps {

@@ -114,6 +114,7 @@ a new one.
 | GET    | `/issues/:id/events` |                                            |
 | POST   | `/issues/:id/events` | an `issueEvent`, e.g. `{ "type": "kill" }` |
 | POST   | `/ingest/posthog`    | a PostHog `$exception` webhook             |
+| GET    | `/` and `/assets/*`  | the built UI, below                        |
 
 Every route but `/health` and `/ingest/posthog` needs `Authorization: Bearer
 <ORCHESTRATOR_API_TOKEN>` and returns 401 without it. With the token unset they all return 401,
@@ -126,6 +127,17 @@ Bodies are validated against the zod contracts (400). `POST /issues/:id/events` 
 400 for `patch_ready`, `ops_fixed`, `escalate` and `fail`: run outcomes reach an issue only
 through the `run_finished` queue, which also writes the `runs` and `escalations` rows. Unknown ids return 404. Events the current status doesn't allow return 409. `GET /issues`
 returns at most 200 issues, most recently updated first; a repeat report counts as an update.
+
+## UI
+
+The orchestrator serves the built dashboard (`apps/ui/dist`, from `UI_DIST_DIR`) on the same
+origin as the API and the socket, so the UI needs no CORS and no API URL. `src/static/serve-ui.ts`
+registers one route per file in the build, cached for a year since Vite hashes their names.
+Any other GET a browser makes for a page (HTML acceptable, no file extension) gets
+`index.html` uncached, so a reload on `/incidents/:id` works. Every API route above is matched
+before that fallback, and a request that isn't for a page (curl, `fetch`, a missing asset)
+still gets the JSON 404. The files need no token; the API and the socket do.
+With no `index.html` in `UI_DIST_DIR`, boot logs a warning and only the API is served.
 
 ## Live events
 
@@ -144,6 +156,7 @@ Events go only to tabs on the instance that made the change, which is fine with 
 ```sh
 pnpm db:up                                  # repo root, starts Postgres
 cp .env.example .env                        # repo root, if you haven't
+pnpm --filter @page/ui build                # optional: the UI served on :4000
 pnpm --filter @page/orchestrator dev        # builds, migrates, listens on :4000
 ```
 
@@ -179,6 +192,7 @@ so the app is compiled with `tsc` to `dist/` rather than run from source.
 | `TWILIO_TRIAL`                | `false`                 | Trial account: calls and texts use Twilio's templates, not the page text      |
 | `NOTIFY_TO_NUMBERS`           |                         | Comma-separated E.164 numbers                                                 |
 | `DASHBOARD_URL`               | `http://localhost:3000` | Link included in the call and the SMS                                         |
+| `UI_DIST_DIR`                 | `../ui/dist`            | The built UI, relative to the working directory (`apps/orchestrator`)         |
 
 A missing or bad `DATABASE_URL` stops startup with exit code 1 and one log line naming each
 problem, e.g. `invalid config: DATABASE_URL is required`. As in `apps/node`, a blank var

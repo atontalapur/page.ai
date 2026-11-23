@@ -21,6 +21,19 @@ COPY packages/model-client packages/model-client
 COPY apps/orchestrator apps/orchestrator
 RUN pnpm --filter @page/orchestrator build
 
+# The dashboard the orchestrator serves at / (apps/ui/dist). A stage of its own, so a UI
+# change neither reinstalls nor rebuilds the orchestrator.
+FROM base AS ui
+COPY packages/config/package.json packages/config/
+COPY packages/design-system/package.json packages/design-system/
+COPY apps/ui/package.json apps/ui/
+RUN pnpm install --frozen-lockfile --filter @page/ui... --ignore-scripts
+COPY packages/config packages/config
+COPY packages/contracts packages/contracts
+COPY packages/design-system packages/design-system
+COPY apps/ui apps/ui
+RUN pnpm --filter @page/ui build
+
 # Production dependencies only. Not pnpm deploy: it copies @page/* into node_modules, and
 # Node won't strip types there. The dist imports @page/* as .ts sources, so keep the
 # workspace layout, where they are symlinks to packages/.
@@ -35,6 +48,8 @@ COPY packages/model-client/src packages/model-client/src
 COPY packages/db-migrations/src packages/db-migrations/src
 COPY packages/db-migrations/migrations packages/db-migrations/migrations
 COPY --from=build /repo/apps/orchestrator/dist apps/orchestrator/dist
+# UI_DIST_DIR defaults to ../ui/dist from apps/orchestrator, which is this.
+COPY --from=ui /repo/apps/ui/dist apps/ui/dist
 
 FROM node:24-alpine
 ENV NODE_ENV=production

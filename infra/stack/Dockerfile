@@ -1,4 +1,5 @@
 # Whole stack in one image: the orchestrator (port 4000) and the demo app (port 3000).
+# The orchestrator image carries the built dashboard, so port 4000 serves the UI too.
 # Postgres stays outside; pass its URL as DATABASE_URL. Build the two app images first,
 # from the repo root, then this one:
 #   docker build -f apps/orchestrator/Dockerfile -t page-orchestrator .

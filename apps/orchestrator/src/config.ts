@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { baseConfigSchema, envSchema } from '@page/contracts';
 import { z } from 'zod';
 
@@ -62,6 +63,10 @@ const schema = envSchema(
     AUTO_START_FIX_MAX_PER_HOUR: z.coerce.number().int().positive().default(5),
     ...pagerShape,
     DASHBOARD_URL: z.string().min(1).default('http://localhost:3000'),
+    // The built UI (apps/ui/dist), relative to the working directory. Every way the
+    // orchestrator starts (pnpm dev, the image, the stack image) runs it from
+    // apps/orchestrator, so the default finds the build beside it.
+    UI_DIST_DIR: z.string().min(1).default('../ui/dist'),
   }),
 );
 
@@ -95,6 +100,8 @@ export interface Config {
   twilio: TwilioCreds | undefined;
   notifyTo: string[];
   dashboardUrl: string;
+  /** Absolute path of the built UI. Without an index.html there, only the API is served. */
+  uiDistDir: string;
 }
 
 /** A bad or missing env var. The message names every one, so main prints it alone. */
@@ -168,5 +175,6 @@ export function loadConfig(env: Env = process.env): Config {
     autoStartFix: config.AUTO_START_FIX,
     autoStartFixMaxPerHour: config.AUTO_START_FIX_MAX_PER_HOUR,
     dashboardUrl: config.DASHBOARD_URL,
+    uiDistDir: resolve(config.UI_DIST_DIR),
   };
 }

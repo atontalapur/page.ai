@@ -36,6 +36,7 @@
     "@page/contracts": "workspace:*",
     "@page/db-migrations": "workspace:*",
     "@page/model-client": "workspace:*",
+    "fastify": "5.12.8",
     "kysely": "^0.29.9",
     "pg": "catalog:",
     "pg-boss": "catalog:",

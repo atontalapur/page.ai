@@ -41,6 +41,8 @@ jobs:
             ^packages/contracts/
             ^packages/db-migrations/
             ^packages/model-client/
+            ^packages/design-system/
+            ^apps/ui/
             ^\.dockerignore$
             ^package\.json$
             ^pnpm-lock\.yaml$
@@ -113,6 +115,14 @@ jobs:
             echo "::error::boot log has no '$want' line"
             exit 1
           fi
+          # The image carries the built UI: / and a client route both get its index.html.
+          for path in / /incidents; do
+            page="$(curl -fsS -H 'accept: text/html' "http://localhost:4000$path")" || page=
+            if ! grep -qF '<div id="root"></div>' <<<"$page"; then
+              echo "::error::$path did not serve the UI's index.html"
+              exit 1
+            fi
+          done
       # pg-boss's graceful stop waits up to 30s for running jobs; docker's default 10s would
       # SIGKILL it (exit 137) first.
       - name: Stop cleanly
