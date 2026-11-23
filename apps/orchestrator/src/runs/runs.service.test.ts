@@ -447,6 +447,7 @@ describe('RunsService.owner', () => {
       issueId: issue.id,
       tier: 1,
       current: true,
+      recorded: false,
       startedAt: null,
     });
     await stepsFor(job.runId, ['ls', 'cat a.ts']);
@@ -457,7 +458,11 @@ describe('RunsService.owner', () => {
   it('is no longer current once the issue is killed', async () => {
     const { issue, job } = await fixing();
     await issues.apply(issue.id, { type: 'kill' });
-    expect(await runs.owner(job.runId)).toMatchObject({ issueId: issue.id, current: false });
+    expect(await runs.owner(job.runId)).toMatchObject({
+      issueId: issue.id,
+      current: false,
+      recorded: false,
+    });
   });
 
   it("reads a recorded run's row, and knows no run that never was", async () => {
@@ -467,6 +472,7 @@ describe('RunsService.owner', () => {
       issueId: issue.id,
       tier: 1,
       current: false,
+      recorded: true,
       startedAt: at,
     });
     expect(await runs.owner(randomUUID())).toBeUndefined();

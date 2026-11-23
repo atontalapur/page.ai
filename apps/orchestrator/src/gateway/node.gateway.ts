@@ -148,13 +148,14 @@ export class NodeGateway
 
   /**
    * On a socket's first event for a run, kills a run that is no longer its issue's run in
-   * progress. Its fix job is cancelled already; this stops the daemon still on it.
+   * progress. Its fix job is cancelled already; this stops the daemon still on it. A run with
+   * a recorded result is left alone: those are events the daemon buffered while it was away.
    */
   private async check(socket: NodeSocket, runId: string): Promise<void> {
     const owners = this.links.get(socket.id)?.owners;
     if (!owners || owners.has(runId)) return;
     const owner = await this.ownerOf(socket, runId);
-    if (owner?.current) return;
+    if (owner?.current || owner?.recorded) return;
     this.logger.warn(
       { runId, issueId: owner?.issueId },
       'a daemon is on a run that is no longer in progress; killing it',

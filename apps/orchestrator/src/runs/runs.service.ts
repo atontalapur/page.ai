@@ -65,6 +65,8 @@ export interface RunOwner {
   tier: Tier;
   /** The issue is fixing with this as its current run: the run a daemon should be on. */
   current: boolean;
+  /** The run has its `runs` row: its result was recorded, or it was failed without one. */
+  recorded: boolean;
   /** As `forIssue` gives it: the row's, or the first step's while the run has no row. */
   startedAt: string | null;
 }
@@ -192,7 +194,7 @@ export class RunsService {
       .executeTakeFirst();
     if (row) {
       const startedAt = row.started_at?.toISOString() ?? null;
-      return { issueId: row.issue_id, tier: row.tier, current, startedAt };
+      return { issueId: row.issue_id, tier: row.tier, current, recorded: true, startedAt };
     }
     if (!issue || issue.current_tier === null) return undefined;
     const first = await this.db
@@ -206,6 +208,7 @@ export class RunsService {
       issueId: issue.id,
       tier: issue.current_tier,
       current,
+      recorded: false,
       startedAt: first?.created_at.toISOString() ?? null,
     };
   }

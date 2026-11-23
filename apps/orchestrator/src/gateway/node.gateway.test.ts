@@ -388,6 +388,26 @@ describe('kills', () => {
     expect(nodeReported.killed).toEqual([]);
   });
 
+  it('sends no run.kill for the buffered events of a run whose result was recorded', async () => {
+    const { issueId, runId } = await fixing();
+    // The daemon's result was recorded while its socket was away.
+    await app.get(RunsService).record({
+      v: 1,
+      issueId,
+      tier: 1,
+      startedAt: stepFixture.createdAt,
+      finishedAt: stepFixture.createdAt,
+      diff: null,
+      result: { v: 1, runId, status: 'failed', prUrl: null, confidence: null, note: null },
+    });
+    const seen = await tab();
+    const node = await daemon();
+    const killed = kills(node);
+    node.emit('node.step', { v: 1, step: step(runId, 2) });
+    await expect.poll(() => seen.length).toBe(1);
+    expect(killed).toEqual([]);
+  });
+
   it('drops a run.kill that breaks its contract, and leaves run.chat and approval.decide', async () => {
     const held = await fixing();
     const other = await fixing();
