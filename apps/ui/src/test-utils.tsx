@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { act, render } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import type { Issue, IssueRun } from '@page/contracts';
+import type { Issue, IssueEvent, IssueRun } from '@page/contracts';
 import { issueFixture } from '@page/contracts/fixtures';
 
 import { IssuesProvider } from './context/IssuesContext';
@@ -35,6 +35,10 @@ export interface TestSource extends IssueSource {
   extra: Map<string, Issue>;
   /** What fetchRuns returns per issue; an issue missing here has no runs. */
   runs: Map<string, IssueRun[]>;
+  /** Every event applyEvent was given, in order. */
+  applied: { id: string; event: IssueEvent }[];
+  /** What applyEvent answers; by default the issue with `status` set as the server would. */
+  respond?: (id: string, event: IssueEvent) => Promise<Issue>;
 }
 
 /** A source that loads `issues` as its list and plays whatever a test sends. */
@@ -42,9 +46,11 @@ export function testSource(issues: Issue[], status: FeedStatus = 'live'): TestSo
   let feed: IssueFeed | undefined;
   const extra = new Map<string, Issue>();
   const runs = new Map<string, IssueRun[]>();
-  return {
+  const applied: { id: string; event: IssueEvent }[] = [];
+  const source: TestSource = {
     extra,
     runs,
+    applied,
     start(next) {
       feed = next;
       feed.status(status);
@@ -56,6 +62,15 @@ export function testSource(issues: Issue[], status: FeedStatus = 'live'): TestSo
     },
     fetchIssue: (id) => Promise.resolve(extra.get(id)),
     fetchRuns: (id) => Promise.resolve(runs.get(id) ?? []),
+    applyEvent(id, event) {
+      applied.push({ id, event });
+      if (source.respond) return source.respond(id, event);
+      const current = issues.find((i) => i.id === id) ?? extra.get(id);
+      if (!current) return Promise.reject(new Error('issue not found'));
+      const status = event.type === 'approve' ? 'resolved' : 'fixing';
+      const updatedAt = new Date(Date.parse(current.updatedAt) + 60_000).toISOString();
+      return Promise.resolve({ ...current, status, updatedAt });
+    },
     send(payload) {
       const parsed = parseIssueUpdated(payload);
       if (parsed) act(() => feed?.update(parsed));
@@ -64,6 +79,7 @@ export function testSource(issues: Issue[], status: FeedStatus = 'live'): TestSo
       act(() => feed?.status(next));
     },
   };
+  return source;
 }
 
 /** Renders `ui` at `path` with the live store on `source`, and the routes the pages link to. */
