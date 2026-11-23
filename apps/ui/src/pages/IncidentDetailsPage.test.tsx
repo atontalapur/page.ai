@@ -143,6 +143,27 @@ describe('IncidentDetailsPage', () => {
     expect(screen.getByText(/^Read the query first\..*\.\.\.$/s)).toBeTruthy();
   });
 
+  it("shows the running run's last step as running until it has an outcome", async () => {
+    const source = testSource([fixing, fresh]);
+    source.runs.set(fixing.id, [
+      run(1, 'escalated', {
+        steps: [step(0, 'pnpm test', { exitCode: null, outputTrimmed: 'killed' })],
+      }),
+      run(2, 'running', {
+        steps: [step(0, 'ls'), step(1, 'pnpm test', { exitCode: null, outputTrimmed: '' })],
+      }),
+    ]);
+    renderDetails(fixing.id, source);
+
+    const tier2 = within(await screen.findByRole('list', { name: 'Tier 2 steps' }));
+    expect(tier2.getByText('Running')).toBeTruthy();
+    expect(tier2.queryByText('Timed out')).toBeNull();
+    // A finished run's step with no exit code did time out.
+    expect(
+      within(screen.getByRole('list', { name: 'Tier 1 steps' })).getByText('Timed out'),
+    ).toBeTruthy();
+  });
+
   it('says so when no agent has worked on the incident', async () => {
     renderDetails(fresh.id);
     expect(await screen.findByText('No agent has worked on this incident yet.')).toBeTruthy();
