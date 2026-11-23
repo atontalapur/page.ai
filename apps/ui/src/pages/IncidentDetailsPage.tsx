@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Bot } from 'lucide-react';
+import { AltArrowLeftIcon, BotIcon } from '@solar-icons/react/linear';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
 import { buttonVariants } from '@page/design-system/components/ui/button';
@@ -19,7 +19,7 @@ function BackLink() {
       to="/incidents"
       className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
     >
-      <ArrowLeft className="size-4" />
+      <AltArrowLeftIcon className="size-4" />
       Back to Incidents
     </Link>
   );
@@ -58,7 +58,7 @@ export default function IncidentDetailsPage() {
             <h2 className="text-2xl font-bold">Incident not found</h2>
             <p className="text-muted-foreground">The requested incident does not exist.</p>
             <Link to="/incidents" className={buttonVariants({ variant: 'outline' })}>
-              <ArrowLeft className="size-4" />
+              <AltArrowLeftIcon className="size-4" />
               Back to Incidents
             </Link>
           </>
@@ -114,7 +114,7 @@ export default function IncidentDetailsPage() {
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <section aria-labelledby="runs-heading" className="min-w-0 space-y-3">
           <h3 id="runs-heading" className="flex items-center gap-2 text-base font-semibold">
-            <Bot className="size-5" />
+            <BotIcon className="size-5" />
             Agent runs
           </h3>
           <RunsPanel issue={issue} />

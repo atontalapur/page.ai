@@ -1,6 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, Bot, CheckCircle2, CircleAlert, Search, Plus } from 'lucide-react';
+import {
+  AddCircleIcon,
+  BotIcon,
+  CheckCircleIcon,
+  DangerCircleIcon,
+  MagnifierIcon,
+  PulseIcon,
+} from '@solar-icons/react/linear';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
 import { Badge } from '@page/design-system/components/ui/badge';
@@ -46,10 +53,10 @@ export default function AgentsPage() {
   const failed = agents.filter((agent) => agent.status === 'Failed').length;
 
   const metrics = [
-    { label: 'Total Agents', value: agents.length, icon: Bot },
-    { label: 'Running', value: running, icon: Activity },
-    { label: 'Idle', value: idle, icon: CheckCircle2 },
-    { label: 'Failed', value: failed, icon: CircleAlert },
+    { label: 'Total Agents', value: agents.length, icon: BotIcon },
+    { label: 'Running', value: running, icon: PulseIcon },
+    { label: 'Idle', value: idle, icon: CheckCircleIcon },
+    { label: 'Failed', value: failed, icon: DangerCircleIcon },
   ];
 
   return (
@@ -63,7 +70,7 @@ export default function AgentsPage() {
         </div>
 
         <Button onClick={() => setAssignDialogOpen(true)}>
-          <Plus className="mr-2 size-4" />
+          <AddCircleIcon className="mr-2 size-4" />
           Assign Task
         </Button>
       </div>
@@ -85,7 +92,7 @@ export default function AgentsPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <MagnifierIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search agents..."
             value={search}
@@ -114,7 +121,7 @@ export default function AgentsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                    <Bot className="size-5 text-primary" />
+                    <BotIcon className="size-5 text-primary" />
                   </div>
 
                   <div className="min-w-0">

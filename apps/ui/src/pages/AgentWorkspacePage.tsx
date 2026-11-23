@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-  ArrowLeft,
-  Bot,
-  CheckCircle2,
-  Circle,
-  Clock3,
-  FileCode2,
-  GitCompare,
-  Terminal,
-  TestTube2,
-  XCircle,
-} from 'lucide-react';
+  AltArrowLeftIcon,
+  BotIcon,
+  BranchingPathsUpIcon,
+  CheckCircleIcon,
+  ClockCircleIcon,
+  CloseCircleIcon,
+  CodeFileIcon,
+  ProgrammingIcon,
+  RecordIcon,
+  TestTubeIcon,
+} from '@solar-icons/react/linear';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@page/design-system/components/ui/card';
 import { Badge } from '@page/design-system/components/ui/badge';
@@ -106,7 +106,7 @@ export default function AgentWorkspacePage() {
         to="/agents"
         className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="size-4" />
+        <AltArrowLeftIcon className="size-4" />
         Back to Agents
       </Link>
 
@@ -114,7 +114,7 @@ export default function AgentWorkspacePage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-            <Bot className="size-6 text-primary" />
+            <BotIcon className="size-6 text-primary" />
           </div>
 
           <div className="min-w-0">
@@ -226,7 +226,7 @@ export default function AgentWorkspacePage() {
                 {task.status === 'Awaiting Approval' && (
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" onClick={() => updateTaskStatus(task.id, 'Completed')}>
-                      <CheckCircle2 className="mr-2 size-4" />
+                      <CheckCircleIcon className="mr-2 size-4" />
                       Approve
                     </Button>
 
@@ -235,7 +235,7 @@ export default function AgentWorkspacePage() {
                       variant="destructive"
                       onClick={() => updateTaskStatus(task.id, 'Failed')}
                     >
-                      <XCircle className="mr-2 size-4" />
+                      <CloseCircleIcon className="mr-2 size-4" />
                       Reject
                     </Button>
                   </div>
@@ -254,7 +254,7 @@ export default function AgentWorkspacePage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Clock3 className="size-5" />
+                <ClockCircleIcon className="size-5" />
                 Execution Timeline
               </CardTitle>
             </CardHeader>
@@ -266,13 +266,13 @@ export default function AgentWorkspacePage() {
                     <li key={step.id} className="flex gap-3">
                       <div className="flex flex-col items-center">
                         {step.status === 'completed' ? (
-                          <CheckCircle2 className="size-5 text-green-600" />
+                          <CheckCircleIcon className="size-5 text-green-11" />
                         ) : step.status === 'failed' ? (
-                          <XCircle className="size-5 text-red-600" />
+                          <CloseCircleIcon className="size-5 text-red-11" />
                         ) : step.status === 'current' ? (
-                          <Clock3 className="size-5 text-primary" />
+                          <ClockCircleIcon className="size-5 text-primary" />
                         ) : (
-                          <Circle className="size-5 text-muted-foreground" />
+                          <RecordIcon className="size-5 text-muted-foreground" />
                         )}
 
                         {index < executionSteps.length - 1 && (
@@ -308,9 +308,9 @@ export default function AgentWorkspacePage() {
                     size="sm"
                     onClick={() => setActiveTab(tab.id)}
                   >
-                    {tab.id === 'changes' && <GitCompare className="mr-2 size-4" />}
-                    {tab.id === 'logs' && <Terminal className="mr-2 size-4" />}
-                    {tab.id === 'tests' && <TestTube2 className="mr-2 size-4" />}
+                    {tab.id === 'changes' && <BranchingPathsUpIcon className="mr-2 size-4" />}
+                    {tab.id === 'logs' && <ProgrammingIcon className="mr-2 size-4" />}
+                    {tab.id === 'tests' && <TestTubeIcon className="mr-2 size-4" />}
                     {tab.label}
                   </Button>
                 ))}
@@ -330,7 +330,7 @@ export default function AgentWorkspacePage() {
                 <div className="space-y-4">
                   <div className="rounded-lg border p-3">
                     <p className="mb-3 flex items-center gap-2 text-sm font-semibold">
-                      <FileCode2 className="size-4" />
+                      <CodeFileIcon className="size-4" />
                       Code Explorer
                     </p>
 
@@ -340,7 +340,7 @@ export default function AgentWorkspacePage() {
                           key={file}
                           className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2 text-xs"
                         >
-                          <FileCode2 className="size-4 shrink-0" />
+                          <CodeFileIcon className="size-4 shrink-0" />
                           <span className="break-all font-mono">{file}</span>
                         </div>
                       ))}
@@ -351,16 +351,16 @@ export default function AgentWorkspacePage() {
                     <p className="mb-2 text-sm font-semibold">Proposed Diff</p>
 
                     {hasCompletedStep(executionSteps, 'fix') ? (
-                      <div className="overflow-x-auto rounded-lg border bg-slate-950 p-4 font-mono text-xs leading-7">
+                      <div className="overflow-x-auto rounded-lg border bg-slate-a3 p-4 font-mono text-xs leading-7">
                         {execution.diff.map((line, index) => (
                           <div
                             key={index}
                             className={
                               line.type === 'added'
-                                ? 'whitespace-pre text-green-400'
+                                ? 'whitespace-pre text-green-11'
                                 : line.type === 'removed'
-                                  ? 'whitespace-pre text-red-400'
-                                  : 'whitespace-pre text-slate-300'
+                                  ? 'whitespace-pre text-red-11'
+                                  : 'whitespace-pre text-slate-11'
                             }
                           >
                             {line.text}
@@ -376,8 +376,8 @@ export default function AgentWorkspacePage() {
                 </div>
               ) : activeTab === 'logs' ? (
                 visibleLogs && visibleLogs.length > 0 ? (
-                  <div className="overflow-x-auto rounded-lg bg-slate-950 p-4">
-                    <pre className="font-mono text-xs leading-7 text-green-300">
+                  <div className="overflow-x-auto rounded-lg bg-slate-a3 p-4">
+                    <pre className="font-mono text-xs leading-7 text-green-11">
                       {visibleLogs.map((log) => log.text).join('\n')}
                     </pre>
                   </div>
@@ -396,17 +396,14 @@ export default function AgentWorkspacePage() {
                       {test.passed ? (
                         <Badge
                           variant="outline"
-                          className="border-green-200 bg-green-100 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300"
+                          className="border-green-a5 bg-green-a3 text-green-11"
                         >
-                          <CheckCircle2 className="mr-1 size-3" />
+                          <CheckCircleIcon className="mr-1 size-3" />
                           Passed
                         </Badge>
                       ) : (
-                        <Badge
-                          variant="outline"
-                          className="border-red-200 bg-red-100 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
-                        >
-                          <XCircle className="mr-1 size-3" />
+                        <Badge variant="outline" className="border-red-a5 bg-red-a3 text-red-11">
+                          <CloseCircleIcon className="mr-1 size-3" />
                           Failed
                         </Badge>
                       )}
@@ -459,7 +456,7 @@ export default function AgentWorkspacePage() {
                   {reviewStatus === 'Pending' ? (
                     <div className="grid grid-cols-2 gap-2">
                       <Button onClick={() => updateTaskStatus(reviewTask.id, 'Completed')}>
-                        <CheckCircle2 className="mr-2 size-4" />
+                        <CheckCircleIcon className="mr-2 size-4" />
                         Approve
                       </Button>
 
@@ -467,7 +464,7 @@ export default function AgentWorkspacePage() {
                         variant="destructive"
                         onClick={() => updateTaskStatus(reviewTask.id, 'Failed')}
                       >
-                        <XCircle className="mr-2 size-4" />
+                        <CloseCircleIcon className="mr-2 size-4" />
                         Reject
                       </Button>
                     </div>

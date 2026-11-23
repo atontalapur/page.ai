@@ -9,9 +9,9 @@ type Tone = 'plain' | 'accent' | 'warn' | 'good' | 'bad';
 const dot: Record<Tone, string> = {
   plain: 'bg-muted-foreground/40',
   accent: 'bg-primary',
-  warn: 'bg-amber-500',
-  good: 'bg-green-600',
-  bad: 'bg-red-600',
+  warn: 'bg-amber-9',
+  good: 'bg-green-9',
+  bad: 'bg-red-9',
 };
 
 /** What an applied event did, in the words a reviewer would use. */

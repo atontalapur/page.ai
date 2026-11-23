@@ -44,10 +44,7 @@ export default function ReviewActions({ issue }: { issue: Issue }) {
 
   const next = issue.currentTier === 3 ? 'marks it failed' : 'sends it to the next tier';
   return (
-    <section
-      aria-label="Review"
-      className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950"
-    >
+    <section aria-label="Review" className="space-y-3 rounded-xl bg-amber-a2 p-4">
       <div className="space-y-1">
         <h3 className="font-semibold">This fix is waiting for review</h3>
         <p className="text-sm text-muted-foreground">
@@ -99,7 +96,7 @@ export default function ReviewActions({ issue }: { issue: Issue }) {
       )}
 
       {error && (
-        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
+        <p role="alert" className="text-sm text-red-11">
           {error}
         </p>
       )}

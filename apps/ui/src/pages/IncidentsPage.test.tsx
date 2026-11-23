@@ -196,11 +196,11 @@ describe('IncidentsPage', () => {
     expect(screen.getByText('Connect with the API token to load incidents.')).toBeTruthy();
   });
 
-  it('gives severity and status badges dark mode variants', () => {
+  it('tints severity and status badges with Radix steps, which follow the theme', () => {
     renderPage();
 
     const row = within(rowOf(issues[0]!.id));
-    expect(row.getByText('Critical').className).toMatch(/dark:bg-\w+-950/);
-    expect(row.getByText('Fixing').className).toMatch(/dark:bg-\w+-950/);
+    expect(row.getByText('Critical').className).toContain('bg-red-a3');
+    expect(row.getByText('Fixing').className).toContain('bg-violet-a3');
   });
 });
