@@ -65,7 +65,9 @@ demo app --errors--> PostHog --webhook--> orchestrator --call + SMS--> on-call (
    since the fix is live already and there is no patch to approve.
 5. Audit. Every agent command goes through `execute()` in `@page/toolkit`, which parses it,
    checks it against the tier's rules and writes a `steps` row before it runs. A command whose
-   step can't be written doesn't run.
+   step can't be written doesn't run. A Tier 3 call that changes the live app (a config
+   change, a restart or a rollback) also waits for a person to approve it on the incident
+   page, for at most 3 minutes; no answer counts as a rejection.
 
 | Tier | What the agent can do                                                                                                         |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -81,16 +83,25 @@ minutes ([ADR 0001](docs/adr/0001-sandbox-network-policy.md)).
 ## Status
 
 Working and tested: ingest, triage, paging, the issue state machine and its queues; the node
-daemon, sandbox, toolkit and the Tier 2 and Tier 3 host tools; 30 seeded bugs with a self-test
-in CI; the eval runner, its report and charts, a nightly eval and an end-to-end harness. A
-staging run on Railway took scenario 029 from a 500 on the demo app through PostHog to a
-triaged issue in 3 seconds.
+daemon, sandbox, toolkit and the Tier 2 and Tier 3 host tools, rollback included; confidence
+scoring and escalation; approval of Tier 3 calls that change the live app; the Socket.IO
+gateway for the dashboard and the daemons, so a kill stops a run a daemon has claimed; the
+dashboard, which the orchestrator serves, with live incidents, runs, approvals and daemons;
+30 seeded bugs with a self-test in CI; the eval runner, its report and charts, a nightly eval
+and an end-to-end harness. A staging run on Railway took scenario 029 from a 500 on the demo
+app through PostHog to a triaged issue in 3 seconds, and the staging dashboard showed a new
+issue as its webhook arrived, without a reload.
 
-Not built yet:
+Known limits:
 
-- The dashboard. `apps/ui` renders placeholder data and doesn't read the orchestrator.
-- `ApprovalsModule` is a stub, and `GatewayModule` serves the UI but not the node daemons, so a
-  kill can't stop a run a daemon has already claimed.
+- The confidence threshold (0.3) and the score's weights aren't calibrated, and none of the
+  results below used them.
+- The rollback tool has run only against a fake deployer. Scenario 024 is held out and was
+  never run.
+- Live events, daemon tracking and approval deadlines live in one orchestrator process, so the
+  orchestrator runs as a single instance.
+- The dashboard uses one shared API token. The name a person gives before approving is a label,
+  not a login.
 
 ## Results
 
@@ -153,10 +164,10 @@ Commits follow Conventional Commits, and commitlint checks them and PR titles.
 
 | Path                     | What it is                                                                                     |
 | ------------------------ | ---------------------------------------------------------------------------------------------- |
-| `apps/orchestrator`      | NestJS (Fastify) service: ingest, triage, paging, issue state machine, pg-boss queues          |
+| `apps/orchestrator`      | NestJS (Fastify) service: ingest, triage, paging, issues, queues, approvals, Socket.IO, the UI |
 | `apps/node`              | Daemon that claims fix jobs, runs the agent and one sandbox container per run                  |
 | `apps/demo-app`          | Next.js and Postgres shop that the seeded bugs break; plays production                         |
-| `apps/ui`                | Vite and React dashboard (placeholder data for now)                                            |
+| `apps/ui`                | Vite and React dashboard: live incidents, runs, approvals and node daemons                     |
 | `packages/agent`         | The agent loop, its prompts and the per-tier escalation threshold                              |
 | `packages/toolkit`       | `execute()`, the tier policy, the audit log, and the GitHub and ops host tools                 |
 | `packages/model-client`  | OpenRouter client used by the agent and triage                                                 |
