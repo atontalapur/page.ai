@@ -4,6 +4,7 @@ import pg from 'pg';
 import { PgBoss } from 'pg-boss';
 import { pino } from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { nodeFixQueue } from '@page/contracts';
 import { FIX_QUEUE, type ClaimedJob } from './job-source.ts';
 import { PgBossJobSource } from './pg-boss-source.ts';
 
@@ -15,12 +16,20 @@ const schema = `pgboss_node_test_${randomBytes(4).toString('hex')}`;
 const boss = new PgBoss({ connectionString: url, schema, supervise: false, schedule: false });
 const errors: unknown[] = [];
 boss.on('error', (error) => errors.push(error));
-const source = new PgBossJobSource({ boss, logger: pino({ enabled: false }) });
+const NAME = 'node-test';
+const OWN = nodeFixQueue(NAME);
+const source = new PgBossJobSource({
+  boss,
+  logger: pino({ enabled: false }),
+  name: NAME,
+  pollMs: 100,
+});
 
 beforeAll(async () => {
   await boss.start();
   // As the orchestrator creates it (apps/orchestrator/src/queue/fix-jobs.ts).
   await boss.createQueue(FIX_QUEUE, { policy: 'singleton' });
+  await boss.createQueue(OWN, { policy: 'singleton' });
 }, 20_000);
 
 afterAll(async () => {
@@ -42,15 +51,16 @@ function nextClaim(outcome: () => Promise<void>) {
   });
 }
 
-const stateOf = async (id: string) => (await boss.findJobs(FIX_QUEUE, { id }))[0]?.state;
+const stateOf = async (id: string, queue = FIX_QUEUE) =>
+  (await boss.findJobs(queue, { id }))[0]?.state;
 
-async function settled(id: string) {
+async function settled(id: string, queue = FIX_QUEUE) {
   for (let i = 0; i < 100; i++) {
-    const state = await stateOf(id);
+    const state = await stateOf(id, queue);
     if (state !== 'created' && state !== 'active' && state !== 'retry') return state;
     await new Promise((r) => setTimeout(r, 100));
   }
-  return stateOf(id);
+  return stateOf(id, queue);
 }
 
 describe('PgBossJobSource on real Postgres', () => {
@@ -78,6 +88,41 @@ describe('PgBossJobSource on real Postgres', () => {
 
     expect(await settled(runId)).toBe('failed');
     expect(handled).toEqual([]);
+    await source.stop();
+  }, 20_000);
+
+  it("takes its own queue's job first, and one job at a time across both queues", async () => {
+    const shared = randomUUID();
+    const own = randomUUID();
+    const order: string[] = [];
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let running = 0;
+    let most = 0;
+    await boss.send(
+      FIX_QUEUE,
+      { ...jobFixtures.fix, runId: shared, fingerprint: `fp-${shared}` },
+      { id: shared },
+    );
+    await boss.send(OWN, { ...jobFixtures.fix, runId: own, fingerprint: `fp-${own}` }, { id: own });
+
+    await source.start(async (claimed) => {
+      order.push(claimed.job.runId);
+      running += 1;
+      most = Math.max(most, running);
+      if (claimed.job.runId === own) await held;
+      running -= 1;
+    });
+    // The shared job waits while this agent's own job is in hand.
+    await new Promise((r) => setTimeout(r, 600));
+    expect(order).toEqual([own]);
+    expect(await stateOf(shared)).toBe('created');
+
+    release();
+    expect(await settled(own, OWN)).toBe('completed');
+    expect(await settled(shared)).toBe('completed');
+    expect(order).toEqual([own, shared]);
+    expect(most).toBe(1);
     await source.stop();
   }, 20_000);
 });

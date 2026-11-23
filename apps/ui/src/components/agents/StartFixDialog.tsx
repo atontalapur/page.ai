@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Button } from '@page/design-system/components/ui/button';
 import {
   Dialog,
@@ -12,22 +12,35 @@ import {
 import { Label } from '@page/design-system/components/ui/label';
 import { NativeSelect, NativeSelectOption } from '@page/design-system/components/ui/native-select';
 
-import { useIssues } from '../../context/IssuesContext';
+import { useAgents, useIssues } from '../../context/IssuesContext';
 import { classLabel, severityLabel, shortId } from '../../lib/issueLabels';
 
 interface StartFixDialogProps {
   open: boolean;
   onClose: () => void;
+  /** The agent chosen when the dialog opens, such as the one whose page it was opened from. */
+  agent?: string;
 }
 
+/** The value of the agent select for "whichever agent is free". */
+const ANY_AGENT = '';
+
 /**
- * Starts a Tier 1 fix on a triaged incident, the `start_fix` event. The orchestrator queues a
- * fix job and the first free daemon claims it: there is no picking which one.
+ * Starts a Tier 1 fix on a triaged incident, the `start_fix` event. With an agent chosen, the
+ * orchestrator queues it for that agent alone; with "Any agent", the first free one claims it.
+ * Higher tiers always go to any agent.
  */
-export default function StartFixDialog({ open, onClose }: StartFixDialogProps) {
+export default function StartFixDialog({ open, onClose, agent }: StartFixDialogProps) {
   const { issues, applyEvent } = useIssues();
+  const { nodes } = useAgents();
   const selectRef = useRef<HTMLSelectElement>(null);
   const [issueId, setIssueId] = useState('');
+  const [node, setNode] = useState(agent ?? ANY_AGENT);
+  const connected = nodes.filter((n) => n.connected);
+
+  useEffect(() => {
+    if (open) setNode(agent ?? ANY_AGENT);
+  }, [open, agent]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const triaged = issues.filter((issue) => issue.status === 'triaged');
@@ -44,7 +57,10 @@ export default function StartFixDialog({ open, onClose }: StartFixDialogProps) {
     setPending(true);
     setError(undefined);
     try {
-      await applyEvent(issueId, { type: 'start_fix' });
+      await applyEvent(
+        issueId,
+        node === ANY_AGENT ? { type: 'start_fix' } : { type: 'start_fix', node },
+      );
       close();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -64,8 +80,8 @@ export default function StartFixDialog({ open, onClose }: StartFixDialogProps) {
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">Start a fix</DialogTitle>
           <DialogDescription>
-            Queues a Tier 1 fix for a triaged incident. The first free agent claims it; you
-            can&apos;t pick which one.
+            Queues a Tier 1 fix for a triaged incident, on the agent you choose or the first free
+            one. If the fix moves up a tier, any agent can take it.
           </DialogDescription>
         </DialogHeader>
 
@@ -90,6 +106,26 @@ export default function StartFixDialog({ open, onClose }: StartFixDialogProps) {
                 <NativeSelectOption key={issue.id} value={issue.id}>
                   {shortId(issue.id)} · {severityLabel(issue.severity)} · {classLabel(issue.class)}{' '}
                   · {issue.title}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+
+            <Label htmlFor="start-fix-agent" className="pt-2">
+              Agent
+            </Label>
+            <NativeSelect
+              id="start-fix-agent"
+              value={node}
+              onChange={(e) => setNode(e.target.value)}
+              className="w-full"
+              disabled={pending}
+            >
+              <NativeSelectOption value={ANY_AGENT}>
+                Any agent, the first one free
+              </NativeSelectOption>
+              {connected.map((n) => (
+                <NativeSelectOption key={n.name} value={n.name}>
+                  {n.name} · {n.current.length > 0 ? 'busy, it waits for this one' : 'idle'}
                 </NativeSelectOption>
               ))}
             </NativeSelect>

@@ -169,6 +169,46 @@ describe('AgentsPage', () => {
     expect(source.applied).toEqual([{ id: triaged.id, event: { type: 'start_fix' } }]);
   });
 
+  it('starts a fix on the agent chosen, offering only connected agents', async () => {
+    const source = renderAgents();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start a fix' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    const agent = dialog.getByLabelText<HTMLSelectElement>('Agent');
+    // Any agent first, then each connected daemon; the one that left is not offered.
+    expect(Array.from(agent.options).map((o) => o.value)).toEqual(['', 'busy-node', 'idle-node']);
+
+    fireEvent.change(dialog.getByLabelText('Incident'), { target: { value: triaged.id } });
+    fireEvent.change(agent, { target: { value: 'idle-node' } });
+    fireEvent.click(dialog.getByRole('button', { name: 'Start fix' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(source.applied).toEqual([
+      { id: triaged.id, event: { type: 'start_fix', node: 'idle-node' } },
+    ]);
+  });
+
+  it("stops a busy agent's run once asked to confirm, by killing its incident", async () => {
+    const source = renderAgents();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop run' }));
+    expect(source.applied).toEqual([]);
+    const confirm = within(screen.getByRole('group', { name: 'Stop this run' }));
+    fireEvent.click(confirm.getByRole('button', { name: 'Stop run' }));
+
+    await waitFor(() =>
+      expect(source.applied).toEqual([{ id: fixing.id, event: { type: 'kill' } }]),
+    );
+  });
+
+  it('keeps the run going when the stop is cancelled', () => {
+    const source = renderAgents();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop run' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep running' }));
+    expect(screen.getByRole('button', { name: 'Stop run' })).toBeTruthy();
+    expect(source.applied).toEqual([]);
+  });
+
   it('shows why the orchestrator refused to start a fix', async () => {
     const source = testSource([fixing, triaged], 'live', []);
     source.respond = () => Promise.reject(new Error('fix starts are capped for this hour'));

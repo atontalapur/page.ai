@@ -180,7 +180,7 @@ export async function createAdapters(config: NodeConfig, logger: Logger): Promis
         logger,
       });
   return {
-    jobs: new PgBossJobSource({ boss, logger }),
+    jobs: new PgBossJobSource({ boss, logger, name: nodeName(config) }),
     sandboxes: sandboxesFor(config),
     sink: new PostgresAuditSink(pool),
     link,

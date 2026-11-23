@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   FIX_QUEUE,
   fixJobSchema,
+  nodeFixQueue,
   type EscalationNote,
   type JobPayload,
   type Tier,
@@ -36,6 +37,8 @@ export interface FixJobInput {
   tier: Tier;
   report: string;
   escalationNote?: EscalationNote;
+  /** The agent that should take the run. Without one, the job goes to any agent. */
+  node?: string;
 }
 
 export interface FixJobQueue {
@@ -50,6 +53,11 @@ export interface FixJobQueue {
    * it is never claimed or retried. A job that already finished is left alone.
    */
   cancel(runId: string, trx: Transaction<Database>): Promise<void>;
+  /**
+   * Makes the queue a fix started on `node` goes to. pg-boss can't create a queue inside a
+   * transaction, so the caller does this before the transaction that sends the job.
+   */
+  prepare(node: string): Promise<void>;
 }
 
 /** Creates the queue if needed and returns a sender bound to it. */
@@ -66,14 +74,35 @@ export async function createFixJobQueue(boss: PgBoss): Promise<FixJobQueue> {
     expireInSeconds: FIX_EXPIRE_SECONDS,
     deadLetter: FIX_FAILED_QUEUE,
   };
-  await boss.createQueue(FIX_QUEUE, { policy: 'exclusive', ...options });
-  // createQueue leaves an existing queue as it was, so a deployed one gets these here.
-  await boss.updateQueue(FIX_QUEUE, options);
+  const ensure = async (name: string) => {
+    await boss.createQueue(name, { policy: 'exclusive', ...options });
+    // createQueue leaves an existing queue as it was, so a deployed one gets these here.
+    await boss.updateQueue(name, options);
+  };
+  await ensure(FIX_QUEUE);
+  // The shared queue and every agent's that exists: a run to cancel may be in any of them.
+  // Read once at boot and kept as agents' queues are made, since pg-boss can't list queues
+  // inside the transaction a cancel runs in.
+  const made = new Set<string>(
+    (await boss.getQueues())
+      .map((queue) => queue.name)
+      .filter((name) => name === FIX_QUEUE || name.startsWith(nodeFixQueue(''))),
+  );
+  made.add(FIX_QUEUE);
+
   return {
-    async send(input, trx) {
+    async prepare(node) {
+      const queue = nodeFixQueue(node);
+      if (made.has(queue)) return;
+      await ensure(queue);
+      made.add(queue);
+    },
+    async send({ node, ...input }, trx) {
+      const queue = node === undefined ? FIX_QUEUE : nodeFixQueue(node);
+      if (!made.has(queue)) throw new Error(`fix queue ${queue} was not prepared`);
       // The node daemon reports the run under this id.
       const job = fixJobSchema.parse({ v: 1, runId: randomUUID(), ...input });
-      const id = await boss.send(FIX_QUEUE, job, {
+      const id = await boss.send(queue, job, {
         id: job.runId,
         db: fromKysely(trx),
         singletonKey: job.fingerprint,
@@ -81,7 +110,9 @@ export async function createFixJobQueue(boss: PgBoss): Promise<FixJobQueue> {
       return id ? job : null;
     },
     async cancel(runId, trx) {
-      await boss.cancel(FIX_QUEUE, runId, { db: fromKysely(trx) });
+      for (const queue of made) {
+        await boss.cancel(queue, runId, { db: fromKysely(trx) });
+      }
     },
   };
 }
