@@ -1,0 +1,274 @@
+{
+  "v": 1,
+  "config": "tier3-start",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "gitSha": "45daa76e8c0ef4590e18d650ce5dc3bdd575f53b",
+  "limits": {
+    "1": {
+      "stepLimit": 40,
+      "costLimitUsd": 0.5,
+      "wallTimeLimitMs": 840000
+    },
+    "2": {
+      "stepLimit": 40,
+      "costLimitUsd": 0.5,
+      "wallTimeLimitMs": 840000
+    },
+    "3": {
+      "stepLimit": 40,
+      "costLimitUsd": 0.5,
+      "wallTimeLimitMs": 840000
+    }
+  },
+  "confidenceThreshold": {
+    "1": 0.3,
+    "2": 0.3,
+    "3": 0.3
+  },
+  "startedAt": "2026-11-23T12:59:55.113Z",
+  "finishedAt": "2026-11-23T13:03:08.420Z",
+  "runsPerScenario": 3,
+  "maxCostUsd": 0.4,
+  "spentUsd": 0.012577447600000001,
+  "stoppedForBudget": false,
+  "stoppedForProvider": false,
+  "runs": [
+    {
+      "scenario": "029-shipping-override-out-of-range",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 3,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 10,
+          "costUsd": 0.002191136,
+          "durationMs": 20753,
+          "steps": 7,
+          "blockedSteps": 0,
+          "diff": "",
+          "confidence": {
+            "score": 1,
+            "changesCode": false,
+            "reproduced": false,
+            "testsPass": false,
+            "checksPass": false,
+            "liveAfterChange": true
+          },
+          "lowConfidence": false,
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 3,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 20753,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.002191136
+    },
+    {
+      "scenario": "030-shipping-override-int-max",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 1,
+      "attempts": [
+        {
+          "tier": 3,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 12,
+          "costUsd": 0.0024794352,
+          "durationMs": 31384,
+          "steps": 9,
+          "blockedSteps": 1,
+          "diff": "",
+          "confidence": {
+            "score": 1,
+            "changesCode": false,
+            "reproduced": false,
+            "testsPass": false,
+            "checksPass": false,
+            "liveAfterChange": true
+          },
+          "lowConfidence": false,
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 3,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 31384,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.0024794352
+    },
+    {
+      "scenario": "029-shipping-override-out-of-range",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 2,
+      "attempts": [
+        {
+          "tier": 3,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 8,
+          "costUsd": 0.001731097,
+          "durationMs": 17258,
+          "steps": 6,
+          "blockedSteps": 0,
+          "diff": "",
+          "confidence": {
+            "score": 1,
+            "changesCode": false,
+            "reproduced": false,
+            "testsPass": false,
+            "checksPass": false,
+            "liveAfterChange": true
+          },
+          "lowConfidence": false,
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 3,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 17258,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.001731097
+    },
+    {
+      "scenario": "030-shipping-override-int-max",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 2,
+      "attempts": [
+        {
+          "tier": 3,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 13,
+          "costUsd": 0.0016785023999999998,
+          "durationMs": 26379,
+          "steps": 11,
+          "blockedSteps": 4,
+          "diff": "",
+          "confidence": {
+            "score": 1,
+            "changesCode": false,
+            "reproduced": false,
+            "testsPass": false,
+            "checksPass": false,
+            "liveAfterChange": true
+          },
+          "lowConfidence": false,
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 3,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 26379,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.0016785023999999998
+    },
+    {
+      "scenario": "029-shipping-override-out-of-range",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 3,
+      "attempts": [
+        {
+          "tier": 3,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 9,
+          "costUsd": 0.001924177,
+          "durationMs": 14718,
+          "steps": 6,
+          "blockedSteps": 0,
+          "diff": "",
+          "confidence": {
+            "score": 1,
+            "changesCode": false,
+            "reproduced": false,
+            "testsPass": false,
+            "checksPass": false,
+            "liveAfterChange": true
+          },
+          "lowConfidence": false,
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 3,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 14718,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.001924177
+    },
+    {
+      "scenario": "030-shipping-override-int-max",
+      "class": "infra-config",
+      "expectedTier": 3,
+      "run": 3,
+      "attempts": [
+        {
+          "tier": 3,
+          "exitStatus": "submitted",
+          "prOpened": false,
+          "modelCalls": 7,
+          "costUsd": 0.0025731,
+          "durationMs": 42478,
+          "steps": 6,
+          "blockedSteps": 0,
+          "diff": "",
+          "confidence": {
+            "score": 1,
+            "changesCode": false,
+            "reproduced": false,
+            "testsPass": false,
+            "checksPass": false,
+            "liveAfterChange": true
+          },
+          "lowConfidence": false,
+          "checkPassed": true
+        }
+      ],
+      "tierLanded": 3,
+      "fixed": true,
+      "paged": false,
+      "timeToFixMs": 42478,
+      "timeToPageMs": null,
+      "falseEscalations": 0,
+      "falsePage": false,
+      "costUsd": 0.0025731
+    }
+  ],
+  "skipped": [],
+  "errors": [],
+  "notPlayed": [],
+  "summary": {
+    "runs": 6,
+    "fixed": 6,
+    "fixRate": 1,
+    "costUsd": 0.012577447600000001,
+    "costPerFixUsd": 0.002096241266666667,
+    "falseEscalations": 0,
+    "falsePages": 0,
+    "steps": 45,
+    "blockedSteps": 5,
+    "blockedPer100Steps": 11.11111111111111
+  }
+}

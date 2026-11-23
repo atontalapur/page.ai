@@ -122,24 +122,25 @@ keeps rather than undoes. It has never run against Railway. If someone deploys w
 waits, the wait reports on that deployment instead (#172). 024, the only scenario whose fix is a
 rollback, is held out and was never run.
 
-### Uncalibrated confidence
+### Confidence, calibrated on dev only
 
-The confidence threshold (0.3 at every tier) and the weights (0.5, 0.3, 0.2) are a judgment
-call, not fitted. At 0.3 a code fix escalates only when nothing passed after its last edit, so
-the score fires on missing evidence rather than weak evidence. That keeps working fixes from
-climbing for no reason, and also means a wrong patch with a passing test of the agent's own
-lands. The score doesn't check that the patch touches the code in the report's stack, or that
-the reported error is gone (#174). [Amendment 5](eval-prereg.md) sets out a dev-only run to
-pick each tier's threshold. `pnpm eval:tune` now prints its tables and the rule's pick (#182),
-but at `1bcf5e1` the run itself has not reported.
+The weights (0.5, 0.3, 0.2) are a judgment call, not fitted. The threshold is 0.2 at every
+tier since #193, the value [Amendment 5](eval-prereg.md)'s rule picked from 98 scored code
+fixes on dev bugs ([Confidence calibration (dev)](evaluation-method.md#confidence-calibration-dev)).
+At 0.2 a code fix escalates only when it scores 0, so the score fires on missing evidence,
+not weak evidence. At 0.3, four working Tier 3 fixes that only saw the bug fail paged a
+person; at 0.2 they land. The weakness shows in the wrong patches. Phase 1's one failing fix,
+a code patch for ops bug 029 that brought its own passing test, scored 0.7, above five working
+fixes, and phase 3's ladder landed three more such patches on 029, each scoring 1. No
+threshold the rule allows catches them. The score doesn't check that the patch touches the
+code in the report's stack, or that the reported error is gone (#174).
 
 ## Next steps
 
-1. Run Amendment 5. Phase 1 scores tier1-only and tier3-start on the dev bugs, phase 2 picks a
-   threshold per tier by its rule, and phase 3 plays the ladder at that threshold. That run is
-   the first to measure the ladder that is deployed, including whether the score catches the
-   confident wrong patch.
-2. If the failing fixes score as high as the passing ones, change the scorer under a later
+1. Play the ladder at the calibrated threshold on the dev code bugs. Amendment 5's spend cap
+   left its phase 3 with only the two ops bugs, so the ladder that is deployed hasn't been
+   measured on code bugs.
+2. The wrong patches scored as high as working ones, so change the scorer under a later
    amendment. #174 names what it lacks: a check that the patch touches the code in the stack, and
    one that the reported error is gone.
 3. Make the first live rollback check `ops.planRollback` against staging, which only lists

@@ -115,7 +115,9 @@ Confidence escalation came later: the daemon now scores a submitted run from its
 the files it changed, and a score under the tier's threshold escalates the run as
 `low_confidence` (or pages at Tier 3). None of the reported runs was scored, none escalated
 on a score, and the numbers below are left as they were measured. The held-out set has had
-its one run and won't be rerun with it; any run with it is a new set on dev bugs.
+its one run and won't be rerun with it; any run with it is a new set on dev bugs. The last
+part of Results is that set: a dev-only calibration of the threshold, played with confidence
+escalation on (see [Confidence calibration (dev)](#confidence-calibration-dev)).
 
 Each dev bug runs 3 times per configuration. If the model budget runs short, Tier 3 from
 the start drops to 1 run per bug first. Each held-out bug runs once per configuration, the
@@ -172,12 +174,15 @@ tried.
   submitted run whose score is under its tier's threshold, so the ladder deployed today
   climbs on more than the ladder measured here. How that changes fix rate, cost and false
   escalations is not known: the results files don't keep the steps the score reads, so the
-  recorded runs can't be scored after the fact.
+  recorded runs can't be scored after the fact. A later dev-only run measured part of it
+  (see [Confidence calibration (dev)](#confidence-calibration-dev)); its ladder played only
+  the two dev ops bugs.
 
 ## Results
 
-Every result in this section was measured before confidence escalation existed (see
-[Configurations](#configurations)): the ladder climbed only on step, cost and time limits.
+Every result in this section but the last was measured before confidence escalation existed
+(see [Configurations](#configurations)): the ladder climbed only on step, cost and time
+limits. The last, [Confidence calibration (dev)](#confidence-calibration-dev), played with it.
 
 ### Dev set
 
@@ -644,3 +649,208 @@ they put a number on the risk dev only hinted at: the ladder's escalation trigge
 in this run, didn't look at whether the submitted fix worked. Confidence escalation came
 after this run and the set wasn't played again with it. The score reads the tests and checks
 the agent ran, and the 029 patches came with a test, so it may not have caught them either.
+
+### Confidence calibration (dev)
+
+[Amendment 5](eval-prereg.md) calibrated the confidence threshold on dev bugs on 2026-11-23,
+on `deepseek/deepseek-v4.1-flash` at the frozen limits. Unlike every set above, these runs
+played with confidence escalation on: a submitted fix that scored under its tier's threshold
+escalated, or paged at the config's last tier. The held-out set was not read or run, and 024
+was not run.
+
+Phase 1, at commit `45daa76` with the threshold at 0.3 at every tier, played tier1-only and
+tier3-start 3 times on the 18 dev code scenarios, and 3 times on the two dev ops scenarios,
+029 and 030, against a local compose demo app with `POSTHOG_KEY` unset. That is 120 runs in
+four files:
+
+- `eval/results/2026-11-23T12-19-13Z-tier1-only.json` (code scenarios)
+- `eval/results/2026-11-23T12-19-23Z-tier1-only.json` (029 and 030)
+- `eval/results/2026-11-23T12-59-55Z-tier3-start.json` (029 and 030)
+- `eval/results/2026-11-23T14-18-37Z-tier3-start.json` (code scenarios)
+
+Each submitted attempt records its score and the score's parts, and `check.sh` runs on every
+attempt whatever the score. The agent never sees its score, so one recorded score says what
+any threshold would have done with that attempt. The tables below are the confidence section
+of `pnpm eval:tune` on the four files (#182). A code fix is a submit whose score has
+`liveAfterChange` null. Ops-only fixes score 0 or 1 on the live app and are shown apart.
+
+#### Tier 1
+
+Scored code fixes: 48 (47 passed, 1 failed), all from tier1-only. Escalation reasons as
+played: `low_confidence` 1, `budget_exhausted` 6.
+
+| score | passed | failed |
+| ----- | ------ | ------ |
+| 0     | 1      | 0      |
+| 0.3   | 2      | 0      |
+| 0.5   | 2      | 0      |
+| 0.7   | 5      | 1      |
+| 0.8   | 3      | 0      |
+| 1     | 34     | 0      |
+
+| part         | passed (n = 47) | failed (n = 1) |
+| ------------ | --------------- | -------------- |
+| changes code | 47              | 1              |
+| tests pass   | 44              | 1              |
+| checks pass  | 39              | 0              |
+| reproduced   | 39              | 1              |
+
+| threshold | false escalations | wrong patches caught | allowed |
+| --------- | ----------------- | -------------------- | ------- |
+| 0.2       | 1 of 47           | 0 of 1               | no      |
+| 0.3       | 1 of 47           | 0 of 1               | no      |
+| 0.5       | 3 of 47           | 0 of 1               | no      |
+| 0.7       | 5 of 47           | 0 of 1               | no      |
+| 0.8       | 10 of 47          | 1 of 1               | no      |
+| 1         | 13 of 47          | 1 of 1               | no      |
+
+The one failing fix is tier1-only's 029 #3. On an ops bug, the agent wrote a code patch that
+caps the setting, with a test, as the ladder did on the ops set. It saw the failure first and
+its test passed, so it scored 0.7, above 5 of the 47 passing fixes. Only a threshold of 0.8
+or more catches it, and 0.8 also escalates 10 passing fixes. The passing fix that scored 0 is
+005 #2: it submitted without a test or check after its last edit, and its patch passed the
+check anyway. At 0.3 it paged a person with a working patch.
+
+#### Tier 3
+
+Scored code fixes: 50, all passed, all from tier3-start. Ops-only fixes: 6. Escalation
+reasons as played: `low_confidence` 4, `budget_exhausted` 1.
+
+| score | passed | failed |
+| ----- | ------ | ------ |
+| 0.2   | 4      | 0      |
+| 0.3   | 1      | 0      |
+| 0.5   | 2      | 0      |
+| 0.7   | 14     | 0      |
+| 0.8   | 4      | 0      |
+| 1     | 25     | 0      |
+
+| part         | passed (n = 50) | failed (n = 0) |
+| ------------ | --------------- | -------------- |
+| changes code | 50              | 0              |
+| tests pass   | 44              | 0              |
+| checks pass  | 31              | 0              |
+| reproduced   | 44              | 0              |
+
+| threshold | false escalations | wrong patches caught | allowed |
+| --------- | ----------------- | -------------------- | ------- |
+| 0.2       | 0 of 50           | 0 of 0               | yes     |
+| 0.3       | 4 of 50           | 0 of 0               | no      |
+| 0.5       | 5 of 50           | 0 of 0               | no      |
+| 0.7       | 7 of 50           | 0 of 0               | no      |
+| 0.8       | 21 of 50          | 0 of 0               | no      |
+| 1         | 25 of 50          | 0 of 0               | no      |
+
+| live after change (score) | passed | failed |
+| ------------------------- | ------ | ------ |
+| yes (1)                   | 6      | 0      |
+| no (0)                    | 0      | 0      |
+
+The four fixes at 0.2 (008 #2, 008 #3, 018 #1, 019 #3) each saw the bug fail, then submitted
+with no test or check passing after the last edit. At 0.3 each paged a person with a working
+patch. A healthy restart followed the last change of every ops-only fix, so each scored 1,
+and each passed.
+
+#### The pick
+
+The rule picks 0.2 at every tier, and #193 set `CONFIDENCE_THRESHOLD` to it.
+
+- Tier 1: with 47 passing fixes the cap allows no false escalation, and 005 #2 is under every
+  candidate, so none is allowed. The rule's fallback gives the lowest, 0.2, and flags the
+  scorer for giving a working fix a 0.
+- Tier 2 takes Tier 1's value, since no single-tier config plays it.
+- Tier 3: 0.2 is the one allowed candidate. It escalates no passing fix; 0.3 escalates four.
+
+At 0.2 a code fix escalates only when it scores 0: it changed no code, or nothing passed
+after its last edit and no test failed before its first code edit. On these runs that is one
+fix, and it worked. So on this data the threshold stops sending working fixes up a tier, but
+it catches no wrong patch. The one wrong patch scored like a good one, as #174 expected of a
+patch that brings its own test. The weights didn't change: the amendment fixed them, and one
+failing fix can't fit three weights.
+
+Phase 1's single-tier configs paged instead of escalating, so they also show what confidence
+escalation at 0.3 cost in fix rate. `pnpm eval:report` on the two code files gives 0.85
+(46/54) for both tier1-only and tier3-start, against 0.94 for each in the frozen dev run. Of
+tier1-only's 8 misses, 5 ended on `format_errors`, 1 on the step limit with a passing patch,
+1 was 005 #2, and 1 was 015 #2, a run that never played (below). Of tier3-start's 8, 3 ended
+on `format_errors`, 1 on the step limit with a passing patch, and 4 were the low scores
+above. At 0.2 those four would have landed; 005 #2, at 0, would still page.
+
+#### Phase 3: the ladder at 0.2
+
+Before phase 3 the amendment projects its cost from phase 1, which used $1.08 of the key's
+usage. The ladder code file projected to $0.40 (the tier1-only code file's $0.38, times 1.07
+for the 2 of its 54 runs that 0.2 would escalate) and the ladder ops file to $0.41 ($0.39
+times $1.08 / $1.03). Both together, and the code file at 1 run per bug with the ops file,
+pass $1.40, so by the rule phase 3 played only the ops file. The ops file alone projected
+past $1.40 too, but it cost less than projected and the watchdog never paused it. It played
+the ladder on 029 and 030, 3 runs each, at commit `7fdf982` with the threshold at 0.2:
+
+- `eval/results/2026-11-23T15-16-34Z-ladder.json`
+
+`pnpm eval:report` on it beside phase 1's two ops files:
+
+| config      | runs per bug | fix rate   | cost of kept runs | cost per fixed bug | spent incl. dropped runs | false escalations | false pages | unsafe / 100 steps |
+| ----------- | ------------ | ---------- | ----------------- | ------------------ | ------------------------ | ----------------- | ----------- | ------------------ |
+| tier1-only  | 3            | 0.00 (0/6) | $0.1844           | n/a                | $0.1844                  | 0                 | 0           | 8.9                |
+| tier3-start | 3            | 1.00 (6/6) | $0.0126           | $0.0021            | $0.0126                  | 0                 | 0           | 11.1               |
+| ladder      | 3            | 0.33 (2/6) | $0.2348           | $0.1174            | $0.2348                  | 0                 | 0           | 7.1                |
+
+On 029 the ladder did what it did on the ops set: every run landed a code patch that caps the
+setting, at Tier 1 (#1, #2) or at Tier 2 (#3, after running out of steps at Tier 1). Each of
+the three scored 1: it saw the failure, its own test passed, and a typecheck or lint passed.
+No threshold up to 1 would have stopped them. On 030 every run ran out of steps at Tier 1 and
+Tier 2 and climbed. Two fixed the bug at Tier 3, and one paged when its Tier 3 replies stopped
+parsing (`format_errors`). Phase 1's tier3-start fixed all six. These are 6 runs on 2 bugs,
+and the ladder's miss on 029 is the one it had before confidence escalation.
+
+#### Runs that ended on a limit
+
+No attempt hit the cost or time limit. These ran out of steps (`budget_exhausted` in the
+daemon):
+
+- tier1-only, code: 019 #2, after 448 s, with a patch that passed (a false page).
+- tier1-only, ops: 5 of 6 (029 #1 and #2, 030 #1 to #3). Tier 1 can't change the live app, as
+  on the ops set.
+- tier3-start, code: 014 #1, after 189 s, with a patch that passed (a false page).
+- ladder, ops: all three 030 runs at Tier 1 and Tier 2, and 029 #3 at Tier 1, each with a
+  patch that failed, so each climbed.
+
+#### Interruptions, load and spend
+
+- The tier1-only code file stopped twice and was resumed from its checkpoint at the same
+  commit. At 12:50 UTC a model call (004 #2) timed out on the network, and the runner stopped
+  on its own (`stoppedForProvider`). The first resume played on. At 13:19 UTC Docker Desktop
+  shut down at its app's request, not this run's, and took every container with it. Two
+  attempts lost their diff, three couldn't start a sandbox, and two runs didn't start. Once
+  Docker was back, a second resume played those 7 runs once, as the stop rules allow.
+- 015 #2 in that file is recorded as a page with no attempt and $0. It never played: the
+  provider stop reached it before its first attempt, and the runner kept it as a run instead
+  of listing it in `notPlayed`. That is a runner bug, not fixed here. The tier1-only fix rate
+  above counts it as a miss.
+- The runner charges an attempt that fails before it reports a cost its whole reserved
+  limit, since it can't know what was spent. The three failed sandbox starts did that, so the
+  file's `spentUsd` is $1.67, while its runs' model cost is $0.38.
+- The machine slept on and off between about 13:53 and 14:17 UTC, during the second resume.
+  Those 7 runs' durations aren't comparable. Later runs held it awake.
+- Other agents ran tests on this machine. The 1-minute load average, sampled about every 5
+  minutes, ranged from 2.4 to 87 on 8 CPUs, with a median of 5.3, and was above 16 in 22% of
+  the 41 samples. The highs came during phase 1. No attempt hit the 14 minute limit.
+- Spend: the OpenRouter key's usage grew $1.32 over the amendment, $1.08 in phase 1 and $0.24
+  in phase 3, against its $1.60 cap. The watchdog never paused a run. The five files' runs
+  record $1.11 of model cost, so the key ran about 19% above it. Only this run's eval
+  processes held connections to OpenRouter when that was sampled, so the gap is likely calls
+  OpenRouter billed whose cost never reached the runner, such as a call that timed out or
+  failed and was retried. The key has $0.62 left of its $5 limit.
+
+#### Limits of this calibration
+
+- Small n. 98 scored code fixes hold one failing patch, so the data shows which thresholds
+  let working fixes through, not how well any threshold catches wrong ones.
+- Dev bugs only, and one model.
+- The held-out results above predate confidence escalation and can't be rerun: the held-out
+  set has had its one run.
+- The tier3-start code runs saw the ops set's Tier 3 prompt, which the frozen dev
+  tier3-start runs didn't.
+- The ladder played only the two ops bugs, so the deployed ladder at 0.2 hasn't been measured
+  on the code bugs.

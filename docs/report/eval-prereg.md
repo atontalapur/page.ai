@@ -159,6 +159,16 @@ is logged every five minutes during the runs. Attempts that end on a step, cost 
 (`budget_exhausted` in the daemon) are reported apart, with the load, since the 14 minute
 wall clock runs on shared CPUs.
 
+Note (2026-11-23), not an amendment, on how Amendment 5 ran. Phase 1 ran as written at
+`45daa76`. Its tier1-only code file stopped twice and was resumed from its checkpoint at the
+same commit, as the stop rules allow: once on a provider stop (a model call timed out on the
+network), and once when Docker Desktop shut down and five attempts errored, which the second
+resume played again once. The rule picked 0.2 at every tier, and #193 set it. Phase 1 used
+$1.08 of the key's usage, so the projection left phase 3 with only the ops file, which ran at
+`7fdf982`. The amendment used $1.32 of its $1.60 cap, and the watchdog never paused a run.
+The held-out set was not read or run. The results are under Confidence calibration (dev) in
+[evaluation-method.md](evaluation-method.md#confidence-calibration-dev).
+
 ## Bars
 
 lesson: how close the full ladder gets to the Tier 3 from-start fix rate while granting
