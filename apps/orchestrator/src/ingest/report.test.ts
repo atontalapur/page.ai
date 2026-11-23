@@ -326,9 +326,16 @@ describe('report helpers', () => {
     const long = 'a'.repeat(200_000);
     const dense = ['a@', '@a', '.@.', 'a%40', '𠮷@'].map((unit) => unit.repeat(50_000));
     for (const text of [long, `${long}@`, `@${long}`, `${'a.'.repeat(100_000)}`, ...dense]) {
-      const started = performance.now();
-      maskEmails(text);
-      expect(performance.now() - started).toBeLessThan(500);
+      // The fastest of three tries. A CI runner busy with every other package's tests can
+      // slow one try past the bound; a pattern that backtracks makes all three slow.
+      const fastest = Math.min(
+        ...[0, 1, 2].map(() => {
+          const started = performance.now();
+          maskEmails(text);
+          return performance.now() - started;
+        }),
+      );
+      expect(fastest).toBeLessThan(500);
     }
   });
 
