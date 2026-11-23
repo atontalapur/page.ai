@@ -42,10 +42,51 @@ export const initialMockTasks: AgentTask[] = [
   },
 ];
 
+const TASK_ID_PATTERN = /^TASK-(\d+)$/;
+
+export function formatTaskId(taskNumber: number): string {
+  return `TASK-${String(taskNumber).padStart(3, '0')}`;
+}
+
+export function getHighestTaskNumber(tasks: AgentTask[]): number {
+  return tasks.reduce((highest, task) => {
+    const match = TASK_ID_PATTERN.exec(task.id);
+
+    return match ? Math.max(highest, Number(match[1])) : highest;
+  }, 0);
+}
+
 export function getTasksByAgent(tasks: AgentTask[], agentId: string): AgentTask[] {
   return tasks.filter((task) => task.agentId === agentId);
 }
 
-export function getTaskById(tasks: AgentTask[], taskId: string): AgentTask | undefined {
-  return tasks.find((task) => task.id === taskId);
+const activeStatusOrder: TaskStatus[] = ['Running', 'Queued', 'Awaiting Approval'];
+
+/**
+ * The task an agent is working on: its first Running task, else its first
+ * Queued task, else its first Awaiting Approval task.
+ */
+export function getActiveTask(tasks: AgentTask[], agentId: string): AgentTask | undefined {
+  const agentTasks = getTasksByAgent(tasks, agentId);
+
+  for (const status of activeStatusOrder) {
+    const task = agentTasks.find((candidate) => candidate.status === status);
+
+    if (task) {
+      return task;
+    }
+  }
+
+  return undefined;
+}
+
+/** The agent's most recently finished (Completed or Failed) task. */
+export function getLatestFinishedTask(tasks: AgentTask[], agentId: string): AgentTask | undefined {
+  return getTasksByAgent(tasks, agentId)
+    .filter((task) => task.status === 'Completed' || task.status === 'Failed')
+    .reduce<AgentTask | undefined>(
+      (latest, task) =>
+        !latest || (task.completedAt ?? '') >= (latest.completedAt ?? '') ? task : latest,
+      undefined,
+    );
 }

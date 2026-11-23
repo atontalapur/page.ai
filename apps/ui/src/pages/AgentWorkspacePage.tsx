@@ -19,82 +19,67 @@ import { Button } from '@page/design-system/components/ui/button';
 
 import { getAgentById } from '../data/mockAgents';
 import { getIncidentById } from '../data/mockIncidents';
+import {
+  formatTestSummary,
+  getExecutionByIncident,
+  getExecutionSteps,
+  hasCompletedStep,
+  hasReachedStep,
+  type ExecutionStepStatus,
+} from '../data/mockExecution';
+import { getLatestFinishedTask, type AgentTask } from '../data/mockTasks';
 import { useTasks } from '../context/TaskContext';
 
 type ReviewStatus = 'Pending' | 'Approved' | 'Rejected';
 type WorkspaceTab = 'changes' | 'logs' | 'tests';
 
-const executionSteps = [
-  {
-    title: 'Incident received',
-    description: 'Agent received the assigned investigation.',
-    status: 'completed',
-  },
-  {
-    title: 'Root cause analysis',
-    description: 'Analyzed stack traces and relevant source files.',
-    status: 'completed',
-  },
-  {
-    title: 'Generate proposed fix',
-    description: 'Prepared a candidate code change.',
-    status: 'completed',
-  },
-  {
-    title: 'Run tests',
-    description: 'Executed validation tests against the proposed fix.',
-    status: 'completed',
-  },
-  {
-    title: 'Human approval',
-    description: 'Waiting for a reviewer to approve or reject the fix.',
-    status: 'pending',
-  },
-] as const;
+const reviewStatusByTaskStatus: Partial<Record<AgentTask['status'], ReviewStatus>> = {
+  'Awaiting Approval': 'Pending',
+  Completed: 'Approved',
+  Failed: 'Rejected',
+};
 
-const mockFiles = ['src/db/connection.ts', 'src/services/users.ts', 'src/config/database.ts'];
-
-const mockDiff = [
-  { type: 'context', text: 'async function connectDatabase() {' },
-  { type: 'removed', text: '-  const timeout = 5000;' },
-  { type: 'added', text: '+  const timeout = 10000;' },
-  { type: 'context', text: '   return createConnection({ timeout });' },
-  { type: 'context', text: '}' },
-] as const;
-
-const mockLogs = [
-  '[10:15:01] INFO  Investigation started',
-  '[10:15:03] INFO  Reading incident stack trace',
-  '[10:15:05] INFO  Inspecting database connection module',
-  '[10:15:08] INFO  Possible timeout configuration issue detected',
-  '[10:15:12] INFO  Generating proposed patch',
-  '[10:15:16] INFO  Running validation tests',
-  '[10:15:20] INFO  Tests completed',
-  '[10:15:21] INFO  Awaiting human approval',
-];
-
-const mockTests = [
-  { name: 'Database connection initializes', passed: true },
-  { name: 'Connection retry behavior', passed: true },
-  { name: 'Timeout configuration validation', passed: true },
-  { name: 'Connection recovery under load', passed: false },
-];
+const stepStatusLabels: Record<ExecutionStepStatus, string> = {
+  completed: 'Completed',
+  current: 'In progress',
+  pending: 'Pending',
+  failed: 'Failed',
+};
 
 export default function AgentWorkspacePage() {
   const { id } = useParams<{ id: string }>();
+  const agentId = id ?? '';
 
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('changes');
-  const [reviews, setReviews] = useState<Record<string, ReviewStatus>>({});
 
-  const { getAgentTasks, updateTaskStatus } = useTasks();
+  const { tasks, getAgentTasks, getActiveAgentTask, updateTaskStatus } = useTasks();
 
-  const agentTasks = getAgentTasks(id ?? '');
+  const agentTasks = getAgentTasks(agentId);
 
   const agent = id ? getAgentById(id) : undefined;
 
-  const incident = agent?.currentIncident ? getIncidentById(agent.currentIncident) : undefined;
+  // The workspace follows the agent's active task, then its latest finished
+  // task. The static agent data is only used when the agent has no tasks.
+  const activeTask = getActiveAgentTask(agentId);
+  const workspaceTask = activeTask ?? getLatestFinishedTask(tasks, agentId);
 
-  const reviewStatus = id ? (reviews[id] ?? 'Pending') : 'Pending';
+  const incidentId = workspaceTask ? workspaceTask.incidentId : (agent?.currentIncident ?? null);
+  const incident = incidentId ? getIncidentById(incidentId) : undefined;
+  const execution = incident ? getExecutionByIncident(incident.id) : undefined;
+
+  const agentStatus = activeTask ? activeTask.status : workspaceTask ? 'Idle' : agent?.status;
+
+  // Without a task, a static current incident is treated as work in progress.
+  const executionSteps = getExecutionSteps(workspaceTask?.status ?? 'Running');
+  const visibleLogs = execution?.logs.filter((log) => hasReachedStep(executionSteps, log.step));
+
+  const reviewTask =
+    agentTasks.find((task) => task.status === 'Awaiting Approval') ??
+    (workspaceTask && workspaceTask.status in reviewStatusByTaskStatus ? workspaceTask : undefined);
+  const reviewStatus = reviewTask ? reviewStatusByTaskStatus[reviewTask.status] : undefined;
+  const reviewExecution = reviewTask?.incidentId
+    ? getExecutionByIncident(reviewTask.incidentId)
+    : undefined;
 
   if (!agent) {
     return (
@@ -107,13 +92,6 @@ export default function AgentWorkspacePage() {
       </div>
     );
   }
-
-  const updateReview = (status: ReviewStatus) => {
-    setReviews((previous) => ({
-      ...previous,
-      [agent.id]: status,
-    }));
-  };
 
   const tabs: { id: WorkspaceTab; label: string }[] = [
     { id: 'changes', label: 'Code Changes' },
@@ -145,7 +123,7 @@ export default function AgentWorkspacePage() {
           </div>
         </div>
 
-        <Badge variant="outline">{agent.status}</Badge>
+        <Badge variant="outline">{agentStatus}</Badge>
       </div>
 
       {/* Agent Overview */}
@@ -283,16 +261,16 @@ export default function AgentWorkspacePage() {
 
             <CardContent>
               {incident ? (
-                <div className="space-y-5">
+                <ol className="space-y-5">
                   {executionSteps.map((step, index) => (
-                    <div key={step.title} className="flex gap-3">
+                    <li key={step.id} className="flex gap-3">
                       <div className="flex flex-col items-center">
                         {step.status === 'completed' ? (
                           <CheckCircle2 className="size-5 text-green-600" />
-                        ) : reviewStatus === 'Approved' ? (
-                          <CheckCircle2 className="size-5 text-green-600" />
-                        ) : reviewStatus === 'Rejected' ? (
+                        ) : step.status === 'failed' ? (
                           <XCircle className="size-5 text-red-600" />
+                        ) : step.status === 'current' ? (
+                          <Clock3 className="size-5 text-primary" />
                         ) : (
                           <Circle className="size-5 text-muted-foreground" />
                         )}
@@ -303,12 +281,15 @@ export default function AgentWorkspacePage() {
                       </div>
 
                       <div className="min-w-0 flex-1 pb-5">
-                        <p className="text-sm font-semibold">{step.title}</p>
+                        <p className="text-sm font-semibold">
+                          {step.title}
+                          <span className="sr-only">: {stepStatusLabels[step.status]}</span>
+                        </p>
                         <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
                       </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ol>
               ) : (
                 <p className="text-sm text-muted-foreground">
                   No execution is available for this agent.
@@ -341,6 +322,10 @@ export default function AgentWorkspacePage() {
                 <p className="text-sm text-muted-foreground">
                   Assign an incident to view execution details.
                 </p>
+              ) : !execution ? (
+                <p className="text-sm text-muted-foreground">
+                  No execution data yet for {incident.id}.
+                </p>
               ) : activeTab === 'changes' ? (
                 <div className="space-y-4">
                   <div className="rounded-lg border p-3">
@@ -350,7 +335,7 @@ export default function AgentWorkspacePage() {
                     </p>
 
                     <div className="space-y-2">
-                      {mockFiles.map((file) => (
+                      {execution.files.map((file) => (
                         <div
                           key={file}
                           className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2 text-xs"
@@ -365,33 +350,43 @@ export default function AgentWorkspacePage() {
                   <div>
                     <p className="mb-2 text-sm font-semibold">Proposed Diff</p>
 
-                    <div className="overflow-x-auto rounded-lg border bg-slate-950 p-4 font-mono text-xs leading-7">
-                      {mockDiff.map((line, index) => (
-                        <div
-                          key={index}
-                          className={
-                            line.type === 'added'
-                              ? 'whitespace-pre text-green-400'
-                              : line.type === 'removed'
-                                ? 'whitespace-pre text-red-400'
-                                : 'whitespace-pre text-slate-300'
-                          }
-                        >
-                          {line.text}
-                        </div>
-                      ))}
-                    </div>
+                    {hasCompletedStep(executionSteps, 'fix') ? (
+                      <div className="overflow-x-auto rounded-lg border bg-slate-950 p-4 font-mono text-xs leading-7">
+                        {execution.diff.map((line, index) => (
+                          <div
+                            key={index}
+                            className={
+                              line.type === 'added'
+                                ? 'whitespace-pre text-green-400'
+                                : line.type === 'removed'
+                                  ? 'whitespace-pre text-red-400'
+                                  : 'whitespace-pre text-slate-300'
+                            }
+                          >
+                            {line.text}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        The agent has not proposed a change yet.
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : activeTab === 'logs' ? (
-                <div className="overflow-x-auto rounded-lg bg-slate-950 p-4">
-                  <pre className="font-mono text-xs leading-7 text-green-300">
-                    {mockLogs.join('\n')}
-                  </pre>
-                </div>
-              ) : (
+                visibleLogs && visibleLogs.length > 0 ? (
+                  <div className="overflow-x-auto rounded-lg bg-slate-950 p-4">
+                    <pre className="font-mono text-xs leading-7 text-green-300">
+                      {visibleLogs.map((log) => log.text).join('\n')}
+                    </pre>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No log output yet.</p>
+                )
+              ) : hasCompletedStep(executionSteps, 'tests') ? (
                 <div className="space-y-3">
-                  {mockTests.map((test) => (
+                  {execution.tests.map((test) => (
                     <div
                       key={test.name}
                       className="flex items-center justify-between gap-3 rounded-lg border p-3"
@@ -415,6 +410,8 @@ export default function AgentWorkspacePage() {
                     </div>
                   ))}
                 </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Tests have not run yet.</p>
               )}
             </CardContent>
           </Card>
@@ -427,7 +424,7 @@ export default function AgentWorkspacePage() {
             </CardHeader>
 
             <CardContent className="space-y-4">
-              {!incident ? (
+              {!reviewTask || !reviewStatus ? (
                 <p className="text-sm text-muted-foreground">
                   No proposed changes are awaiting review.
                 </p>
@@ -437,6 +434,11 @@ export default function AgentWorkspacePage() {
                     Review the proposed code changes and test results before making a decision.
                   </p>
 
+                  <p className="text-xs text-muted-foreground">
+                    {reviewTask.id}
+                    {reviewTask.incidentId && ` · ${reviewTask.incidentId}`}
+                  </p>
+
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Review Status</span>
                     <Badge variant="outline">{reviewStatus}</Badge>
@@ -444,38 +446,34 @@ export default function AgentWorkspacePage() {
 
                   <div className="rounded-lg border p-3 text-sm">
                     <p className="font-medium">Validation summary</p>
-                    <p className="mt-1 text-muted-foreground">3 tests passed, 1 test failed.</p>
+                    <p className="mt-1 text-muted-foreground">
+                      {reviewExecution
+                        ? formatTestSummary(reviewExecution.tests)
+                        : 'No test results yet.'}
+                    </p>
                   </div>
 
                   {reviewStatus === 'Pending' ? (
                     <div className="grid grid-cols-2 gap-2">
-                      <Button onClick={() => updateReview('Approved')}>
+                      <Button onClick={() => updateTaskStatus(reviewTask.id, 'Completed')}>
                         <CheckCircle2 className="mr-2 size-4" />
                         Approve
                       </Button>
 
-                      <Button variant="destructive" onClick={() => updateReview('Rejected')}>
+                      <Button
+                        variant="destructive"
+                        onClick={() => updateTaskStatus(reviewTask.id, 'Failed')}
+                      >
                         <XCircle className="mr-2 size-4" />
                         Reject
                       </Button>
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      <p className="text-sm font-medium">Decision: {reviewStatus}</p>
-
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => updateReview('Pending')}
-                      >
-                        Reset Demo Review
-                      </Button>
-                    </div>
+                    <p className="text-sm font-medium">Decision: {reviewStatus}</p>
                   )}
 
                   <p className="text-xs text-muted-foreground">
-                    Demo only. Review decisions are stored in local React state and do not change
-                    source code.
+                    Decisions update the task status. They do not change source code.
                   </p>
                 </>
               )}

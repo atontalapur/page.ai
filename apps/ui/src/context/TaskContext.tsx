@@ -1,6 +1,18 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import {
+  formatTaskId,
+  getActiveTask,
+  getHighestTaskNumber,
+  getTasksByAgent,
   initialMockTasks,
   type AgentTask,
   type TaskPriority,
@@ -20,6 +32,7 @@ interface TaskContextType {
   createTask: (input: CreateTaskInput) => AgentTask;
   updateTaskStatus: (taskId: string, status: TaskStatus) => void;
   getAgentTasks: (agentId: string) => AgentTask[];
+  getActiveAgentTask: (agentId: string) => AgentTask | undefined;
 }
 
 const TaskContext = createContext<TaskContextType | undefined>(undefined);
@@ -27,9 +40,15 @@ const TaskContext = createContext<TaskContextType | undefined>(undefined);
 export function TaskProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<AgentTask[]>(initialMockTasks);
 
-  const createTask = (input: CreateTaskInput): AgentTask => {
+  // Display ids continue after the highest mock id. A counter works in every
+  // context, unlike crypto.randomUUID, which needs HTTPS or localhost.
+  const lastTaskNumber = useRef(getHighestTaskNumber(initialMockTasks));
+
+  const createTask = useCallback((input: CreateTaskInput): AgentTask => {
+    lastTaskNumber.current += 1;
+
     const task: AgentTask = {
-      id: `TASK-${crypto.randomUUID()}`,
+      id: formatTaskId(lastTaskNumber.current),
       title: input.title,
       instructions: input.instructions,
       agentId: input.agentId,
@@ -44,9 +63,9 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     setTasks((previous) => [...previous, task]);
 
     return task;
-  };
+  }, []);
 
-  const updateTaskStatus = (taskId: string, status: TaskStatus) => {
+  const updateTaskStatus = useCallback((taskId: string, status: TaskStatus) => {
     setTasks((previous) =>
       previous.map((task) =>
         task.id === taskId
@@ -61,24 +80,24 @@ export function TaskProvider({ children }: { children: ReactNode }) {
           : task,
       ),
     );
-  };
+  }, []);
 
-  const getAgentTasks = (agentId: string): AgentTask[] => {
-    return tasks.filter((task) => task.agentId === agentId);
-  };
-
-  return (
-    <TaskContext.Provider
-      value={{
-        tasks,
-        createTask,
-        updateTaskStatus,
-        getAgentTasks,
-      }}
-    >
-      {children}
-    </TaskContext.Provider>
+  const getAgentTasks = useCallback(
+    (agentId: string): AgentTask[] => getTasksByAgent(tasks, agentId),
+    [tasks],
   );
+
+  const getActiveAgentTask = useCallback(
+    (agentId: string): AgentTask | undefined => getActiveTask(tasks, agentId),
+    [tasks],
+  );
+
+  const value = useMemo(
+    () => ({ tasks, createTask, updateTaskStatus, getAgentTasks, getActiveAgentTask }),
+    [tasks, createTask, updateTaskStatus, getAgentTasks, getActiveAgentTask],
+  );
+
+  return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;
 }
 
 export function useTasks(): TaskContextType {
