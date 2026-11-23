@@ -30,6 +30,8 @@ export default function KnowledgePage() {
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<KgSearchResult | undefined>();
   const [searching, setSearching] = useState(false);
+  // Test files are half the graph; they stay out of the view until asked for.
+  const [showTests, setShowTests] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -85,6 +87,16 @@ export default function KnowledgePage() {
     [result],
   );
   const onSelect = useCallback((key: string) => setSelected(key), []);
+  const shown = useMemo(() => {
+    if (!graph || showTests) return graph;
+    const nodes = graph.nodes.filter((n) => n.kind !== 'test');
+    const keys = new Set(nodes.map((n) => n.key));
+    return {
+      ...graph,
+      nodes,
+      edges: graph.edges.filter((e) => keys.has(e.from) && keys.has(e.to)),
+    };
+  }, [graph, showTests]);
   const current = branches.find((b) => b.name === branch);
 
   return (
@@ -101,6 +113,15 @@ export default function KnowledgePage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={showTests}
+              onChange={(e) => setShowTests(e.target.checked)}
+              className="size-4 accent-[var(--violet-9)]"
+            />
+            Show tests
+          </label>
           <label htmlFor="kg-branch" className="text-sm text-muted-foreground">
             Branch
           </label>
@@ -151,10 +172,10 @@ export default function KnowledgePage() {
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
             <Card className="relative h-[70vh] min-h-96 overflow-hidden p-0">
-              {graph && graph.nodes.length > 0 ? (
+              {shown && shown.nodes.length > 0 ? (
                 <GraphCanvas
-                  nodes={graph.nodes}
-                  edges={graph.edges}
+                  nodes={shown.nodes}
+                  edges={shown.edges}
                   selected={selected}
                   highlighted={highlighted}
                   onSelect={onSelect}
@@ -166,9 +187,9 @@ export default function KnowledgePage() {
                     : 'Loading the graph…'}
                 </div>
               )}
-              {graph && (
+              {shown && (
                 <p className="pointer-events-none absolute bottom-2 left-3 text-xs text-muted-foreground tabular-nums">
-                  {graph.nodes.length} pages · {graph.edges.length} links
+                  {shown.nodes.length} pages · {shown.edges.length} links
                   {current && current.unpushed > 0 ? ` · ${current.unpushed} not pushed` : ''}
                 </p>
               )}
@@ -186,7 +207,7 @@ export default function KnowledgePage() {
                     </p>
                   )}
                   <ul>
-                    {(graph?.nodes ?? []).map((n) => (
+                    {(shown?.nodes ?? []).map((n) => (
                       <li key={n.key}>
                         <button
                           type="button"

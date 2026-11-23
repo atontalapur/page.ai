@@ -19,21 +19,82 @@ interface Body {
   vx: number;
   vy: number;
   degree: number;
+  /** A test file: drawn smaller and fainter, so the code it tests stands out. */
+  test: boolean;
   /** Held by the pointer: the simulation leaves it where the pointer puts it. */
   pinned: boolean;
 }
 
 // The forces, tuned by eye to read like Obsidian's graph view.
-const REPULSION = 900;
-const SPRING = 0.02;
-const SPRING_LENGTH = 70;
-const GRAVITY = 0.004;
+const REPULSION = 2200;
+const SPRING = 0.015;
+const SPRING_LENGTH = 110;
+const GRAVITY = 0.0025;
 const DAMPING = 0.85;
+// Steps a new graph settles for before it is first drawn, so it opens calm, not exploding.
+const SETTLE_STEPS = 300;
 // Labels fade in between these zoom levels.
-const LABEL_FROM = 0.7;
-const LABEL_FULL = 1.3;
+// Below LABEL_FROM only the focused node, its neighbours and search matches are named.
+const LABEL_FROM = 1.6;
+const LABEL_FULL = 2.4;
 
-const radius = (b: Body) => 3 + Math.sqrt(b.degree) * 2;
+const radius = (b: Body) => Math.min(7, 2.5 + Math.sqrt(b.degree) * 1.2);
+
+/** The short name a node shows: its file name, without the path or a "Tests:" prefix. */
+export function shortLabel(node: Pick<KgNode, 'key' | 'title'>): string {
+  const path = node.key.replace(/^[a-z_]+:/, '').split('#')[0] ?? node.key;
+  return path.split('/').pop() || node.title;
+}
+
+interface Sim {
+  bodies: Map<string, Body>;
+  links: [string, string][];
+  heat: number;
+}
+
+/** One step of the forces: every pair repels, every link pulls, everything drifts in. */
+function step(s: Sim) {
+  const bodies = [...s.bodies.values()];
+  for (let i = 0; i < bodies.length; i++) {
+    const a = bodies[i]!;
+    for (let j = i + 1; j < bodies.length; j++) {
+      const b = bodies[j]!;
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const d2 = Math.max(dx * dx + dy * dy, 25);
+      const f = REPULSION / d2;
+      const d = Math.sqrt(d2);
+      a.vx += (dx / d) * f;
+      a.vy += (dy / d) * f;
+      b.vx -= (dx / d) * f;
+      b.vy -= (dy / d) * f;
+    }
+  }
+  for (const [from, to] of s.links) {
+    const a = s.bodies.get(from)!;
+    const b = s.bodies.get(to)!;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const d = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
+    const f = (d - SPRING_LENGTH) * SPRING;
+    a.vx += (dx / d) * f;
+    a.vy += (dy / d) * f;
+    b.vx -= (dx / d) * f;
+    b.vy -= (dy / d) * f;
+  }
+  for (const b of bodies) {
+    if (b.pinned) {
+      b.vx = 0;
+      b.vy = 0;
+      continue;
+    }
+    b.vx = (b.vx - b.x * GRAVITY) * DAMPING * s.heat;
+    b.vy = (b.vy - b.y * GRAVITY) * DAMPING * s.heat;
+    b.x += b.vx;
+    b.y += b.vy;
+  }
+  s.heat = Math.max(0.6, s.heat * 0.995);
+}
 const cssVar = (name: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
@@ -52,6 +113,8 @@ export default function GraphCanvas({ nodes, edges, selected, highlighted, onSel
     hover: undefined as string | undefined,
     drag: undefined as { key?: string; x: number; y: number; moved: boolean } | undefined,
     heat: 1,
+    /** Fit the view to the graph on the next frame: set when a new graph arrives. */
+    fit: true,
     selected,
     highlighted,
   });
@@ -73,18 +136,25 @@ export default function GraphCanvas({ nodes, edges, selected, highlighted, onSel
       const r = 20 * Math.sqrt(i + 1);
       next.set(n.key, {
         key: n.key,
-        label: n.title,
+        label: shortLabel(n),
         x: old?.x ?? Math.cos(angle) * r,
         y: old?.y ?? Math.sin(angle) * r,
         vx: old?.vx ?? 0,
         vy: old?.vy ?? 0,
         degree: degree.get(n.key) ?? 0,
+        test: n.kind === 'test',
         pinned: false,
       });
     });
     s.bodies = next;
+    const fresh = nodes.filter((n) => !s.bodies.has(n.key)).length;
     s.links = edges.filter((e) => next.has(e.from) && next.has(e.to)).map((e) => [e.from, e.to]);
     s.heat = 1;
+    // A graph mostly new to the canvas settles out of sight, then is framed.
+    if (fresh > nodes.length / 2) {
+      for (let i = 0; i < SETTLE_STEPS; i++) step(s);
+      s.fit = true;
+    }
   }, [nodes, edges]);
 
   useEffect(() => {
@@ -107,52 +177,35 @@ export default function GraphCanvas({ nodes, edges, selected, highlighted, onSel
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
 
-    const step = () => {
-      const bodies = [...s.bodies.values()];
-      for (let i = 0; i < bodies.length; i++) {
-        const a = bodies[i]!;
-        for (let j = i + 1; j < bodies.length; j++) {
-          const b = bodies[j]!;
-          const dx = a.x - b.x;
-          const dy = a.y - b.y;
-          const d2 = Math.max(dx * dx + dy * dy, 25);
-          const f = REPULSION / d2;
-          const d = Math.sqrt(d2);
-          a.vx += (dx / d) * f;
-          a.vy += (dy / d) * f;
-          b.vx -= (dx / d) * f;
-          b.vy -= (dy / d) * f;
-        }
-      }
-      for (const [from, to] of s.links) {
-        const a = s.bodies.get(from)!;
-        const b = s.bodies.get(to)!;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const d = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
-        const f = (d - SPRING_LENGTH) * SPRING;
-        a.vx += (dx / d) * f;
-        a.vy += (dy / d) * f;
-        b.vx -= (dx / d) * f;
-        b.vy -= (dy / d) * f;
-      }
-      for (const b of bodies) {
-        if (b.pinned) {
-          b.vx = 0;
-          b.vy = 0;
-          continue;
-        }
-        b.vx = (b.vx - b.x * GRAVITY) * DAMPING * s.heat;
-        b.vy = (b.vy - b.y * GRAVITY) * DAMPING * s.heat;
-        b.x += b.vx;
-        b.y += b.vy;
-      }
-      s.heat = Math.max(0.6, s.heat * 0.995);
-    };
-
     const draw = () => {
       const { width, height } = canvas.getBoundingClientRect();
       const { view } = s;
+      if (s.fit && width > 0 && s.bodies.size > 0) {
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+        for (const b of s.bodies.values()) {
+          minX = Math.min(minX, b.x);
+          maxX = Math.max(maxX, b.x);
+          minY = Math.min(minY, b.y);
+          maxY = Math.max(maxY, b.y);
+        }
+        const pad = 40;
+        view.scale = Math.min(
+          1.2,
+          Math.max(
+            0.2,
+            Math.min(
+              (width - pad * 2) / (maxX - minX || 1),
+              (height - pad * 2) / (maxY - minY || 1),
+            ),
+          ),
+        );
+        view.x = -((minX + maxX) / 2) * view.scale;
+        view.y = -((minY + maxY) / 2) * view.scale;
+        s.fit = false;
+      }
       const fg = cssVar('--slate-11');
       const faint = cssVar('--slate-a6');
       const accent = cssVar('--violet-9');
@@ -177,7 +230,7 @@ export default function GraphCanvas({ nodes, edges, selected, highlighted, onSel
         const b = s.bodies.get(to)!;
         const lit = focus !== undefined && (from === focus || to === focus);
         ctx.strokeStyle = lit ? accent : faint;
-        ctx.globalAlpha = s.hover !== undefined && !lit ? 0.15 : lit ? 0.9 : 0.6;
+        ctx.globalAlpha = s.hover !== undefined && !lit ? 0.08 : lit ? 0.9 : 0.35;
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
@@ -188,16 +241,17 @@ export default function GraphCanvas({ nodes, edges, selected, highlighted, onSel
         1,
         Math.max(0, (view.scale - LABEL_FROM) / (LABEL_FULL - LABEL_FROM)),
       );
-      ctx.font = `${11 / view.scale}px Allo, system-ui, sans-serif`;
+      ctx.font = `${10.5 / view.scale}px Allo, system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       for (const b of s.bodies.values()) {
         const r = radius(b);
         const isFocus = b.key === focus;
-        ctx.globalAlpha = dimmed(b.key) ? 0.15 : 1;
-        ctx.fillStyle = isFocus || (near.has(b.key) && s.hover !== undefined) ? accent : fg;
+        const lit = isFocus || (near.has(b.key) && s.hover !== undefined);
+        ctx.globalAlpha = dimmed(b.key) ? 0.12 : b.test && !lit ? 0.45 : 1;
+        ctx.fillStyle = lit ? accent : fg;
         ctx.beginPath();
-        ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+        ctx.arc(b.x, b.y, b.test ? r * 0.7 : r, 0, Math.PI * 2);
         ctx.fill();
         if (s.highlighted.has(b.key)) {
           ctx.strokeStyle = accent;
@@ -207,8 +261,8 @@ export default function GraphCanvas({ nodes, edges, selected, highlighted, onSel
           ctx.stroke();
           ctx.lineWidth = 1 / view.scale;
         }
-        // A focused node and its neighbours always show their names.
-        const alpha = near.has(b.key) ? 1 : labelAlpha;
+        // The focused node, its neighbours and search matches always show their names.
+        const alpha = near.has(b.key) || s.highlighted.has(b.key) ? 1 : labelAlpha;
         if (alpha > 0.02 && !dimmed(b.key)) {
           ctx.globalAlpha = alpha;
           ctx.fillStyle = fg;
@@ -220,12 +274,12 @@ export default function GraphCanvas({ nodes, edges, selected, highlighted, onSel
     };
 
     const tick = () => {
-      step();
+      step(s);
       draw();
       frame = requestAnimationFrame(tick);
     };
     if (reduceMotion) {
-      for (let i = 0; i < 300; i++) step();
+      for (let i = 0; i < 300; i++) step(s);
       draw();
     } else {
       frame = requestAnimationFrame(tick);
