@@ -6,7 +6,8 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { budgetFor, runAgent } from '@page/agent';
+import { budgetFor, isLowConfidence, runAgent, scoreRun } from '@page/agent';
+import type { Confidence } from '@page/contracts';
 import type { ModelClient } from '@page/model-client';
 import {
   DEFAULT_TIMEOUT_MS,
@@ -27,6 +28,7 @@ import type { LiveApp } from './host.ts';
 import { checkLive, opsApi } from './ops-run.ts';
 import {
   agentDiff,
+  changedPaths,
   checkInFreshSandbox,
   plantBug,
   shellIn,
@@ -140,6 +142,16 @@ export function dockerAttempt(
           const kind = run.error?.kind ?? 'unknown';
           throw new ProviderError(kind, run.error?.message ?? 'no detail', run.costUsd);
         }
+        const diff = await agentDiff(sh, baseline);
+        // Scored as the daemon scores a submitted run (apps/node/src/run/run-fix-job.ts), with
+        // the same ops-only test: the live app changed, no PR, and no file changed.
+        let confidence: Confidence | null = null;
+        if (run.exitStatus === 'submitted') {
+          const changedFiles = await changedPaths(sh, baseline);
+          const opsOnly =
+            ops?.changedApp === true && github?.prUrl == null && changedFiles?.length === 0;
+          confidence = scoreRun({ steps: sink.steps, changedFiles, opsOnly });
+        }
         agent = {
           tier,
           exitStatus: run.exitStatus,
@@ -149,7 +161,9 @@ export function dockerAttempt(
           durationMs: Date.now() - startedAt,
           steps: sink.steps.length,
           blockedSteps: sink.steps.filter((s) => !s.allowed).length,
-          diff: await agentDiff(sh, baseline),
+          diff,
+          confidence,
+          lowConfidence: isLowConfidence(confidence, tier),
         };
       } finally {
         signal.removeEventListener('abort', stop);

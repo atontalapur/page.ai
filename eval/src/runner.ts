@@ -10,14 +10,29 @@ import {
 } from './results.ts';
 import type { Scenario } from './scenario.ts';
 
-/**
- * Whether the daemon would hand this run to the next tier. Only running out of budget
- * escalates (apps/node/src/run/outcome.ts); a model, format or audit failure fails the
- * issue and pages a human, since a higher tier won't fix those.
- */
-export function escalates(exitStatus: Attempt['exitStatus']): boolean {
+/** Whether the agent ran out of steps, budget or time. */
+export function outOfBudget(exitStatus: Attempt['exitStatus']): boolean {
   return exitStatus === 'step_limit' || exitStatus === 'cost_limit' || exitStatus === 'time_limit';
 }
+
+/**
+ * Why the daemon would hand this attempt's run to the next tier (apps/node/src/run/outcome.ts):
+ * the agent ran out of budget, or it submitted a fix that scored under its tier's confidence
+ * threshold. Undefined when the daemon wouldn't: a submit that scored well enough lands, and a
+ * model, format or audit failure fails the issue and pages a human, since a higher tier won't
+ * fix those.
+ */
+export function escalationReason(
+  attempt: Pick<Attempt, 'exitStatus' | 'lowConfidence'>,
+): 'budget_exhausted' | 'low_confidence' | undefined {
+  if (outOfBudget(attempt.exitStatus)) return 'budget_exhausted';
+  if (attempt.exitStatus === 'submitted' && attempt.lowConfidence === true) return 'low_confidence';
+  return undefined;
+}
+
+/** Whether the attempt's agent submitted a fix the daemon would take. */
+const landed = (attempt: Attempt) =>
+  attempt.exitStatus === 'submitted' && escalationReason(attempt) === undefined;
 
 /** What an attempt's agent did, and how to run check.sh on its patch. */
 export interface AgentAttempt {
@@ -107,6 +122,8 @@ export interface RunEvalOptions {
   gitSha: string;
   /** The per-tier agent limits the attempts play at, recorded in the results. */
   limits?: EvalResults['limits'];
+  /** The per-tier confidence threshold the attempts play at, recorded in the results. */
+  confidenceThreshold?: EvalResults['confidenceThreshold'];
   attempt: AttemptFn;
   now?: () => Date;
   /** Each kept run, in the order the runs were planned. */
@@ -365,7 +382,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
         if (!isAbort(error)) dropped.abort();
       });
       played.push({ agent: attempt.agent, check });
-      if (!escalates(attempt.agent.exitStatus)) break;
+      if (escalationReason(attempt.agent) === undefined) break;
     }
     // Nothing a dropped run's checks find is used, so they stop early.
     if (cutShort || crash !== undefined) dropped.abort();
@@ -400,6 +417,9 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
     model: options.model,
     gitSha: options.gitSha,
     ...(options.limits === undefined ? {} : { limits: options.limits }),
+    ...(options.confidenceThreshold === undefined
+      ? {}
+      : { confidenceThreshold: options.confidenceThreshold }),
     startedAt,
     finishedAt: now().toISOString(),
     runsPerScenario: options.runsPerScenario,
@@ -441,8 +461,8 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
 }
 
 export function scenarioRun(scenario: Scenario, run: number, attempts: Attempt[]): ScenarioRun {
-  const landed = attempts.findIndex((a) => a.exitStatus === 'submitted');
-  const final = landed === -1 ? undefined : attempts[landed];
+  const landedAt = attempts.findIndex(landed);
+  const final = landedAt === -1 ? undefined : attempts[landedAt];
   const elapsed = (upTo: number) =>
     attempts.slice(0, upTo + 1).reduce((ms, a) => ms + a.durationMs, 0);
   const fixed = final?.checkPassed ?? false;
@@ -455,7 +475,7 @@ export function scenarioRun(scenario: Scenario, run: number, attempts: Attempt[]
     tierLanded: final?.tier ?? null,
     fixed,
     paged: final === undefined,
-    timeToFixMs: fixed ? elapsed(landed) : null,
+    timeToFixMs: fixed ? elapsed(landedAt) : null,
     timeToPageMs: final === undefined ? elapsed(attempts.length - 1) : null,
     // Only a tier that handed the run on escalated. The last one, when it gave up, paged.
     falseEscalations: attempts.slice(0, -1).filter((a) => a.checkPassed).length,
