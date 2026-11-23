@@ -43,9 +43,9 @@ describe('AssignTaskDialog', () => {
   it('allows entering a task title', () => {
     renderDialog();
 
-    const titleInput = screen.getByRole('textbox', {
+    const titleInput = screen.getByRole<HTMLInputElement>('textbox', {
       name: 'Task Title',
-    }) as HTMLInputElement;
+    });
 
     fireEvent.change(titleInput, {
       target: { value: 'Investigate API latency' },
@@ -57,9 +57,9 @@ describe('AssignTaskDialog', () => {
   it('allows entering instructions', () => {
     renderDialog();
 
-    const instructionsInput = screen.getByRole('textbox', {
+    const instructionsInput = screen.getByRole<HTMLTextAreaElement>('textbox', {
       name: 'Instructions',
-    }) as HTMLTextAreaElement;
+    });
 
     fireEvent.change(instructionsInput, {
       target: { value: 'Analyze slow API responses' },
@@ -71,9 +71,9 @@ describe('AssignTaskDialog', () => {
   it('allows selecting an agent', () => {
     renderDialog();
 
-    const agentSelect = screen.getByRole('combobox', {
+    const agentSelect = screen.getByRole<HTMLSelectElement>('combobox', {
       name: 'Assign Agent',
-    }) as HTMLSelectElement;
+    });
 
     fireEvent.change(agentSelect, {
       target: { value: 'AG-003' },
@@ -85,9 +85,9 @@ describe('AssignTaskDialog', () => {
   it('allows selecting a related incident', () => {
     renderDialog();
 
-    const incidentSelect = screen.getByRole('combobox', {
+    const incidentSelect = screen.getByRole<HTMLSelectElement>('combobox', {
       name: /Related Incident/i,
-    }) as HTMLSelectElement;
+    });
 
     fireEvent.change(incidentSelect, {
       target: { value: 'INC-002' },
