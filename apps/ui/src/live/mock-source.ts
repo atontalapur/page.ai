@@ -183,5 +183,6 @@ export function mockSource({
     fetchIssue: (id) => Promise.resolve(issues.get(id)),
     // The mock plays issues only; its fixes have no runs to show.
     fetchRuns: () => Promise.resolve([]),
+    applyEvent: () => Promise.reject(new Error('Mock data has no orchestrator to review with.')),
   };
 }

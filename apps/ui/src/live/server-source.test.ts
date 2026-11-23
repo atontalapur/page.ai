@@ -201,6 +201,34 @@ describe('serverSource', () => {
     fetchMock.mockResolvedValueOnce(json([{ ...run, status: 'nope' }]));
     expect(await source.fetchRuns(issueFixture.id)).toBeUndefined();
   });
+
+  it('posts a review event with the token, and turns a refusal into its message', async () => {
+    const source = serverSource('s3cret');
+    const resolved = { ...issueFixture, status: 'resolved' };
+
+    fetchMock.mockResolvedValueOnce(json(resolved));
+    expect(await source.applyEvent(issueFixture.id, { type: 'approve' })).toEqual(resolved);
+    expect(fetchMock).toHaveBeenLastCalledWith(`/issues/${issueFixture.id}/events`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer s3cret',
+        accept: 'application/json',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'approve' }),
+    });
+
+    fetchMock.mockResolvedValueOnce(
+      json({ statusCode: 409, message: 'cannot approve an issue that is fixing' }, 409),
+    );
+    await expect(source.applyEvent(issueFixture.id, { type: 'approve' })).rejects.toThrow(
+      'cannot approve an issue that is fixing',
+    );
+    fetchMock.mockResolvedValueOnce(json({ statusCode: 401 }, 401));
+    await expect(
+      source.applyEvent(issueFixture.id, { type: 'reject', reason: 'no' }),
+    ).rejects.toThrow('The orchestrator refused the token.');
+  });
 });
 
 describe('serverPresent', () => {
