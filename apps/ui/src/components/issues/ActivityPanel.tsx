@@ -37,6 +37,8 @@ export function describeEvent(record: IssueEventRecord): {
       return { what: 'Fixed on the live app', detail: 'through the ops tools', tone: 'good' };
     case 'escalate':
       return { what: `Escalated to ${tier}`, detail: event.reason, tone: 'warn' };
+    case 'retry':
+      return { what: `Retrying at ${tier}`, detail: event.reason, tone: 'warn' };
     case 'fail':
       return { what: 'Failed', detail: event.reason, tone: 'bad' };
     case 'approve':

@@ -29,6 +29,9 @@ const {
   opsRestart: OPS_RESTART,
   opsRollbackPlan: OPS_ROLLBACK_PLAN,
   opsRollback: OPS_ROLLBACK,
+  kgSearch: KG_SEARCH,
+  kgRead: KG_READ,
+  kgWrite: KG_WRITE,
 } = ACTION_TAGS;
 const FENCE = '```';
 
@@ -51,6 +54,11 @@ export interface AgentTask {
    * the recorded eval runs saw (prompts.test.ts pins it).
    */
   personApproves?: boolean;
+  /**
+   * Whether the run has the knowledge graph (KnowledgeHostTools), on a daemon that reaches
+   * the orchestrator. Unset is false, and the prompts stay the ones the eval saw.
+   */
+  knowledge?: boolean;
 }
 
 // Tier 2 and up push the fix and open a PR through the host tools.
@@ -129,8 +137,39 @@ function submitLine(tier: Tier | undefined, rollback: boolean): string {
   return `${publish ? `${PUBLISH_BLOCKS}5` : '3'}. Submitting your work, once the fix is in and the tests pass${publish ? ' and the pull request is open' : ''}`;
 }
 
-/** The system prompt. `rollback` adds the rollback blocks at Tier 3; see AgentTask. */
-export function systemPrompt(tier?: Tier, rollback = false): string {
+// Placeholders again: the key and text name no real file's contents.
+const KG_BLOCKS = `This run also has the knowledge graph, where agents keep what they learn about this repository. Three more blocks reach it:
+
+Searching it, by meaning:
+
+${FENCE}${KG_SEARCH}
+how the cart computes its total
+${FENCE}
+
+Reading one node, by its key:
+
+${FENCE}${KG_READ}
+file:path/to/file.ts
+${FENCE}
+
+Writing a node, with its links to nodes that exist already:
+
+${FENCE}${KG_WRITE}
+file:path/to/file.ts
+kind: file
+title: What the file is for
+links: imports file:path/to/other.ts
+---
+What it does, what you found in it, and what matters for bugs like this one.
+${FENCE}
+
+`;
+
+/**
+ * The system prompt. `rollback` adds the rollback blocks at Tier 3, and `knowledge` the
+ * knowledge-graph blocks; see AgentTask.
+ */
+export function systemPrompt(tier?: Tier, rollback = false, knowledge = false): string {
   const kinds = rollsBack(tier, rollback)
     ? 'eleven'
     : operates(tier)
@@ -166,7 +205,7 @@ ${submitLine(tier, rollback)}:
 ${FENCE}${SUBMIT}
 ${FENCE}
 
-Failure to follow these rules will cause your response to be rejected.`;
+${knowledge ? KG_BLOCKS : ''}Failure to follow these rules will cause your response to be rejected.`;
 }
 
 const PUBLISH_STEP = `5. Push your changes with a ${PUSH} block, then open a pull request with a ${OPEN_PR} block.
@@ -212,7 +251,19 @@ If the person rejects a change, or no one answers in time, the block comes back 
 `;
 }
 
-export function instancePrompt({ task, tier, rollback, personApproves }: AgentTask): string {
+const KG_SECTION = `## The knowledge graph
+
+Start with a ${KG_SEARCH} block about the bug: what earlier runs learned can spare you reading the same code again. Before you submit, write what you explored with ${KG_WRITE} blocks: a node for each file or function that mattered, keyed \`file:<path>\` or \`function:<path>#<name>\`, saying what it does and what you found, linked to the nodes it uses. A node must exist before another can link to it. Your writes go to this run's branch, and reach main only if the fix is merged.
+
+`;
+
+export function instancePrompt({
+  task,
+  tier,
+  rollback,
+  personApproves,
+  knowledge,
+}: AgentTask): string {
   const publish = publishes(tier);
   return `Please fix this bug:
 
@@ -230,11 +281,11 @@ Work step by step so you can check each change as you go.
 4. Run the test again to confirm the fix, then the whole suite, lint and typecheck: \`${PNPM} test\`, \`${PNPM} lint\` and \`${PNPM} typecheck\`.
 ${publish ? `${PUBLISH_STEP}6` : '5'}. Submit with a ${SUBMIT} block. Do not put anything else in that response. After you submit, you cannot continue working on this task.
 
-${operates(tier) ? OPS_SECTION : ''}${rollsBack(tier, rollback) ? ROLLBACK_SECTION : ''}${asksPerson(tier, personApproves) ? approvalSection(rollsBack(tier, rollback)) : ''}## Rules
+${knowledge === true ? KG_SECTION : ''}${operates(tier) ? OPS_SECTION : ''}${rollsBack(tier, rollback) ? ROLLBACK_SECTION : ''}${asksPerson(tier, personApproves) ? approvalSection(rollsBack(tier, rollback)) : ''}## Rules
 
 1. Every response must contain exactly one action block.
 2. Each command runs in a fresh shell in the repository root. The app is in \`${APP}\`. \`cd\` and environment variables do not carry over to the next command.
-3. Only these programs are available: cat, ls, head, tail, rg, find, git (status, diff and log only) and pnpm (test, lint, typecheck, vitest, tsc and eslint). Anything else is refused.
+3. Only these programs are available: cat, ls, head, tail, rg, find, git (status, diff and log only) and pnpm (test, lint, typecheck, vitest, tsc and eslint). Anything else is refused, including grep, xargs, sed, echo and cd: search with rg, and give each command its paths directly.
 4. Commands may use pipes, \`&&\`, \`||\`, \`;\` and redirects to files inside the repository. Globs, \`$\` variables, backticks, \`$(...)\`, heredocs and subshells are refused, so quote patterns and pass paths explicitly. Quote paths that contain brackets, such as Next.js route folders: \`cat -n "app/orders/[id]/page.tsx"\`.
 5. Change files only with ${EDIT} blocks. The SEARCH text must match the file exactly, including indentation, and appear exactly once. Use an empty SEARCH section to create a new file.
 6. Command output is cut to about 8,000 characters, keeping the start and the end. Narrow your command if you need the middle.
@@ -247,10 +298,22 @@ ${FENCE}${BASH}
 rg -n "getCart" ${APP}/src
 ${FENCE}
 
+### Search only TypeScript files (\`-t ts\` covers .ts and .tsx; there is no tsx type)
+
+${FENCE}${BASH}
+rg -n -t ts "getCart" ${APP}/src
+${FENCE}
+
 ### View specific lines of a file
 
 ${FENCE}${BASH}
 cat -n ${APP}/src/shop/cart.ts | head -40
+${FENCE}
+
+### Read a file whose path has brackets, quoted
+
+${FENCE}${BASH}
+cat -n "${APP}/src/app/orders/[id]/page.tsx"
 ${FENCE}
 
 ### Find files by name

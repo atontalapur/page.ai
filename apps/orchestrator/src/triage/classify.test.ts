@@ -177,6 +177,9 @@ describe('TriageClassifier', () => {
       dashboardUrl: 'http://localhost:3000',
       uiDistDir: '/nonexistent/ui/dist',
       debug: undefined,
+      jevModel: 'typesafe/jev-1.14',
+      embeddingModel: 'qwen/qwen3-embedding-8b',
+      github: undefined,
     };
     const rules = buildClassifier({ ...base, openRouterApiKey: undefined });
     await expect(rules.classify(titled('Hydration failed'))).resolves.toMatchObject({

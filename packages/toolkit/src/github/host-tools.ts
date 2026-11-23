@@ -49,6 +49,11 @@ export interface GitHubHostToolsOptions {
   base?: string;
   /** The note from the tier below, when the issue was escalated to this run. */
   escalationNote?: EscalationNote;
+  /**
+   * Called with each commit once GitHub has it on the run's branch, such as to record that
+   * the run's knowledge is pushed. A failure in it doesn't fail the push.
+   */
+  onPushed?: (sha: string) => Promise<void>;
   /** The run's stop signal. Once it fires, no further GitHub request goes out. */
   signal?: AbortSignal;
 }
@@ -203,6 +208,7 @@ export class GitHubHostTools implements HostTools {
     );
     if (existing === null) await github.createBranch(this.branch, commitSha, signal);
     else await github.updateBranch(this.branch, commitSha, signal);
+    await this.options.onPushed?.(commitSha).catch(() => undefined);
 
     const listing = changes.map((c) => `${c.status} ${c.path}`).join('\n');
     return {

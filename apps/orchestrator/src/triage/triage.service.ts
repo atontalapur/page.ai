@@ -1,12 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ISSUE_EVENT_ACTORS, type Issue, type JobPayload } from '@page/contracts';
 import type { Config } from '../config.ts';
+import { DecisionsService, MIN_JEV_CONFIDENCE } from '../decisions/decisions.service.ts';
 import { IssuesService } from '../issues/issues.service.ts';
 import { issueLogger, type Logger } from '../logger.ts';
 import { pageMessage } from '../notify/message.ts';
 import type { JobQueues } from '../queue/queues.ts';
 import { CLASSIFIER, CONFIG, JOB_QUEUES, LOGGER } from '../tokens.ts';
-import type { TriageClassifier } from './classify.ts';
+import type { Triage, TriageClassifier } from './classify.ts';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -18,6 +19,7 @@ export class TriageService {
     @Inject(CLASSIFIER) private readonly classifier: TriageClassifier,
     @Inject(CONFIG) private readonly config: Config,
     @Inject(LOGGER) private readonly logger: Logger,
+    private readonly decisions: DecisionsService,
   ) {}
 
   /**
@@ -76,6 +78,7 @@ export class TriageService {
         issue.fingerprint,
       );
     }
+    if (verdict.decision) await this.recordJev(issue.id, verdict);
     const triaged = await this.issues.apply(
       issue.id,
       { type: 'triage', class: verdict.class, severity: verdict.severity },
@@ -93,5 +96,33 @@ export class TriageService {
       'issue triaged',
     );
     return triaged;
+  }
+
+  /**
+   * Logs jev's triage and starting tier, and keeps the tier for the first fix when jev is
+   * sure enough of it; otherwise the fix starts at Tier 1.
+   */
+  private async recordJev(issueId: string, verdict: Triage): Promise<void> {
+    const decision = verdict.decision!;
+    const { class: cls, severity, startTier } = decision.answers;
+    const base = { issueId, runId: null, model: decision.model, costUsd: decision.costUsd };
+    await this.decisions.record({
+      ...base,
+      question: 'triage',
+      answer: {
+        choice: `${cls.choice} / ${severity.choice}`,
+        probabilities: {
+          ...cls.probabilities,
+          ...Object.fromEntries(
+            Object.entries(severity.probabilities).map(([k, v]) => [`severity ${k}`, v]),
+          ),
+        },
+        confidence: Math.min(cls.confidence, severity.confidence),
+      },
+    });
+    await this.decisions.record({ ...base, question: 'start_tier', answer: startTier });
+    if (verdict.startTier && verdict.startTier.confidence >= MIN_JEV_CONFIDENCE) {
+      await this.issues.setStartTier(issueId, verdict.startTier.tier);
+    }
   }
 }

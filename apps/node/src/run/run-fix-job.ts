@@ -22,7 +22,9 @@ import {
   StepLog,
   type AuditSink,
   type Deployer,
+  KnowledgeHostTools,
   type GitHub,
+  type GitHubToolCall,
   type OpsApi,
 } from '@page/toolkit';
 import type { Logger } from 'pino';
@@ -41,6 +43,12 @@ import {
 } from './outcome.ts';
 import type { RunResults } from './results.ts';
 import { StreamingAuditSink } from './streaming-sink.ts';
+
+// The PR the daemon opens for a Tier 1 fix: its title, the report lines in its body, and
+// how long each GitHub step gets.
+const TIER1_PR_TITLE_CHARS = 100;
+const TIER1_PR_REPORT_LINES = 40;
+const TIER1_PR_TIMEOUT_MS = 60_000;
 
 // The agent's diff, read after it submits. It goes to the UI, so it needn't be complete.
 const DIFF_TIMEOUT_MS = 30_000;
@@ -63,6 +71,11 @@ export interface RunDeps {
    * never get them. Without it, every ops tool call is refused.
    */
   ops?: OpsApi;
+  /**
+   * Builds a run's knowledge-graph tools, which reach the orchestrator. With it, every tier
+   * gets kg.search, kg.read and kg.write; without it, the prompt leaves them out.
+   */
+  knowledge?: (run: { runId: string; signal: AbortSignal }) => KnowledgeHostTools;
   /**
    * Claims the live app for a Tier 3 run, so no other run or eval changes it meanwhile. While
    * someone else holds it, the run's ops calls are refused. Without it, nothing is claimed.
@@ -203,6 +216,7 @@ export async function runFixJob(
       runId,
       logger,
     });
+    const knowledgeTools = deps.knowledge?.({ runId, signal: stopped });
     if (deps.github !== undefined) {
       githubTools = new GitHubHostTools({
         github: deps.github,
@@ -212,6 +226,18 @@ export async function runFixJob(
         // The host tools send nothing to GitHub once the run is stopped.
         signal: stopped,
         ...(job.escalationNote === undefined ? {} : { escalationNote: job.escalationNote }),
+        // The run's knowledge written before this push now carries its commit.
+        ...(knowledgeTools === undefined
+          ? {}
+          : {
+              onPushed: async (sha: string) => {
+                const stamped = await knowledgeTools.commit(sha).catch((error: unknown) => {
+                  logger.warn({ err: error, sha }, 'could not record the knowledge commit');
+                  return 0;
+                });
+                if (stamped > 0) logger.info({ sha, stamped }, 'knowledge commit recorded');
+              },
+            }),
       });
     }
     // Built at Tier 3 only, once the run holds the app. The signal stops any further
@@ -226,7 +252,11 @@ export async function runFixJob(
         ...(claim.refusal === undefined ? {} : { refusal: claim.refusal }),
       });
     }
-    const hostTools = hostToolsFor(tier, { github: githubTools, ops: opsTools });
+    const hostTools = hostToolsFor(tier, {
+      github: githubTools,
+      ops: opsTools,
+      knowledge: knowledgeTools,
+    });
     // The prompt offers the rollback blocks only to a run that has the tool.
     const rollback = hostTools?.handles?.('ops.rollback') === true;
     // And says a person approves the run's changes to the live app only when one does: not
@@ -265,7 +295,13 @@ export async function runFixJob(
     let end: RunEnd;
     try {
       const agentRun = await runAgent(
-        { task: job.report, tier, rollback, personApproves },
+        {
+          task: job.report,
+          tier,
+          rollback,
+          personApproves,
+          knowledge: knowledgeTools !== undefined,
+        },
         {
           model: deps.model,
           execute: run,
@@ -300,6 +336,9 @@ export async function runFixJob(
     const outcome = finishedEvent(runId, tier, final, [], facts());
     if (githubTools !== undefined) {
       await closeUnfinishedPr(githubTools, outcome, runId, tier, logger);
+      if (tier === 1 && outcome.status === 'succeeded' && !outcome.opsOnly) {
+        await openTier1Pr(githubTools, job.report, logger);
+      }
     }
     if (opsTools !== undefined && outcome.status !== 'succeeded') {
       await undoUnfinishedOps(opsTools, logger);
@@ -317,6 +356,41 @@ export async function runFixJob(
       await releaseOps?.();
     }
   }
+}
+
+/**
+ * Tier 1 has no host tools, so its agent can't push. A Tier 1 fix that succeeded is pushed
+ * and opened as a PR here instead, by the daemon, so the person approving it has something
+ * to merge. Best effort: a push or PR that fails is logged, and the run keeps its patch.
+ */
+async function openTier1Pr(
+  hostTools: GitHubHostTools,
+  report: string,
+  logger: Logger,
+): Promise<void> {
+  const title = `fix: ${report.split('\n')[0]!.trim()}`.slice(0, TIER1_PR_TITLE_CHARS);
+  const body = [
+    "The Tier 1 agent's fix for this report. Tier 1 can't push, so the daemon opened this PR.",
+    '',
+    '```',
+    report.split('\n').slice(0, TIER1_PR_REPORT_LINES).join('\n'),
+    '```',
+  ].join('\n');
+  const calls: GitHubToolCall[] = [
+    { kind: 'host_tool', tool: 'git.pushBranch', message: title },
+    { kind: 'host_tool', tool: 'github.openPr', title, body },
+  ];
+  for (const call of calls) {
+    const result = await hostTools.run(call, TIER1_PR_TIMEOUT_MS).catch((error: unknown) => ({
+      ok: false as const,
+      output: String(error),
+    }));
+    if (!result.ok) {
+      logger.warn({ tool: call.tool, output: result.output }, 'could not open the Tier 1 PR');
+      return;
+    }
+  }
+  logger.info({ pr: hostTools.prUrl }, 'opened the Tier 1 PR');
 }
 
 /**

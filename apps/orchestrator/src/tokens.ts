@@ -6,3 +6,6 @@ export const LOGGER = Symbol('Logger');
 export const CONFIG = Symbol('Config');
 export const PAGER = Symbol('Pager');
 export const CLASSIFIER = Symbol('TriageClassifier');
+export const DECIDER = Symbol('Decider');
+export const EMBEDDER = Symbol('Embedder');
+export const GITHUB = Symbol('GitHubApi');

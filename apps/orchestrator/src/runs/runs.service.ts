@@ -12,6 +12,7 @@ import {
 import type { Insertable, Selectable, Transaction } from 'kysely';
 import { toChat } from '../chats/chat-row.ts';
 import type { Database, Db, RunsTable, StepsTable } from '../db/database.ts';
+import { DecisionsService } from '../decisions/decisions.service.ts';
 import { IssueNotFoundError, IssuesService, type Moved } from '../issues/issues.service.ts';
 import { issueLogger, type Logger } from '../logger.ts';
 import type { FixJob } from '../queue/fix-jobs.ts';
@@ -107,6 +108,7 @@ export class RunsService {
     private readonly issues: IssuesService,
     @Inject(JOB_QUEUES) private readonly jobs: JobQueues,
     @Inject(LOGGER) private readonly logger: Logger,
+    private readonly decisions: DecisionsService,
   ) {}
 
   /**
@@ -243,6 +245,8 @@ export class RunsService {
       tier: job.tier,
     });
 
+    // jev's call on a low-scoring fix, made before the transaction so no lock waits on it.
+    const escalation = await this.decisions.escalation(job);
     const recorded = await this.db.transaction().execute(async (trx): Promise<Recorded> => {
       const issue = await lockIssue(trx, job.issueId);
       if (!issue) return { outcome: { kind: 'no_issue' } };
@@ -264,14 +268,15 @@ export class RunsService {
         .execute();
 
       if (!isCurrent(issue, result.runId)) return { outcome: { kind: 'stale' } };
-      const event = issueEventFor(result);
+      const event = escalation?.event ?? issueEventFor(result);
+      if (escalation) await this.decisions.recordIn(trx, escalation.row);
       const moved = await this.issues.applyIn(trx, job.issueId, event, {
         actor: ISSUE_EVENT_ACTORS.run,
         ...(result.note === null ? {} : { escalationNote: result.note }),
       });
       // Only an escalation the issue took is recorded: a run that escalates after the issue
       // was killed never reached the next tier.
-      if (result.status === 'escalated') {
+      if (result.status === 'escalated' && event.type === 'escalate') {
         await trx
           .insertInto('escalations')
           .values({

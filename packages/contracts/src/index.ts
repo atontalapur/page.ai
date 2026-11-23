@@ -12,3 +12,5 @@ export * from './session.ts';
 export * from './issue.ts';
 export * from './webhook.ts';
 export * from './xml.ts';
+export * from './knowledge.ts';
+export * from './decisions.ts';

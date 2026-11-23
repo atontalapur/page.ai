@@ -12,3 +12,14 @@ export type {
   ModelErrorKind,
   Role,
 } from './types.ts';
+export { OpenRouterDecider } from './decisions.ts';
+export type {
+  ChoiceAnswer,
+  ChoiceQuestion,
+  Decider,
+  Decision,
+  DecisionResult,
+  OpenRouterDeciderOptions,
+} from './decisions.ts';
+export { cosine, HashEmbedder, OpenRouterEmbedder } from './embeddings.ts';
+export type { Embedder, OpenRouterEmbedderOptions } from './embeddings.ts';

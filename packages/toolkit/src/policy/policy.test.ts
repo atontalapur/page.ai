@@ -170,10 +170,19 @@ describe('checkHostTool', () => {
     expect(checkHostTool(tool, 3)).toEqual({ allowed: true });
   });
 
-  it('lists every host tool in one of the two tables above', () => {
+  it.each(['kg.search', 'kg.read', 'kg.write'])('allows %s at every tier', (tool) => {
+    for (const tier of [1, 2, 3] as const) {
+      expect(checkHostTool(tool, tier)).toEqual({ allowed: true });
+    }
+  });
+
+  it('lists every host tool in one of the three tables above', () => {
     expect(Object.keys(HOST_TOOL_TIERS).sort()).toEqual([
       'git.pushBranch',
       'github.openPr',
+      'kg.read',
+      'kg.search',
+      'kg.write',
       'ops.deleteConfig',
       'ops.getConfig',
       'ops.planRollback',

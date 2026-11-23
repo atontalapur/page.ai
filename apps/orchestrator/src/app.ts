@@ -13,7 +13,8 @@ export async function createApp(
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule.forRoot(deps),
     new FastifyAdapter(),
-    { logger },
+    // The raw body too, so the GitHub webhook can check GitHub's signature over it.
+    { logger, rawBody: true },
   );
   // Validates every parameter declared with `{ schema }` against its zod contract.
   app.useGlobalPipes(new StandardSchemaValidationPipe());

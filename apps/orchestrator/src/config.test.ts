@@ -28,6 +28,9 @@ describe('loadConfig', () => {
       dashboardUrl: 'http://localhost:4000',
       uiDistDir: resolve('../ui/dist'),
       debug: undefined,
+      jevModel: 'typesafe/jev-1.14',
+      embeddingModel: 'qwen/qwen3-embedding-8b',
+      github: undefined,
     });
   });
 

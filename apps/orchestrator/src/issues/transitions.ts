@@ -59,7 +59,9 @@ const rules: Record<IssueStatus, Rule> = {
       ? { ...state, status: 'triaged', class: event.class, severity: event.severity }
       : undefined,
   triaged: (state, event) =>
-    event.type === 'start_fix' ? { ...state, status: 'fixing', currentTier: 1 } : undefined,
+    event.type === 'start_fix'
+      ? { ...state, status: 'fixing', currentTier: event.tier ?? 1 }
+      : undefined,
   fixing: (state, event) => {
     switch (event.type) {
       case 'patch_ready':
@@ -70,6 +72,9 @@ const rules: Record<IssueStatus, Rule> = {
         return state.currentTier === MAX_TIER ? { ...state, status: 'resolved' } : undefined;
       case 'escalate':
         return escalate(state);
+      // The same tier tries again, with a fresh job.
+      case 'retry':
+        return state;
       // A run a higher tier can't help (a broken sandbox, model or audit log).
       case 'fail':
         return { ...state, status: 'failed' };

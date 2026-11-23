@@ -72,6 +72,18 @@ const schema = envSchema(
     POSTHOG_WEBHOOK_SECRET: z.string().min(1).optional(),
     OPENROUTER_API_KEY: z.string().min(1).optional(),
     TRIAGE_MODEL: z.string().min(1).default('openai/gpt-4o-mini'),
+    // The decisions model behind triage, the starting tier and escalation (OpenRouter's
+    // /api/alpha/decisions). TRIAGE_MODEL stays the fallback when it fails.
+    JEV_MODEL: z.string().min(1).default('typesafe/jev-1.14'),
+    // Embeds the knowledge graph's nodes and search queries.
+    EMBEDDING_MODEL: z.string().min(1).default('qwen/qwen3-embedding-8b'),
+    // The demo repo's PRs: their merges and reviews approve or reject a fix. Set together.
+    GITHUB_TOKEN: z.string().trim().min(1).optional(),
+    GITHUB_REPO: z
+      .string()
+      .regex(/^[\w.-]+\/[\w.-]+$/, 'must be owner/name')
+      .optional(),
+    GITHUB_WEBHOOK_SECRET: z.string().trim().min(16).optional(),
     TRIAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(8_000),
     // Triage sends start_fix after classifying, so a node daemon picks the issue up (#136).
     // Off by default: each fix run spends model budget, so a deploy opts in.
@@ -99,6 +111,13 @@ const schema = envSchema(
 );
 
 /** What the Debugging page needs. Undefined when the tools are off or the app isn't set. */
+export interface GitHubReview {
+  token: string;
+  /** owner/name of the demo repo the agents open PRs on. */
+  repo: string;
+  webhookSecret: string;
+}
+
 export interface DebugTools {
   demoAppUrl: string;
   opsSecret: string;
@@ -131,6 +150,10 @@ export interface Config {
   openRouterApiKey: string | undefined;
   triageModel: string;
   triageTimeoutMs: number;
+  jevModel: string;
+  embeddingModel: string;
+  /** Set when the demo repo's PR webhook is set up; unset, only the dashboard decides. */
+  github: GitHubReview | undefined;
   /** Start a Tier 1 fix as soon as triage has classified an issue. */
   autoStartFix: boolean;
   /** Fix starts in the last hour, manual ones included, past which triage won't start one. */
@@ -224,12 +247,27 @@ export function loadConfig(env: Env = process.env): Config {
     openRouterApiKey: config.OPENROUTER_API_KEY,
     triageModel: config.TRIAGE_MODEL,
     triageTimeoutMs: config.TRIAGE_TIMEOUT_MS,
+    jevModel: config.JEV_MODEL,
+    embeddingModel: config.EMBEDDING_MODEL,
+    github: githubReview(config),
     autoStartFix: config.AUTO_START_FIX,
     autoStartFixMaxPerHour: config.AUTO_START_FIX_MAX_PER_HOUR,
     dashboardUrl: config.DASHBOARD_URL,
     uiDistDir: resolve(config.UI_DIST_DIR),
     debug: debugTools(config),
   };
+}
+
+function githubReview(config: z.infer<typeof schema>): GitHubReview | undefined {
+  const { GITHUB_TOKEN: token, GITHUB_REPO: repo, GITHUB_WEBHOOK_SECRET: webhookSecret } = config;
+  const set = [token, repo, webhookSecret].filter((part) => part !== undefined);
+  if (set.length === 0) return undefined;
+  if (!token || !repo || !webhookSecret) {
+    throw new ConfigError(
+      'invalid config: GITHUB_TOKEN, GITHUB_REPO and GITHUB_WEBHOOK_SECRET are set together',
+    );
+  }
+  return { token, repo, webhookSecret };
 }
 
 function debugTools(config: z.infer<typeof schema>): DebugTools | undefined {

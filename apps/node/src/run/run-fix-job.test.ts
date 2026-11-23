@@ -10,6 +10,7 @@ import type {
 import {
   FakeDeployer,
   FakeGitHub,
+  KnowledgeHostTools,
   FakeOps,
   FakeRunner,
   InMemoryAuditSink,
@@ -585,20 +586,81 @@ describe('runFixJob', () => {
       expect(github.calls).toEqual([]);
     });
 
-    it('refuses the host tools at Tier 1 and logs the refusal', async () => {
+    it('refuses the host tools to the Tier 1 agent and logs the refusal', async () => {
       const github = new FakeGitHub({ [path]: "'USDD'\n" });
-      const { deps, sink } = setup([pushReply, submitReply()], workspace, { github });
-      const finished = await runFixJob(claim(), deps);
+      const { deps, sink } = setup([pushReply, bashReply('ls')], workspace, { github });
+      await runFixJob(claim(), deps);
 
       expect(job.tier).toBe(1);
-      expect(github.head(`pageagents/${job.runId}`)).toBeUndefined();
-      expect(sink.steps).toMatchObject([
-        {
-          kind: 'host_tool',
-          allowed: false,
-          outputTrimmed: 'refused: git.pushBranch needs Tier 2; this run is Tier 1',
+      expect(sink.steps[0]).toMatchObject({
+        kind: 'host_tool',
+        allowed: false,
+        outputTrimmed: 'refused: git.pushBranch needs Tier 2; this run is Tier 1',
+      });
+    });
+
+    it("opens the PR for a Tier 1 fix that succeeded, since its agent can't", async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      const { deps } = setup([submitReply()], workspace, { github });
+      const finished = await runFixJob(claim(), deps);
+
+      expect(github.files(`pageagents/${job.runId}`)[path]!.text).toBe('USD\n');
+      expect(github.pullRequests).toMatchObject([{ state: 'open' }]);
+      expect(github.pullRequests[0]!.title).toBe(`fix: ${job.report!.split('\n')[0]}`);
+      expect(github.pullRequests[0]!.body).toContain(`run \`${job.runId}\``);
+      expect(finished).toMatchObject({
+        status: 'succeeded',
+        prUrl: 'https://github.com/page-demo/shop/pull/1',
+      });
+    });
+
+    it('gives the run the knowledge graph, and records its commit once GitHub has the push', async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      const commits: string[] = [];
+      const knowledge = ({ runId, signal }: { runId: string; signal: AbortSignal }) =>
+        new KnowledgeHostTools({
+          orchestratorUrl: 'https://orch.example.com',
+          secret: 'node-secret',
+          runId,
+          signal,
+          fetch: (_url, init) => {
+            commits.push((JSON.parse(init.body as string) as { sha: string }).sha);
+            return Promise.resolve(Response.json({ stamped: 1 }));
+          },
+        });
+      const prompts: string[] = [];
+      const inner = new ScriptedModel([submitReply()]);
+      const { deps } = setup([], workspace, {
+        github,
+        knowledge,
+        model: {
+          complete: (messages) => {
+            prompts.push(messages.map((m) => m.content).join('\n'));
+            return inner.complete();
+          },
         },
-      ]);
+      });
+      await runFixJob(claim(), deps);
+
+      expect(prompts[0]).toContain('page_kg_search');
+      expect(commits).toEqual([github.head(`pageagents/${job.runId}`)]);
+    });
+
+    it('opens no PR for a Tier 1 fix that scored under the threshold', async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      const { deps } = setup([submitReply()], workspace, { github, score: () => untested });
+      const finished = await runFixJob(claim(), deps);
+
+      expect(finished).toMatchObject({ status: 'escalated', prUrl: null });
+      expect(github.pullRequests).toEqual([]);
+    });
+
+    it('keeps a Tier 1 fix that succeeded when its PR cannot be opened', async () => {
+      const github = new FakeGitHub({ [path]: "'USDD'\n" });
+      github.failOn.add('createPullRequest');
+      const { deps } = setup([submitReply()], workspace, { github });
+      const finished = await runFixJob(claim(), deps);
+
       expect(finished).toMatchObject({ status: 'succeeded', prUrl: null });
     });
 

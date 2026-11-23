@@ -1,6 +1,7 @@
 import { fixJobSchema, type JobPayload } from '@page/contracts';
 import { escalationNoteFixture } from '@page/contracts/fixtures';
 import { afterAll, describe, expect, it } from 'vitest';
+import { DecisionsService } from '../decisions/decisions.service.ts';
 import { createSchemaDeps } from '../db/test-utils.ts';
 import { IssuesService } from '../issues/issues.service.ts';
 import { FIX_QUEUE } from '../queue/fix-jobs.ts';
@@ -18,7 +19,13 @@ const deps = await createSchemaDeps();
 afterAll(() => deps.close());
 
 const issues = new IssuesService(deps.db, deps.fixJobs, deps.logger);
-const runs = new RunsService(deps.db, issues, deps.jobs, deps.logger);
+const runs = new RunsService(
+  deps.db,
+  issues,
+  deps.jobs,
+  deps.logger,
+  new DecisionsService(deps.db, null, deps.logger),
+);
 const config = { ...deps.config, autoStartFix: true };
 const triage = new TriageService(
   issues,
@@ -26,6 +33,7 @@ const triage = new TriageService(
   new TriageClassifier(null, 1000),
   config,
   deps.logger,
+  new DecisionsService(deps.db, null, deps.logger),
 );
 await startWorkers(deps.boss, {
   triage: (job) => triage.handle(job),

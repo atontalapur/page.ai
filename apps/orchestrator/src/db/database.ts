@@ -31,6 +31,8 @@ export interface IssuesTable {
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
   last_seen_at: Generated<Date>;
+  // The tier triage picked for the first fix. Null starts at Tier 1.
+  start_tier: ColumnType<Tier | null, Tier | null | undefined, Tier | null>;
 }
 
 export interface IssueEventsTable {
@@ -131,6 +133,57 @@ export interface SchemaMigrationsTable {
   applied_at: Generated<Date>;
 }
 
+export interface KgNodesTable {
+  id: Generated<string>;
+  branch: string;
+  key: string;
+  kind: string;
+  title: string;
+  body: Generated<string>;
+  embedding: number[] | null;
+  version: Generated<number>;
+  updated_at: Generated<Date>;
+}
+
+export interface KgEdgesTable {
+  id: Generated<string>;
+  branch: string;
+  from_key: string;
+  to_key: string;
+  relation: string;
+  version: Generated<number>;
+  updated_at: Generated<Date>;
+}
+
+export interface KgVersionsTable {
+  // bigserial. node-postgres returns it as a string, PGlite as a number.
+  id: ColumnType<string | number, never, never>;
+  entity: 'node' | 'edge';
+  entity_id: string;
+  branch: string;
+  version: number;
+  // jsonb, written as a JSON string so pg and PGlite serialise it the same way.
+  snapshot: ColumnType<Record<string, unknown>, string, never>;
+  run_id: string | null;
+  author: string;
+  created_at: Generated<Date>;
+  commit_sha: string | null;
+  pushed_at: Date | null;
+}
+
+export interface DecisionsTable {
+  id: Generated<string>;
+  issue_id: string;
+  run_id: string | null;
+  question: 'triage' | 'start_tier' | 'escalation';
+  model: string;
+  choice: string;
+  probabilities: ColumnType<Record<string, number>, string, never>;
+  confidence: number;
+  cost_usd: number;
+  created_at: Generated<Date>;
+}
+
 export interface Database {
   issues: IssuesTable;
   issue_events: IssueEventsTable;
@@ -140,6 +193,10 @@ export interface Database {
   escalations: EscalationsTable;
   approvals: ApprovalsTable;
   run_chats: RunChatsTable;
+  kg_nodes: KgNodesTable;
+  kg_edges: KgEdgesTable;
+  kg_versions: KgVersionsTable;
+  decisions: DecisionsTable;
   schema_migrations: SchemaMigrationsTable;
 }
 
