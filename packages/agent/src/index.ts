@@ -9,6 +9,8 @@ export type {
   ExecuteOptions,
   ExitStatus,
 } from './agent.ts';
+export { ONCALL_MESSAGE_TAG, ONCALL_REPLY_TAG, onCallPrompt, takeReply } from './oncall.ts';
+export type { Inbox, OnCallMessage } from './oncall.ts';
 export { formatErrorPrompt, instancePrompt, observationPrompt, systemPrompt } from './prompts.ts';
 export type { AgentTask } from './prompts.ts';
 export { CONFIDENCE_WEIGHTS, isTestFile, scoreRun } from './confidence.ts';

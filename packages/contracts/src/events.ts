@@ -3,12 +3,17 @@ import { idSchema, prUrlSchema, tierSchema } from './common.ts';
 import {
   APPROVAL_DECISIONS,
   approvalSchema,
+  CHAT_CLOSE_REASONS,
+  closedChatSchema,
   confidenceSchema,
   decidedApprovalSchema,
   type DecidedApproval,
   ESCALATION_REASONS,
   issueSchema,
+  MAX_CHAT_ANSWER_CHARS,
+  MAX_CHAT_CHARS,
   pendingApprovalSchema,
+  pendingChatSchema,
   runSchema,
   stepSchema,
 } from './db.ts';
@@ -42,8 +47,32 @@ export type SocketRefusal = (typeof SOCKET_REFUSALS)[number];
  */
 export const MAX_APPROVAL_WAIT_MS = 15 * 60 * 1000;
 
+/**
+ * Why the server turned a tab's `run.chat` away. Only that tab hears it, as
+ * `run.chat.refused`, and nothing is stored:
+ * - `no_name`: the tab has no identity to record the message under, as for a Tier 3
+ *   decision: no personal token and no name, or the shared token once personal tokens are
+ *   configured.
+ * - `rate_limited`: the tab sent messages faster than the chat limit allows.
+ * - `not_in_progress`: the run is not its issue's run in progress.
+ * - `no_daemon`: no connected daemon holds the run, so nothing would read the message.
+ * - `too_many`: the run has had as many messages as one run takes.
+ */
+export const CHAT_REFUSALS = [
+  'no_name',
+  'rate_limited',
+  'not_in_progress',
+  'no_daemon',
+  'too_many',
+] as const;
+
+export type ChatRefusal = (typeof CHAT_REFUSALS)[number];
+
 const runKill = z.strictObject({ v, runId: idSchema });
-const runChat = z.strictObject({ v, runId: idSchema, message: z.string().min(1) });
+const chatMessage = z.string().trim().min(1).max(MAX_CHAT_CHARS);
+// A person's message to the agent on a run in progress. Who sent it comes from the socket.
+const runChat = z.strictObject({ v, runId: idSchema, message: chatMessage });
+const chatIds = { v, chatId: idSchema, runId: idSchema };
 const runDiff = z.strictObject({ v, runId: idSchema, diff: z.string() });
 
 const runFinishedBase = {
@@ -106,6 +135,12 @@ export const serverToUiEvents = {
   // A node daemon connected, disconnected, took a run or let one go. Carries the daemon as
   // GET /nodes lists it, so a tab replaces its copy.
   'node.updated': z.strictObject({ v, node: nodeSummarySchema }),
+  // Sent to every tab: a person's message to a run in progress, once it is stored and on its
+  // way to the daemon, and the agent's answer, or why it has none, once that is known.
+  'run.chat.asked': z.strictObject({ v, chat: pendingChatSchema }),
+  'run.chat.reply': z.strictObject({ v, chat: closedChatSchema }),
+  // Sent only to the tab whose `run.chat` the server turned away (CHAT_REFUSALS).
+  'run.chat.refused': z.strictObject({ v, runId: idSchema, reason: z.enum(CHAT_REFUSALS) }),
 };
 
 export const uiToServerEvents = {
@@ -143,6 +178,20 @@ export const nodeToServerEvents = {
     expiresAt: pendingApprovalSchema.shape.expiresAt,
     reason: pendingApprovalSchema.shape.reason.optional(),
   }),
+  // The agent's answer to a `run.chat`, from the reply after it read the message, or why it
+  // got none: the queue was full, the agent had submitted, the run ended, or it didn't answer.
+  'node.chat.reply': z.discriminatedUnion('status', [
+    z.strictObject({
+      ...chatIds,
+      status: z.literal('answered'),
+      answer: z.string().min(1).max(MAX_CHAT_ANSWER_CHARS),
+    }),
+    z.strictObject({
+      ...chatIds,
+      status: z.literal('unanswered'),
+      reason: z.enum(CHAT_CLOSE_REASONS),
+    }),
+  ]),
 };
 
 /**
@@ -164,7 +213,13 @@ export function nodeDecision(approval: DecidedApproval): NodeDecision {
 /** UI requests the server relays to the node running the run (#9), and approval outcomes. */
 export const serverToNodeEvents = {
   'run.kill': runKill,
-  'run.chat': runChat,
+  // A tab's message, stored under `chatId` for the daemon's answer. `from` is the name the
+  // agent is shown: the person's name, not the `ui:` record.
+  'run.chat': z.strictObject({
+    ...chatIds,
+    from: z.string().min(1).max(100),
+    message: chatMessage,
+  }),
   'approval.decided': z.strictObject({ v, approval: nodeDecisionSchema }),
 };
 

@@ -1,19 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import type { IssueRun, Run, Step } from '@page/contracts';
 import {
+  answeredChatFixture,
   nodeRunFixture,
   nodeSummaryFixture,
+  pendingChatFixture,
   runFixture,
   stepFixture,
 } from '@page/contracts/fixtures';
 
-import { applyToIssueRuns, applyToNode, applyToNodeRun, isFinished } from './runs';
+import { applyToIssueRuns, applyToNode, applyToNodeRun, isFinished, withChat } from './runs';
 import type { RunEvent } from './source';
 
 const issueRun = (fields: Partial<IssueRun> = {}): IssueRun => ({
   ...runFixture,
   diff: null,
   steps: [],
+  chats: [],
   ...fields,
 });
 const step = (seq: number, fields: Partial<Step> = {}): Step => ({
@@ -80,7 +83,7 @@ describe('applyToIssueRuns', () => {
     expect(applyToIssueRuns([], started(other), issueId)).toEqual([]);
     expect(applyToIssueRuns([], stepped(step(0)), issueId)).toEqual([]);
     expect(applyToIssueRuns([], started(runFixture), issueId)).toEqual([
-      { ...runFixture, diff: null, steps: [] },
+      { ...runFixture, diff: null, steps: [], chats: [] },
     ]);
   });
 });
@@ -107,6 +110,53 @@ describe('applyToNode', () => {
     expect(next.current[0]).toMatchObject({ stepCount: 4, lastStep: { seq: 3 } });
     const idle = { ...nodeSummaryFixture, current: [] };
     expect(applyToNode(idle, stepped(step(3)))).toBe(idle);
+  });
+});
+
+describe('messages on a run', () => {
+  const asked = (chat = pendingChatFixture): RunEvent => ({
+    event: 'run.chat.asked',
+    payload: { v: 1, chat },
+  });
+  const replied = (chat = answeredChatFixture): RunEvent => ({
+    event: 'run.chat.reply',
+    payload: { v: 1, chat },
+  });
+
+  it('adds a message to its run, and puts the answer in its place', () => {
+    let runs = [issueRun()];
+    runs = applyToIssueRuns(runs, asked(), runFixture.issueId);
+    expect(runs[0]?.chats).toEqual([pendingChatFixture]);
+    runs = applyToIssueRuns(runs, replied(), runFixture.issueId);
+    expect(runs[0]?.chats).toEqual([answeredChatFixture]);
+    // The run itself is left as it was.
+    expect(runs[0]).toMatchObject({ status: runFixture.status, steps: [] });
+  });
+
+  it('keeps an answer against a pending copy that comes late, and orders by when asked', () => {
+    const later = {
+      ...pendingChatFixture,
+      id: 'c5e3a9b7-1d2f-4c6e-9a8b-000000000009',
+      askedAt: '2026-10-30T12:02:00.000Z',
+    };
+    const earlier = {
+      ...later,
+      id: 'c5e3a9b7-1d2f-4c6e-9a8b-000000000008',
+      askedAt: runFixture.startedAt!,
+    };
+    let chats = withChat([], answeredChatFixture);
+    chats = withChat(chats, pendingChatFixture);
+    expect(chats).toEqual([answeredChatFixture]);
+    chats = withChat(chats, later);
+    chats = withChat(chats, earlier);
+    expect(chats.map((c) => c.id)).toEqual([earlier.id, answeredChatFixture.id, later.id]);
+  });
+
+  it("ignores a message for a run the list doesn't have, and leaves a daemon's runs alone", () => {
+    const other = { ...pendingChatFixture, runId: '90000000-2222-4222-8222-222222222222' };
+    expect(applyToIssueRuns([issueRun()], asked(other), runFixture.issueId)).toEqual([issueRun()]);
+    expect(applyToNodeRun(nodeRunFixture, asked())).toEqual(nodeRunFixture);
+    expect(applyToNodeRun(nodeRunFixture, replied())).toEqual(nodeRunFixture);
   });
 });
 

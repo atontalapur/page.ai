@@ -23,11 +23,13 @@ import { io, type Socket } from 'socket.io-client';
 
 import {
   parseApproval,
+  parseEvent,
   parseIssueUpdated,
   parseNodeUpdated,
   parseRunEvent,
   RUN_EVENTS,
   type ApprovalDecision,
+  type AskFailure,
   type IssueFeed,
   type IssueSource,
 } from './source';
@@ -41,6 +43,15 @@ const approvalList = approvalSchema.array();
 
 // The server counts handshakes per minute; one that refuses for that is waited out.
 const RATE_LIMIT_RETRY_MS = 60_000;
+// The server answers a message with `run.chat.asked` or `run.chat.refused` after a few
+// database reads; past this, the page stops waiting and says it heard nothing.
+export const ASK_TIMEOUT_MS = 10_000;
+
+/** A message this tab sent and hasn't heard back about. */
+interface Ask {
+  message: string;
+  settle: (failure?: AskFailure) => void;
+}
 
 class Unauthorized extends Error {}
 
@@ -61,6 +72,11 @@ export function serverSource(token: string, name?: string): IssueSource {
   let approver = name;
   const auth = () => (approver === undefined ? { token } : { token, name: approver });
   let socket: Socket<ServerToUiEvents, UiToServerEvents> | undefined;
+  // One message at a time per run: the server answers a refusal by run, not by message.
+  const asks = new Map<string, Ask>();
+  const settleAll = (failure: AskFailure) => {
+    for (const ask of [...asks.values()]) ask.settle(failure);
+  };
 
   async function get(path: string): Promise<Response> {
     const res = await fetch(path, { headers });
@@ -137,9 +153,20 @@ export function serverSource(token: string, name?: string): IssueSource {
       for (const event of RUN_EVENTS) {
         on(event, (payload) => {
           const parsed = parseRunEvent(event, payload);
-          if (parsed) feed.run(parsed);
+          if (!parsed) return;
+          // Every tab hears a stored message; the one that sent it stops waiting on it.
+          if (parsed.event === 'run.chat.asked') {
+            const { runId, message } = parsed.payload.chat;
+            const ask = asks.get(runId);
+            if (ask?.message === message) ask.settle();
+          }
+          feed.run(parsed);
         });
       }
+      current.on('run.chat.refused', (payload: unknown) => {
+        const refused = parseEvent('run.chat.refused', payload);
+        if (refused) asks.get(refused.runId)?.settle(refused.reason);
+      });
       for (const event of ['approval.requested', 'approval.updated'] as const) {
         current.on(event, (payload: unknown) => {
           const approval = parseApproval(event, payload);
@@ -149,6 +176,8 @@ export function serverSource(token: string, name?: string): IssueSource {
       // Closing a stopped source disconnects it too, and that is not a dropped connection: the
       // tab may be asking for another token, and `reconnecting` would hide the prompt.
       current.on('disconnect', () => {
+        // The server may never answer what is in flight, so the page says it didn't go out.
+        settleAll('offline');
         if (!stopped) feed.status('reconnecting');
       });
       current.on('connect_error', (err) => {
@@ -166,12 +195,36 @@ export function serverSource(token: string, name?: string): IssueSource {
         stopped = true;
         clearTimeout(retry);
         current.close();
-        if (socket === current) socket = undefined;
+        if (socket === current) {
+          socket = undefined;
+          settleAll('offline');
+        }
       };
     },
 
     decideApproval(approvalId: string, decision: ApprovalDecision) {
       socket?.emit('approval.decide', { v: 1, approvalId, decision });
+    },
+
+    askAgent(runId: string, message: string): Promise<AskFailure | undefined> {
+      // socket.io-client would hold it until a reconnect, long after the person gave up.
+      if (!socket?.connected) return Promise.resolve('offline');
+      const sending = socket;
+      return new Promise((resolve) => {
+        asks.get(runId)?.settle('timeout');
+        const timer = setTimeout(() => ask.settle('timeout'), ASK_TIMEOUT_MS);
+        const ask: Ask = {
+          // The server trims it, and echoes it back that way.
+          message: message.trim(),
+          settle(failure) {
+            clearTimeout(timer);
+            if (asks.get(runId) === ask) asks.delete(runId);
+            resolve(failure);
+          },
+        };
+        asks.set(runId, ask);
+        sending.emit('run.chat', { v: 1, runId, message });
+      });
     },
 
     setApproverName(next: string) {

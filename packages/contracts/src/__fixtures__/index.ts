@@ -1,11 +1,13 @@
 // Valid fixtures for every contract. Consumer tests import these from
 // `@page/contracts/fixtures` instead of building their own.
 import type {
+  ClosedChat,
   Confidence,
   DecidedApproval,
   Escalation,
   Issue,
   PendingApproval,
+  PendingChat,
   Run,
   Step,
 } from '../db.ts';
@@ -29,6 +31,7 @@ const issueId = '3f2b9c1e-8a4d-4f6b-9c2e-1d7a5b8e4f01';
 const runId = '7c1e4a2b-5d3f-4b8a-a1c9-6e2f8d4b3a02';
 const approvalId = 'b4d8e2f1-9a3c-4e7b-8f2d-5c1a7e9b6d03';
 const escalationId = 'e9a1c7d3-2b5f-4a8e-b3d6-8f4c2a1e7b04';
+const chatId = 'c5e3a9b7-1d2f-4c6e-9a8b-3f7d1e5c2a05';
 const fingerprint = '01934f5e-7a2b-7c3d-8e4f-5a6b7c8d9e0f';
 const at = '2026-10-30T12:00:00.000Z';
 const later = '2026-10-30T12:04:30.000Z';
@@ -115,6 +118,26 @@ export const decidedApprovalFixture: DecidedApproval = {
   decidedAt: '2026-10-30T12:01:10.000Z',
 };
 
+export const pendingChatFixture: PendingChat = {
+  id: chatId,
+  runId,
+  issueId,
+  askedBy: 'ui:arjun',
+  message: 'Check the pricing config first.',
+  askedAt: '2026-10-30T12:01:00.000Z',
+  status: 'pending',
+  answer: null,
+  reason: null,
+  closedAt: null,
+};
+
+export const answeredChatFixture: ClosedChat = {
+  ...pendingChatFixture,
+  status: 'answered',
+  answer: 'The config looks right; the total drops the last line, so I am reading total.ts.',
+  closedAt: '2026-10-30T12:01:20.000Z',
+};
+
 export const jobFixtures: { [Q in QueueName]: JobPayload<Q> } = {
   triage: { v: 1, issueId },
   fix: {
@@ -179,6 +202,9 @@ export const serverToUiEventFixtures: Payloads<ServerToUiEvents> = {
   'approval.requested': { v: 1, approval: pendingApprovalFixture },
   'approval.updated': { v: 1, approval: decidedApprovalFixture },
   'node.updated': { v: 1, node: nodeSummaryFixture },
+  'run.chat.asked': { v: 1, chat: pendingChatFixture },
+  'run.chat.reply': { v: 1, chat: answeredChatFixture },
+  'run.chat.refused': { v: 1, runId, reason: 'no_daemon' },
 };
 
 export const uiToServerEventFixtures: Payloads<UiToServerEvents> = {
@@ -208,11 +234,24 @@ export const nodeToServerEventFixtures: Payloads<NodeToServerEvents> = {
     expiresAt: pendingApprovalFixture.expiresAt,
     reason: pendingApprovalFixture.reason,
   },
+  'node.chat.reply': {
+    v: 1,
+    chatId,
+    runId,
+    status: 'answered',
+    answer: answeredChatFixture.answer,
+  },
 };
 
 export const serverToNodeEventFixtures: Payloads<ServerToNodeEvents> = {
   'run.kill': uiToServerEventFixtures['run.kill'],
-  'run.chat': uiToServerEventFixtures['run.chat'],
+  'run.chat': {
+    v: 1,
+    chatId,
+    runId,
+    from: 'arjun',
+    message: pendingChatFixture.message,
+  },
   'approval.decided': { v: 1, approval: nodeDecision(decidedApprovalFixture) },
 };
 

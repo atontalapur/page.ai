@@ -10,6 +10,7 @@ import {
   type Tier,
 } from '@page/contracts';
 import type { Insertable, Selectable, Transaction } from 'kysely';
+import { toChat } from '../chats/chat-row.ts';
 import type { Database, Db, RunsTable, StepsTable } from '../db/database.ts';
 import { IssueNotFoundError, IssuesService, type Moved } from '../issues/issues.service.ts';
 import { issueLogger, type Logger } from '../logger.ts';
@@ -109,9 +110,9 @@ export class RunsService {
   ) {}
 
   /**
-   * Every run of an issue, oldest first, each with its steps: the finished ones from `runs`,
-   * and the one in progress, which has only its steps until the daemon reports it. Throws
-   * IssueNotFoundError for an unknown issue.
+   * Every run of an issue, oldest first, each with its steps and the messages people sent it:
+   * the finished ones from `runs`, and the one in progress, which has only its steps and
+   * messages until the daemon reports it. Throws IssueNotFoundError for an unknown issue.
    */
   async forIssue(issueId: string): Promise<IssueRun[]> {
     const issue = await this.db
@@ -145,6 +146,17 @@ export class RunsService {
             .orderBy('seq')
             .execute();
     const stepsOf = (id: string) => steps.filter((step) => step.run_id === id).map(toStep);
+    const chats =
+      ids.length === 0
+        ? []
+        : await this.db
+            .selectFrom('run_chats')
+            .selectAll()
+            .where('run_id', 'in', ids)
+            .orderBy('asked_at')
+            .orderBy('id')
+            .execute();
+    const chatsOf = (id: string) => chats.filter((chat) => chat.run_id === id).map(toChat);
 
     const runs: IssueRun[] = rows.map((row) => ({
       id: row.id,
@@ -157,6 +169,7 @@ export class RunsService {
       confidence: row.confidence,
       diff: row.diff,
       steps: stepsOf(row.id),
+      chats: chatsOf(row.id),
     }));
     if (inProgress && issue.current_tier !== null) {
       const own = stepsOf(inProgress);
@@ -171,6 +184,7 @@ export class RunsService {
         confidence: null,
         diff: null,
         steps: own,
+        chats: chatsOf(inProgress),
       });
     }
     return runs;

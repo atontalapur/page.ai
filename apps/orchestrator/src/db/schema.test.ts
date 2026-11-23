@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import {
   APPROVAL_DECISIONS,
   BUG_CLASSES,
+  CHAT_CLOSE_REASONS,
+  MAX_CHAT_ANSWER_CHARS,
+  MAX_CHAT_CHARS,
   ESCALATION_REASONS,
   ISSUE_STATUSES,
   MAX_APPROVAL_REASON_CHARS,
@@ -19,6 +22,7 @@ import type {
   EscalationsTable,
   IssueEventsTable,
   IssuesTable,
+  RunChatsTable,
   RunsTable,
   StepsTable,
 } from './database.ts';
@@ -301,6 +305,75 @@ describe('approvals table matches @page/contracts', () => {
 
   it("won't delete an issue that has approvals", async () => {
     const { issue_id } = await request();
+    await expect(db.deleteFrom('issues').where('id', '=', issue_id).execute()).rejects.toThrow();
+  });
+});
+
+describe('run_chats table matches @page/contracts', () => {
+  const ask = async (values: Partial<Insertable<RunChatsTable>> = {}) => {
+    // A run in progress has no runs row: messages name the fix job's id and the issue.
+    const issue = await insertIssue({ status: 'fixing', current_tier: 1 });
+    return db
+      .insertInto('run_chats')
+      .values({
+        run_id: randomUUID(),
+        issue_id: issue.id,
+        asked_by: 'ui:Arjun',
+        message: 'Why the config?',
+        ...values,
+      })
+      .returning(['id', 'issue_id'])
+      .executeTakeFirstOrThrow();
+  };
+  const closedAt = new Date();
+
+  it('accepts a pending message with no answer, reason or close time', async () => {
+    await expect(ask()).resolves.toBeDefined();
+  });
+
+  it('accepts an answered message with its answer and time', async () => {
+    await expect(
+      ask({ status: 'answered', answer: 'Because.', closed_at: closedAt }),
+    ).resolves.toBeDefined();
+  });
+
+  it.each(CHAT_CLOSE_REASONS)('accepts an unanswered message closed as %s', async (reason) => {
+    await expect(ask({ status: 'unanswered', reason, closed_at: closedAt })).resolves.toBeDefined();
+  });
+
+  it('holds each status to its fields', async () => {
+    await expect(ask({ status: 'answered', closed_at: closedAt })).rejects.toThrow();
+    await expect(ask({ status: 'answered', answer: 'x' })).rejects.toThrow();
+    await expect(ask({ status: 'unanswered', closed_at: closedAt })).rejects.toThrow();
+    await expect(
+      ask({ status: 'unanswered', reason: 'run_ended', answer: 'x', closed_at: closedAt }),
+    ).rejects.toThrow();
+    await expect(ask({ closed_at: closedAt })).rejects.toThrow();
+    await expect(ask({ answer: 'early' })).rejects.toThrow();
+    await expect(
+      ask({ status: 'unanswered', reason: bad('bored'), closed_at: closedAt }),
+    ).rejects.toThrow();
+    await expect(ask({ status: bad('read'), closed_at: closedAt })).rejects.toThrow();
+  });
+
+  it('caps the message and the answer as the contracts do, and refuses empty ones', async () => {
+    await expect(ask({ message: 'x'.repeat(MAX_CHAT_CHARS) })).resolves.toBeDefined();
+    await expect(ask({ message: 'x'.repeat(MAX_CHAT_CHARS + 1) })).rejects.toThrow();
+    await expect(ask({ message: '' })).rejects.toThrow();
+    await expect(ask({ asked_by: '' })).rejects.toThrow();
+    const answered = { status: 'answered' as const, closed_at: closedAt };
+    await expect(
+      ask({ ...answered, answer: 'x'.repeat(MAX_CHAT_ANSWER_CHARS) }),
+    ).resolves.toBeDefined();
+    await expect(
+      ask({ ...answered, answer: 'x'.repeat(MAX_CHAT_ANSWER_CHARS + 1) }),
+    ).rejects.toThrow();
+    await expect(ask({ ...answered, answer: '' })).rejects.toThrow();
+  });
+
+  it("needs an issue that exists, and won't delete one that has messages", async () => {
+    await expect(ask({ issue_id: randomUUID() })).rejects.toThrow();
+    const { issue_id } = await ask();
     await expect(db.deleteFrom('issues').where('id', '=', issue_id).execute()).rejects.toThrow();
   });
 });

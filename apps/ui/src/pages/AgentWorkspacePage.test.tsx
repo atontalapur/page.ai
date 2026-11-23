@@ -46,6 +46,7 @@ const fullRun: IssueRun = {
   confidence: null,
   diff: null,
   steps: [step(0, 'ls -la')],
+  chats: [],
 };
 
 const busy = daemon('busy-node', { current: [held], lastRunAt: held.startedAt });

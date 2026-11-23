@@ -83,7 +83,7 @@ export class IssuesController {
     return asHttp(this.issues.events(id));
   }
 
-  /** Every run, oldest first, with its steps and diff. The run in progress is last. */
+  /** Every run, oldest first, with its steps, messages and diff. The run in progress is last. */
   @Get(':id/runs')
   runsOf(@Param('id', { schema: issueId }) id: string): Promise<IssueRun[]> {
     return asHttp(this.runs.forIssue(id));

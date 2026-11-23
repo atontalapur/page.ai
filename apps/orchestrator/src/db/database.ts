@@ -1,12 +1,14 @@
 import type {
   Approval,
   BugClass,
+  ChatCloseReason,
   Confidence,
   Escalation,
   EscalationNote,
   IssueEvent,
   IssueStatus,
   Run,
+  RunChat,
   Severity,
   Step,
   Tier,
@@ -109,6 +111,21 @@ export interface ApprovalsTable {
   reason: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
+// Messages people send a run in progress, and the agent's answers (013_run_chats.sql).
+export interface RunChatsTable {
+  id: Generated<string>;
+  // The fix job's id. No foreign key: a run in progress has no runs row yet.
+  run_id: string;
+  issue_id: string;
+  asked_by: string;
+  message: string;
+  asked_at: Generated<Date>;
+  status: Generated<RunChat['status']>;
+  answer: string | null;
+  reason: ChatCloseReason | null;
+  closed_at: Date | null;
+}
+
 export interface SchemaMigrationsTable {
   name: string;
   applied_at: Generated<Date>;
@@ -122,6 +139,7 @@ export interface Database {
   run_nodes: RunNodesTable;
   escalations: EscalationsTable;
   approvals: ApprovalsTable;
+  run_chats: RunChatsTable;
   schema_migrations: SchemaMigrationsTable;
 }
 

@@ -1,6 +1,7 @@
 import {
   serverToUiEvents,
   type Approval,
+  type ChatRefusal,
   type DecidedApproval,
   type Issue,
   type IssueEvent,
@@ -20,8 +21,18 @@ export type FeedStatus = 'connecting' | 'live' | 'reconnecting' | 'needs_token' 
 
 type Payload<E extends keyof ServerToUiEvents> = Parameters<ServerToUiEvents[E]>[0];
 
-/** The run events a source passes on, as the socket names them. */
-export const RUN_EVENTS = ['run.started', 'run.step', 'run.diff', 'run.finished'] as const;
+/**
+ * The run events a source passes on, as the socket names them. A person's message to a run
+ * and its answer travel with the run, so a page showing the run's steps shows them too.
+ */
+export const RUN_EVENTS = [
+  'run.started',
+  'run.step',
+  'run.diff',
+  'run.finished',
+  'run.chat.asked',
+  'run.chat.reply',
+] as const;
 
 export type RunEventName = (typeof RUN_EVENTS)[number];
 
@@ -54,6 +65,12 @@ export interface IssueFeed {
 
 export type ApprovalDecision = DecidedApproval['decision'];
 
+/**
+ * Why a message to the agent didn't go out: the server's reason (ChatRefusal), no live
+ * connection to send it on, or no word from the server in time.
+ */
+export type AskFailure = ChatRefusal | 'offline' | 'timeout';
+
 export interface IssueSource {
   /** Starts feeding, and returns the function that stops it. */
   start(feed: IssueFeed): () => void;
@@ -85,6 +102,12 @@ export interface IssueSource {
    * without it, such as the mock, decides under a name the tab gives.
    */
   fetchSession?(): Promise<Session | undefined>;
+  /**
+   * Sends a person's message to the agent on a run in progress. Resolves once the server has
+   * stored it and sent it to the daemon, or with why it didn't. Every tab then hears the
+   * message and, later, the answer as run events.
+   */
+  askAgent(runId: string, message: string): Promise<AskFailure | undefined>;
 }
 
 /**
@@ -142,5 +165,8 @@ export function runIdOf(event: RunEvent): string {
       return event.payload.step.runId;
     case 'run.diff':
       return event.payload.runId;
+    case 'run.chat.asked':
+    case 'run.chat.reply':
+      return event.payload.chat.runId;
   }
 }

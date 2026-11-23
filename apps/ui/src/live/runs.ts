@@ -1,4 +1,4 @@
-import type { IssueRun, NodeRun, NodeSummary, Run, Step } from '@page/contracts';
+import type { IssueRun, NodeRun, NodeSummary, Run, RunChat, Step } from '@page/contracts';
 
 import { runIdOf, type RunEvent } from './source';
 
@@ -36,8 +36,23 @@ function withRunFields<R extends Run>(run: R, event: RunEvent): R {
       };
     }
     case 'run.diff':
+    case 'run.chat.asked':
+    case 'run.chat.reply':
       return run;
   }
+}
+
+/**
+ * `chats` with `chat` in its place by id, oldest asked first. An answer is final, so a
+ * pending copy that arrives late (a load that read the row before the answer) never
+ * replaces it.
+ */
+export function withChat(chats: readonly RunChat[], chat: RunChat): RunChat[] {
+  const current = chats.find((c) => c.id === chat.id);
+  if (current && current.status !== 'pending' && chat.status === 'pending') return [...chats];
+  return [...chats.filter((c) => c.id !== chat.id), chat].sort(
+    (a, b) => a.askedAt.localeCompare(b.askedAt) || a.id.localeCompare(b.id),
+  );
 }
 
 /** `steps` with `step` in its place by seq. The daemon sends a step once it is final, so it
@@ -59,7 +74,7 @@ export function applyToIssueRuns(
   const id = runIdOf(event);
   if (!runs.some((run) => run.id === id)) {
     if (event.event !== 'run.started' || event.payload.run.issueId !== issueId) return [...runs];
-    return [...runs, { ...event.payload.run, diff: null, steps: [] }];
+    return [...runs, { ...event.payload.run, diff: null, steps: [], chats: [] }];
   }
   return runs.map((run) => {
     if (run.id !== id) return run;
@@ -67,6 +82,9 @@ export function applyToIssueRuns(
     if (event.event === 'run.step')
       return { ...next, steps: withStep(next.steps, event.payload.step) };
     if (event.event === 'run.diff') return { ...next, diff: event.payload.diff };
+    if (event.event === 'run.chat.asked' || event.event === 'run.chat.reply') {
+      return { ...next, chats: withChat(next.chats, event.payload.chat) };
+    }
     return next;
   });
 }

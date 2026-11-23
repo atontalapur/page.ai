@@ -1,6 +1,7 @@
 import type { ChatMessage, ModelClient, ModelError } from '@page/model-client';
 import type { ExecErr, ExecOk, Result, ToolCall } from '@page/toolkit';
 import { parseAction, thoughtOf } from './actions.ts';
+import { onCallPrompt, takeReply, type Inbox } from './oncall.ts';
 import { budgetFor } from './threshold.ts';
 import {
   formatErrorPrompt,
@@ -33,6 +34,13 @@ export interface AgentDeps {
    * running command is the caller's to stop. The run then ends as `aborted`.
    */
   signal?: AbortSignal;
+  /**
+   * Messages from people watching the run. Each one is shown after the result of the last
+   * action, before the next model call, and the reply to that call answers it and takes an
+   * action, so a message costs no model call of its own. Without an inbox, or while it holds
+   * nothing, the loop sends exactly what it sent before there was one.
+   */
+  inbox?: Inbox;
 }
 
 export interface AgentConfig {
@@ -127,6 +135,8 @@ export async function runAgent(
     if (reached(config.costLimitUsd, costUsd)) return finish('cost_limit');
     if (outOfTime()) return finish('time_limit');
 
+    const asked = deps.inbox?.take() ?? [];
+    if (asked.length > 0) appendToTurn(messages, onCallPrompt(asked));
     const reply = await deps.model.complete(messages, {
       ...withTimeout(timeLeft()),
       ...withSignal(deps.signal),
@@ -143,7 +153,15 @@ export async function runAgent(
     }
     messages.push({ role: 'assistant', content: reply.completion.content });
 
-    const parsed = parseAction(reply.completion.content);
+    // The answer goes back through the inbox; the action and thought are read from the rest.
+    let content = reply.completion.content;
+    if (asked.length > 0) {
+      const answered = takeReply(content);
+      deps.inbox?.answer(asked, answered.reply);
+      content = answered.rest;
+    }
+
+    const parsed = parseAction(content);
     if (!parsed.ok) {
       formatErrors += 1;
       messages.push({
@@ -159,7 +177,7 @@ export async function runAgent(
 
     if (parsed.action.kind === 'submit') return finish('submitted');
     if (outOfTime()) return finish('time_limit');
-    const thought = thoughtOf(reply.completion.content, reply.completion.reasoning);
+    const thought = thoughtOf(content, reply.completion.reasoning);
     const result = await deps.execute(parsed.action.call, {
       ...withTimeout(timeLeft()),
       ...(thought === undefined ? {} : { thought }),
@@ -171,4 +189,14 @@ export async function runAgent(
     }
     messages.push({ role: 'user', content: observationPrompt(result) });
   }
+}
+
+/**
+ * Adds `text` to the last message. At a step boundary that is always the user's turn (the
+ * task, an observation or a format error), so the roles still alternate as every provider
+ * expects. A copy replaces it, so a caller holding the old message sees it unchanged.
+ */
+function appendToTurn(messages: ChatMessage[], text: string): void {
+  const last = messages.at(-1)!;
+  messages[messages.length - 1] = { ...last, content: `${last.content}\n\n${text}` };
 }

@@ -25,6 +25,7 @@ import { applyToNode } from '../live/runs';
 import { serverPresent, serverSource } from '../live/server-source';
 import type {
   ApprovalDecision,
+  AskFailure,
   FeedStatus,
   IssueFeed,
   IssueSource,
@@ -69,6 +70,11 @@ interface IssuesContextType {
   session: Session | undefined;
   /** Forgets the token and asks for one again, to connect as someone else. */
   signOut: () => void;
+  /**
+   * Sends a message to the agent on a run in progress, recorded under the same identity as a
+   * Tier 3 decision. Resolves once it went out, or with why it didn't.
+   */
+  askAgent: (runId: string, message: string) => Promise<AskFailure | undefined>;
 }
 
 const IssuesContext = createContext<IssuesContextType | undefined>(undefined);
@@ -289,6 +295,12 @@ export function IssuesProvider({
     [active],
   );
 
+  const askAgent = useCallback(
+    (runId: string, message: string) =>
+      active?.askAgent(runId, message) ?? Promise.resolve<AskFailure>('offline'),
+    [active],
+  );
+
   const issues = useMemo(
     () => [...store.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [store],
@@ -358,6 +370,7 @@ export function IssuesProvider({
       setApproverName,
       session,
       signOut,
+      askAgent,
     }),
     [
       issues,
@@ -377,6 +390,7 @@ export function IssuesProvider({
       setApproverName,
       session,
       signOut,
+      askAgent,
     ],
   );
 
