@@ -164,5 +164,3 @@ code in the report's stack, or that the reported error is gone (#174).
 5. Give each teammate a personal token on staging, and move the demo repo to a bot account or a
    GitHub App with one required approval, which [docs/demo-repo.md](../demo-repo.md) says would
    close the token gap.
-6. Fix the runner bug that kept 015 #2, a run that never played, as a page instead of listing
-   it in `notPlayed`.

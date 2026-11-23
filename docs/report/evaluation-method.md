@@ -826,8 +826,10 @@ daemon):
   Docker was back, a second resume played those 7 runs once, as the stop rules allow.
 - 015 #2 in that file is recorded as a page with no attempt and $0. It never played: the
   provider stop reached it before its first attempt, and the runner kept it as a run instead
-  of listing it in `notPlayed`. That is a runner bug, not fixed here. The tier1-only fix rate
-  above counts it as a miss.
+  of listing it in `notPlayed`. That was a runner bug: the provider error freed its money
+  before it stopped the eval, so 015 #2 got a reservation and then saw the stop, and that
+  exit didn't mark the run as cut short. The runner now leaves such a run out. The file is
+  kept as recorded, so the tier1-only fix rate above counts it as a miss.
 - The runner charges an attempt that fails before it reports a cost its whole reserved
   limit, since it can't know what was spent. The three failed sandbox starts did that, so the
   file's `spentUsd` is $1.67, while its runs' model cost is $0.38.

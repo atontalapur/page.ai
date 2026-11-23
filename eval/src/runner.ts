@@ -331,7 +331,12 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
       }
     }
     for (const tier of tiers) {
-      if (signal.aborted) break;
+      // A stop before a tier plays cuts the run short, at its first tier too: a run with no
+      // attempt, or one whose last attempt climbed, isn't a page.
+      if (signal.aborted) {
+        cutShort = true;
+        break;
+      }
       const limit = await budget.reserve(limitFor(tier));
       if (limit === undefined) {
         cutShort = true;
@@ -341,9 +346,11 @@ export async function runEval(options: RunEvalOptions): Promise<EvalResults> {
         }
         break;
       }
-      // A check may have failed while this run waited for money.
+      // A check may have failed while this run waited for money, or a provider error may have
+      // freed the money just before it stopped the eval.
       if (signal.aborted) {
         budget.settle(limit, 0);
+        cutShort = true;
         break;
       }
       let attempt: AgentAttempt;

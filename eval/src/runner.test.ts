@@ -502,6 +502,92 @@ describe('runEval', () => {
     expect(evalResultsSchema.parse(results)).toEqual(results);
   });
 
+  it('leaves out a run whose reservation a provider error granted, not as a page', async () => {
+    // 002-b waits for 001-a's money. 001-a's provider error frees it before the eval stops,
+    // so 002-b gets a reservation and then sees the stop, before its first attempt.
+    const first = deferred<AgentAttempt>();
+    const calls: string[] = [];
+    const fn: AttemptFn = (s, tier) => {
+      calls.push(s.id);
+      return s.id === '001-a' ? first.promise : Promise.resolve(played(attempt(tier)));
+    };
+    const running = runEval(
+      base(fn, {
+        config: 'tier1-only',
+        scenarios: [scenario('001-a'), scenario('002-b')],
+        maxCostUsd: 0.5,
+        concurrency: 2,
+      }),
+    );
+    await flush();
+    first.reject(new ProviderError('timeout', 'model call timed out', 0));
+    const results = await running;
+    expect(calls).toEqual(['001-a']);
+    expect(results.runs).toEqual([]);
+    expect(results.summary.falsePages).toBe(0);
+    expect(results.stoppedForProvider).toBe(true);
+    expect(results.notPlayed).toEqual([{ scenario: '002-b', run: 1 }]);
+    expect(results.spentUsd).toBe(0);
+  });
+
+  it('leaves out a mid-climb run whose next reservation a provider error granted', async () => {
+    const first = deferred<AgentAttempt>();
+    const calls: { id: string; tier: Tier }[] = [];
+    const fn: AttemptFn = (s, tier) => {
+      calls.push({ id: s.id, tier });
+      if (s.id === '001-a') return first.promise;
+      return Promise.resolve(
+        played(attempt(tier, { exitStatus: 'step_limit', checkPassed: false })),
+      );
+    };
+    const running = runEval(
+      base(fn, {
+        scenarios: [scenario('001-a'), scenario('002-b')],
+        maxCostUsd: 1,
+        concurrency: 2,
+      }),
+    );
+    await flush();
+    // 002-b played Tier 1 and ran out of steps; its Tier 2 waits for 001-a's money.
+    expect(calls).toEqual([
+      { id: '001-a', tier: 1 },
+      { id: '002-b', tier: 1 },
+    ]);
+    first.reject(new ProviderError('timeout', 'model call timed out', 0));
+    const results = await running;
+    expect(calls).toHaveLength(2);
+    expect(results.runs).toEqual([]);
+    expect(results.notPlayed).toEqual([{ scenario: '002-b', run: 1 }]);
+  });
+
+  it('leaves out a run whose setup finished after a provider error', async () => {
+    const setup = deferred<void>();
+    const calls: string[] = [];
+    const fn: AttemptFn = (s, tier) => {
+      calls.push(s.id);
+      if (s.id === '001-a') {
+        return Promise.reject(new ProviderError('rate_limited', 'HTTP 429', 0));
+      }
+      return Promise.resolve(played(attempt(tier)));
+    };
+    const running = runEval(
+      base(fn, {
+        config: 'tier1-only',
+        scenarios: [scenario('001-a'), scenario('002-b')],
+        maxCostUsd: 5,
+        concurrency: 2,
+        // A setup that doesn't watch the signal finishes as if nothing stopped.
+        prepareRun: (s) => (s.id === '002-b' ? setup.promise : Promise.resolve()),
+      }),
+    );
+    await flush();
+    setup.resolve();
+    const results = await running;
+    expect(calls).toEqual(['001-a']);
+    expect(results.runs).toEqual([]);
+    expect(results.notPlayed).toEqual([{ scenario: '002-b', run: 1 }]);
+  });
+
   it('reads a results file written before stoppedForProvider existed', async () => {
     const { fn } = scripted([]);
     const old: Record<string, unknown> = { ...(await runEval(base(fn))) };
