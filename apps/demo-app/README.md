@@ -84,7 +84,9 @@ after a set number of retries per deployment. In compose, migrate and seed run o
 `demo-app-migrate`, so a restart doesn't reseed stock (Railway seeds only at deploy).
 
 Rollback isn't here: the app never holds a Railway token, and a broken app has to be
-rolled back from outside. It's `rollback()` with a `RailwayDeployer` in `@page/toolkit`.
+rolled back from outside. It's `rollback()` with a `RailwayDeployer` in `@page/toolkit`,
+which the node daemon gives Tier 3 runs as `ops.planRollback` and `ops.rollback`
+([`apps/node/README.md`](../node/README.md)).
 
 ## Notes
 

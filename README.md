@@ -37,6 +37,7 @@ demo app --errors--> PostHog --webhook--> orchestrator --call + SMS--> on-call (
                                             |
                                             +--> PR on the demo repo (Tier 2+)
                                             +--> demo app ops API (Tier 3)
+                                            +--> demo app rollback on Railway (Tier 3)
 ```
 
 1. Ingest. The demo app reports unhandled errors to PostHog Error Tracking, and a PostHog
@@ -57,17 +58,17 @@ demo app --errors--> PostHog --webhook--> orchestrator --call + SMS--> on-call (
    ([`threshold.ts`](packages/agent/src/threshold.ts)). A run that hits a limit before it
    submits a patch moves the issue up a tier. Past Tier 3 the issue fails and stays with a
    human. A submitted patch puts the issue in `awaiting_approval`. A Tier 3 run that fixes
-   the live app through its ops API and changes no code resolves the issue, since the fix is
-   live already and there is no patch to approve.
+   the live app through its ops API or a rollback and changes no code resolves the issue,
+   since the fix is live already and there is no patch to approve.
 5. Audit. Every agent command goes through `execute()` in `@page/toolkit`, which parses it,
    checks it against the tier's rules and writes a `steps` row before it runs. A command whose
    step can't be written doesn't run.
 
-| Tier | What the agent can do                                                                                                                   |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | Read, search, edit and test the code in the sandbox through an allowlist of shell commands                                              |
-| 2    | Tier 1, plus push a `pageagents/<runId>` branch and open a PR on the demo repo, [`atontalapur/page-demo`](docs/demo-repo.md)            |
-| 3    | Tier 2, plus read and change the live demo app's runtime config and restart it through its ops API, with at most 3 restarts per attempt |
+| Tier | What the agent can do                                                                                                         |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Read, search, edit and test the code in the sandbox through an allowlist of shell commands                                    |
+| 2    | Tier 1, plus push a `pageagents/<runId>` branch and open a PR on the demo repo, [`atontalapur/page-demo`](docs/demo-repo.md)  |
+| 3    | Tier 2, plus read and change the live demo app's runtime config, restart it (at most 3 times) and roll back its deploy (once) |
 
 At every tier the toolkit blocks `sudo`, `curl`, `wget`, `docker`, force pushes, shell
 expansion and subshells, and writes outside the repo or under `.git/`, `.github/` or
@@ -89,7 +90,6 @@ Not built yet:
 - The dashboard. `apps/ui` renders placeholder data and doesn't read the orchestrator.
 - `ApprovalsModule` is a stub, and `GatewayModule` serves the UI but not the node daemons, so a
   kill can't stop a run a daemon has already claimed.
-- A rollback tool for Tier 3, so scenario 024 (a bad deploy) has no agent fix.
 
 ## Results
 

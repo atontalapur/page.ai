@@ -93,7 +93,11 @@ pnpm eval:run page-sandbox --config ladder --set dev --runs 3 --max-cost 5 --con
   code scenarios at Tier 3 get them on an in-memory fake. `check.sh` runs on the host as
   soon as the agent stops, before the next tier can change the app. Ops runs take turns
   on the app (code runs don't wait), one eval process at a time may hold it (a daemon's
-  Tier 3 run on the same machine takes the same lock), and the eval resets it when it ends. 024 needs a rollback, which has no agent tool yet.
+  Tier 3 run on the same machine takes the same lock), and the eval resets it when it
+  ends. 024 needs a rollback. The daemon gives Tier 3 runs a rollback tool when it has the
+  app's Railway service, but the eval gives attempts no deployer, so they don't get it and
+  the Tier 3 prompt is the one the ops set saw. 024 is held out and its one run is used, so
+  it stays unplayed.
 - An attempt that throws (a sandbox or `break.sh` failure) goes in `errors` and its run
   is left out; the eval goes on. If it failed after the agent ran (the diff or the check
   sandbox), the agent's real cost counts against the budget; otherwise its spend is
