@@ -308,7 +308,10 @@ ingest, rule triage, the fix job, the daemon's run and its outcome with no PostH
 GitHub or model, so it costs nothing. The daemon's scripted model runs the tests and
 submits, so a Tier 1 scenario ends on `awaiting_approval`. It proves the services hand the
 issue along, not that a fix is right. It plays code scenarios only, since an ops scenario
-needs an app to break. CI's `pipeline` job runs 001 this way on every PR.
+needs an app to break. `pnpm e2e:fake [id] [options]` (`scripts/e2e-fake.sh`) builds the
+orchestrator, starts it and a daemon on fakes against `DATABASE_URL` with throwaway secrets,
+and runs the test; CI's `pipeline` job runs it for 001 on every PR. Point `DATABASE_URL` at a
+database you don't mind filling with test issues.
 
 A staging run, step by step:
 

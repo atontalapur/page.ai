@@ -28,7 +28,8 @@
     "eval:report": "node eval/scripts/eval-report.ts",
     "eval:charts": "node eval/scripts/eval-charts.ts",
     "eval:tune": "node eval/scripts/eval-tune.ts",
-    "e2e": "node --env-file-if-exists=.env eval/scripts/e2e.ts"
+    "e2e": "node --env-file-if-exists=.env eval/scripts/e2e.ts",
+    "e2e:fake": "bash eval/scripts/e2e-fake.sh"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",
