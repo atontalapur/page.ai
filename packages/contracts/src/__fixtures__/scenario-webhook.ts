@@ -1,7 +1,8 @@
 import type { PosthogWebhook } from '../webhook.ts';
 
 // A scenario's report (scenarios/<id>/meta.json) turned back into the `$exception` webhook the
-// demo app's error would send. The orchestrator's triage tests read what ingest stores for it.
+// demo app's error would send. The orchestrator's triage tests read what ingest stores for it,
+// and the end-to-end test's fake target (eval/src/e2e-fake.ts) sends it to the orchestrator.
 
 /**
  * `source`: frames name the app's files, as a dev server's or a symbolicated event's do.
