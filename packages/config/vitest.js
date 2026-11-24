@@ -44,9 +44,18 @@ const gated = '{{tier,approval}*,*{Tier,Approval}*,*[-_.]{tier,approval}*}';
  * - `--shard` fails when there are more shards than test files.
  * - Vitest also fails a file with no tests in it, or a suite with none (`it.each([])`).
  *
- * @param {{ coverage?: number }} [options] global coverage threshold in percent
+ * A package sets its minimums one point under its coverage on main, rounded down, so a drop
+ * fails CI instead of sliding toward 70 (#210). Raise them when coverage goes up.
+ *
+ * @typedef {{ statements: number, branches: number, functions: number, lines: number }} Minimums
+ * @param {{ coverage?: number | Minimums }} [options] coverage minimums in percent: one number
+ *   for all four metrics, or one per metric
  */
 export function vitestConfig({ coverage = 70 } = {}) {
+  const minimums =
+    typeof coverage === 'number'
+      ? { statements: coverage, branches: coverage, functions: coverage, lines: coverage }
+      : coverage;
   return defineConfig({
     test: {
       // Set, not left to the default: `--changed` turns it on when it's unset.
@@ -64,10 +73,7 @@ export function vitestConfig({ coverage = 70 } = {}) {
           'src/**/*.d.ts',
         ],
         thresholds: {
-          lines: coverage,
-          functions: coverage,
-          branches: coverage,
-          statements: coverage,
+          ...minimums,
           // The named file itself, or everything under the named directory.
           [`src/**/${gated}{,/**}`]: strict,
         },
