@@ -205,6 +205,14 @@ describe('instancePrompt', () => {
     expect(prompt).toContain('pnpm --filter @page/demo-app test');
     expect(prompt).not.toMatch(/sed -i|echo COMPLETE/);
   });
+
+  it('stops a run from searching again once it has the failing line', () => {
+    const prompt = instancePrompt({ task: 'x' });
+    expect(prompt).toContain('Do not search again for a string you have already seen.');
+    expect(prompt).toContain('the next action is an edit, not another search.');
+    expect(prompt).toContain('Do not repeat a command you already ran');
+    expect(prompt).toContain('Search once, then edit.');
+  });
 });
 
 describe('observationPrompt', () => {
@@ -236,6 +244,17 @@ describe('observationPrompt', () => {
     });
     expect(text).toContain('<refused>refused: sed is not allowed</refused>');
     expect(text).toContain('nothing ran');
+    expect(text).toContain('Do not ask for it again.');
+  });
+
+  it('tells the agent not to repeat a search it just ran', () => {
+    const text = observationPrompt({
+      ok: true,
+      value: { kind: 'exec', input: 'rg -n RegExp apps/demo-app/src', exitCode: 0, output: 'hit' },
+    });
+    expect(text).toContain('Do not run this command again.');
+    const test = observationPrompt({ ok: true, value: { ...exec, exitCode: 0, output: 'ok' } });
+    expect(test).not.toContain('Do not run this command again.');
   });
 });
 
