@@ -311,7 +311,7 @@ This tier can't read or change the live app's settings, its runtime config overr
 
 const KG_SECTION = `## The knowledge graph
 
-Start with a ${KG_SEARCH} block about the bug: what earlier runs learned can spare you reading the same code again. Before you submit, write what you explored with ${KG_WRITE} blocks: a node for each file or function that mattered, keyed \`file:<path>\` or \`function:<path>#<name>\`, saying what it does and what you found, linked to the nodes it uses. A node must exist before another can link to it. Your writes go to this run's branch, and reach main only if the fix is merged.
+Start with one ${KG_SEARCH} block about the bug: what earlier runs learned can spare you reading the same code again. If it names a file, read that file next. Do not search the graph again for the same bug. Before you submit, write what you explored with ${KG_WRITE} blocks: a node for each file or function that mattered, keyed \`file:<path>\` or \`function:<path>#<name>\`, saying what it does and what you found, linked to the nodes it uses. A node must exist before another can link to it. Your writes go to this run's branch, and reach main only if the fix is merged.
 
 `;
 
@@ -333,11 +333,11 @@ ${task}
 ${handedOn ? handedOnSection(handedOn) : ''}
 ## Recommended workflow
 
-Work step by step so you can check each change as you go.
+Work step by step so you can check each change as you go. You have few steps. Spend them on the edit and the tests, not on searching.
 
-1. Find and read the code involved in the bug.
+1. Read the file the stack trace names. If it names none, search once with rg, then read that file. Do not search again for a string you have already seen.
 2. Find or write a test that shows the bug, and run it to see it fail.
-3. Edit the source code to fix the bug.
+3. Edit the source code to fix the bug. Once the failing line is in front of you, the next action is an edit, not another search.
 4. Run the test again to confirm the fix, then the whole suite, lint and typecheck: \`${PNPM} test\`, \`${PNPM} lint\` and \`${PNPM} typecheck\`.
 ${publish ? `${PUBLISH_STEP}6` : '5'}. Submit with a ${SUBMIT} block. Do not put anything else in that response. After you submit, you cannot continue working on this task.
 
@@ -349,8 +349,11 @@ ${knowledge === true ? KG_SECTION : ''}${handsOff(tier, canHandOff) ? ESCALATE_S
 4. Commands may use pipes, \`&&\`, \`||\`, \`;\` and redirects to files inside the repository. Globs, \`$\` variables, backticks, \`$(...)\`, heredocs and subshells are refused, so quote patterns and pass paths explicitly. Quote paths that contain brackets, such as Next.js route folders: \`cat -n "app/orders/[id]/page.tsx"\`.
 5. Change files only with ${EDIT} blocks. The SEARCH text must match the file exactly, including indentation, and appear exactly once. Use an empty SEARCH section to create a new file.
 6. Command output is cut to about 8,000 characters, keeping the start and the end. Narrow your command if you need the middle.
+7. Do not repeat a command you already ran, and do not search for the same text twice. A repeated search finds nothing new. After you have read the failing line, edit it with a ${EDIT} block. If the edit is refused because the SEARCH text does not match, read that file once and edit again. Do not go back to searching the repository.
 
 ## Useful command examples
+
+Search once, then edit. These examples show the shape of a command, not a list to work through.
 
 ### Find where something is defined or used
 
@@ -402,17 +405,33 @@ ${FENCE}`;
 
 const output = (text: string) => `<output>\n${text}\n</output>`;
 
+// A look at the repo. The note rides with the result, where the model is reading, so a
+// search it already ran does not become the next action.
+const LOOKED = '\nYou have this. Do not run this command again. Edit the file, or run a test.';
+
+function looked(input: string): boolean {
+  return /(?:^|[;&|]\s*)(rg|find|ls|cat|head|tail|git)(?:\s|$)/.test(input.trim());
+}
+
+function withLook(input: string, body: string): string {
+  return looked(input) ? `${body}${LOOKED}` : body;
+}
+
 /** What the model sees after an action runs. */
 export function observationPrompt(result: Result<ExecOk, ExecErr>): string {
-  if (result.ok) return `<returncode>0</returncode>\n${output(result.value.output)}`;
+  if (result.ok)
+    return withLook(
+      result.value.input,
+      `<returncode>0</returncode>\n${output(result.value.output)}`,
+    );
   const e = result.error;
   switch (e.type) {
     case 'failed':
-      return `<returncode>${e.exitCode}</returncode>\n${output(e.output)}`;
+      return withLook(e.input, `<returncode>${e.exitCode}</returncode>\n${output(e.output)}`);
     case 'timed_out':
-      return `<timed_out/>\n${output(e.output)}`;
+      return withLook(e.input, `<timed_out/>\n${output(e.output)}`);
     case 'refused':
-      return `<refused>${e.message}</refused>\nThe command was refused, so nothing ran. Try a different command that the rules allow.`;
+      return `<refused>${e.message}</refused>\nThe command was refused, so nothing ran. Do not ask for it again. Use a command the rules allow.`;
     case 'audit_failed':
       // runAgent ends the run on this before it builds an observation.
       throw new Error(`no observation for an unaudited step: ${e.message}`);
