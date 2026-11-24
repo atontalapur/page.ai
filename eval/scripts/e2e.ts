@@ -37,15 +37,18 @@ import {
 } from '../src/e2e-approvals.ts';
 import { localAppUrl } from '../src/e2e-app.ts';
 import { loadScenario, ScenarioError, type Scenario } from '../src/scenario.ts';
+import { fakeTarget } from '../src/e2e-fake.ts';
 import { loadSplit } from '../src/split.ts';
 import { localTarget, stagingTarget } from './e2e-targets.ts';
 
-const USAGE = `usage: pnpm e2e <scenario-id> [--target local|staging]
+const USAGE = `usage: pnpm e2e <scenario-id> [--target local|staging|fake]
   [--expect pr|approval|resolved] [--approve auto|manual] [--timeout <step>=<duration>]...
   [--budget <duration>] [--poll <duration>] [--drain <duration>] [--runs <n>] [--keep]
   [--no-build] [--out <file.json>]
 
-  --target   local (default): a demo app on this machine, staging: the app at DEMO_APP_URL
+  --target   local (default): a demo app on this machine, staging: the app at DEMO_APP_URL,
+             fake: no demo app, the report goes straight to the orchestrator's webhook (CI,
+             with the orchestrator and daemon on USE_FAKE_ADAPTERS; code scenarios only)
   --expect   what the run ends on (default: pr for a Tier 2 code scenario, resolved for an
              ops scenario, else approval)
   --approve  a Tier 3 scenario's approval requests: auto (default) approves the test's own
@@ -69,8 +72,9 @@ Env: E2E_DATABASE_URL (or DATABASE_URL), E2E_ORCHESTRATOR_URL (or ORCHESTRATOR_U
 E2E_ORCHESTRATOR_API_TOKEN (or ORCHESTRATOR_API_TOKEN), E2E_DASHBOARD_TOKEN (--approve auto
 on an orchestrator with personal tokens), GITHUB_TOKEN and GITHUB_REPO, DEMO_APP_URL (staging only), E2E_LOCAL_APP_URL (local ops
 scenarios, default http://localhost:\${DEMO_APP_PORT:-3000}), OPS_SECRET (ops scenarios),
-PGBOSS_SCHEMA, and for local code scenarios POSTHOG_KEY, POSTHOG_HOST, E2E_DEMO_APP_PORT,
-E2E_DEMO_DATABASE_URL.`;
+PGBOSS_SCHEMA, for local code scenarios POSTHOG_KEY, POSTHOG_HOST, E2E_DEMO_APP_PORT,
+E2E_DEMO_DATABASE_URL, and for --target fake E2E_POSTHOG_WEBHOOK_SECRET (or
+POSTHOG_WEBHOOK_SECRET).`;
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -116,8 +120,8 @@ const env = (name: string): string | undefined => {
 const [id, ...extra] = positionals;
 if (id === undefined) fail('missing <scenario-id>');
 if (extra.length > 0) fail(`one scenario at a time, not ${positionals.join(' ')}`);
-if (values.target !== 'local' && values.target !== 'staging') {
-  fail(`--target must be local or staging, not ${values.target}`);
+if (values.target !== 'local' && values.target !== 'staging' && values.target !== 'fake') {
+  fail(`--target must be local, staging or fake, not ${values.target}`);
 }
 if (
   values.expect !== undefined &&
@@ -211,7 +215,16 @@ const seedLimit = stepTimeouts(scenario, options.timeouts).seed;
 let target: Target;
 // The app the scenario's scripts run against, for the header.
 let appUrl: string;
-if (values.target === 'staging') {
+if (values.target === 'fake') {
+  const webhookSecret = env('E2E_POSTHOG_WEBHOOK_SECRET') ?? env('POSTHOG_WEBHOOK_SECRET');
+  if (webhookSecret === undefined) {
+    fail(
+      "--target fake needs E2E_POSTHOG_WEBHOOK_SECRET (the orchestrator's POSTHOG_WEBHOOK_SECRET)",
+    );
+  }
+  target = fakeTarget({ orchestratorUrl: orchestratorUrl.replace(/\/+$/, ''), webhookSecret });
+  appUrl = "none: the report goes straight to the orchestrator's webhook";
+} else if (values.target === 'staging') {
   const demoAppUrl = env('DEMO_APP_URL')?.replace(/\/+$/, '');
   if (demoAppUrl === undefined) fail('--target staging needs DEMO_APP_URL');
   target = stagingTarget({ url: demoAppUrl, opsSecret });

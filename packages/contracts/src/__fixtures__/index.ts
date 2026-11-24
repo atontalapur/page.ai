@@ -300,3 +300,5 @@ export const nodeEnvFixture = {
   GITHUB_TOKEN: 'github_pat_test',
   GITHUB_REPO: 'atontalapur/page-demo',
 };
+
+export { webhookFor, type FrameShape } from './scenario-webhook.ts';

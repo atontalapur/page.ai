@@ -168,6 +168,7 @@ pnpm eval:tune eval/results/<dev-run>-*.json
 ```sh
 pnpm e2e 001-bad-currency-code --target local
 pnpm e2e 016-product-id-or-slug --target staging --expect approval --runs 3
+pnpm e2e 001-bad-currency-code --target fake
 ```
 
 `pnpm e2e` plays one scenario through the live pipeline: it seeds the bug, runs
@@ -298,6 +299,19 @@ the bug. The bug has to survive `next build`: 001 throws while prerendering, so 
 serve it. Staging is seeded with 016-product-id-or-slug. A live fix always starts at Tier 1
 (`start_fix` in `apps/orchestrator/src/issues/transitions.ts`), and Tier 1 can't push, so a
 bug that Tier 1 fixes ends on `awaiting_approval`. Pass `--expect approval` for it.
+
+`--target fake` has no demo app (#211). Seeding does nothing, and the trigger sends the
+scenario's report to `POST /ingest/posthog` as the webhook the demo app's error would send
+(`webhookFor` in `@page/contracts/fixtures`), with a PostHog issue id of its own per run. It
+is for CI: with the orchestrator and the daemon both on `USE_FAKE_ADAPTERS`, the run covers
+ingest, rule triage, the fix job, the daemon's run and its outcome with no PostHog, Docker,
+GitHub or model, so it costs nothing. The daemon's scripted model runs the tests and
+submits, so a Tier 1 scenario ends on `awaiting_approval`. It proves the services hand the
+issue along, not that a fix is right. It plays code scenarios only, since an ops scenario
+needs an app to break. `pnpm e2e:fake [id] [options]` (`scripts/e2e-fake.sh`) builds the
+orchestrator, starts it and a daemon on fakes against `DATABASE_URL` with throwaway secrets,
+and runs the test; CI's `pipeline` job runs it for 001 on every PR. Point `DATABASE_URL` at a
+database you don't mind filling with test issues.
 
 A staging run, step by step:
 
@@ -445,6 +459,7 @@ reports in view, so the counts overstate how either does on a new bug.
 | `PGBOSS_SCHEMA`                                             | The orchestrator's pg-boss schema (default `pgboss`)                                         |
 | `POSTHOG_KEY`, `POSTHOG_HOST`                               | Local code scenarios: passed to the demo app container. Key required                         |
 | `E2E_DEMO_APP_PORT`, `E2E_DEMO_DATABASE_URL`                | Local code scenarios (defaults 3100 and the compose Postgres's `demo`)                       |
+| `E2E_POSTHOG_WEBHOOK_SECRET`, else `POSTHOG_WEBHOOK_SECRET` | `--target fake`: the orchestrator's webhook secret                                           |
 
 The run's header names the app URL the scenario's scripts run against, and the database's
 host, never its URL. If Railway's Postgres wants TLS, add `?sslmode=require` to the URL.
