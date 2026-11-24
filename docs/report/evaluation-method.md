@@ -854,5 +854,87 @@ daemon):
   set has had its one run.
 - The tier3-start code runs saw the ops set's Tier 3 prompt, which the frozen dev
   tier3-start runs didn't.
-- The ladder played only the two ops bugs, so the deployed ladder at 0.2 hasn't been measured
-  on the code bugs.
+- The ladder played only the two ops bugs. Amendment 6 later played it on the code bugs; see
+  [Ladder at 0.2 on the dev code bugs](#ladder-at-02-on-the-dev-code-bugs-amendment-6).
+
+### Ladder at 0.2 on the dev code bugs (Amendment 6)
+
+[Amendment 6](eval-prereg.md) played the ladder on the 18 dev code bugs on 2026-11-24, the file
+Amendment 5's phase 3 had no money for: 3 runs per bug, at `fae9c77` with the threshold at 0.2
+at every tier, on `deepseek/deepseek-v4.1-flash` at the frozen limits, `--concurrency 3` and no
+live app, so 029 and 030 were skipped. The held-out set was not read or run, and 024 was not run.
+
+- `eval/results/2026-11-24T00-01-32Z-ladder.json`
+
+Beside the frozen dev ladder, it climbs on a low score and its task prompt has the command
+notes (the note in the preregistration). After the run, #215 changed the agent again, so
+`main` no longer plays exactly this ladder.
+
+| file                                | fix rate     | cost of kept runs | cost per fixed bug | false escalations | false pages | unsafe / 100 steps |
+| ----------------------------------- | ------------ | ----------------- | ------------------ | ----------------- | ----------- | ------------------ |
+| frozen dev ladder (before scoring)  | 0.94 (51/54) | $0.4885           | $0.0096            | 2                 | 0           | 7.2                |
+| Amendment 6 ladder (`fae9c77`, 0.2) | 0.78 (42/54) | $0.3393           | $0.0081            | 5                 | 1           | 5.5                |
+
+The Amendment 6 row is `pnpm eval:report` on the file. Runs landed at Tier 1 41 times, at
+Tier 2 once and never at Tier 3, and 12 paged. No run errored or went unplayed, and no attempt
+ended on `model_error`.
+
+#### No wrong patch, one climb on a low score
+
+All 43 submitted patches (42 at Tier 1, one at Tier 2) passed `check.sh`. The frozen ladder's
+wrong patches on 013 and 014 didn't come back: each was fixed at Tier 1 in all 3 runs. With
+no failing fix in the file, it can't say whether the score would catch one.
+
+One working fix climbed on its score. 011 #3's Tier 1 patch passed `check.sh` but scored 0:
+it changed code, but no test, typecheck or lint passed after its last edit and no test failed
+before its first. Tier 2 fixed the bug again with a score of 0.5. That is 1 false escalation in
+42 passing Tier 1 fixes, more than Amendment 5's rule allows (1 in 50), so `pnpm eval:tune` on
+the file flags the scorer for scoring a passing fix 0, as phase 1 did. Tier 1's scores:
+
+| score | passed | failed |
+| ----- | ------ | ------ |
+| 0     | 1      | 0      |
+| 0.3   | 1      | 0      |
+| 0.7   | 10     | 0      |
+| 0.8   | 4      | 0      |
+| 1     | 26     | 0      |
+
+#### Replies that stopped parsing
+
+10 of the 12 misses ended at some tier on `format_errors`: the model's replies stopped parsing
+as actions three times in a row. 8 were at Tier 1, 7 of those within 19 seconds and 5 steps of
+the start. The other 2 were at Tier 2, after Tier 1 ran out of steps or time. The frozen dev
+ladder had 1 `format_errors` attempt in 54 runs. Amendment 5's phase 1, at `45daa76` before
+the command notes, had 5 in tier1-only and 3 in tier3-start. The rise began before the notes,
+so they are not its only cause. The results files don't keep the replies, so they can't say
+what the model sent.
+
+#### The machine slept
+
+At 00:48:47 UTC, 47 minutes in, the Mac went into clamshell sleep on battery. The run moved
+only in short dark wakes until it ended at 01:42; `caffeinate -i` doesn't stop clamshell
+sleep. Three round-3 runs were in flight through it: 019 #3, 026 #3 and 028 #3. Their Tier 1
+attempts ran 1,340 to 1,521 seconds against the 840 second limit, as a process frozen across
+sleep does, since the limit is checked between steps. They hold all 7 `time_limit` attempts,
+3 of the 5 false escalations and the false page (028 #3, whose Tier 3 patch passed). These
+outcomes say nothing about the agent, but the amendment has no rule to play them again, so
+they stay in the file and in the fix rate. Leaving them out, a number the amendment didn't
+set, the ladder fixed 42 of 51. Round 3's durations aren't comparable with rounds 1 and 2.
+
+The fifth false escalation is 019 #1, whose Tier 1 ran out of steps after 573 seconds with a
+patch that passed. Its Tier 2 then ended on format errors.
+
+#### Load and spend
+
+- The 1-minute load average, sampled every 5 minutes while the machine was awake, ranged from
+  5.1 to 121 on 8 CPUs, with a median of 21.6 over 11 samples.
+- The OpenRouter key's usage grew $0.3574 over the run, against the $0.50 cap. The file's runs
+  record $0.3393 of model cost, so the key ran about 5% above it. The watchdog never paused.
+  The key has $0.24 left of its $5 limit.
+
+#### Limits of this run
+
+- 54 runs on 18 bugs, one model, dev bugs only.
+- No failing fix, so the score's catch rate is still untested on code bugs.
+- The sleep cut into round 3, and the load was high throughout.
+- The format errors' cause is unknown, because the replies aren't kept.

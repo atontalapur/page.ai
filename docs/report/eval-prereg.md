@@ -225,6 +225,14 @@ Budget and stop rules:
 Other agents may run tests on this machine, so its load is logged every five minutes, and
 attempts that end on a step, cost or time limit are reported apart with the load.
 
+Note (2026-11-24), not an amendment, on how Amendment 6 ran. It played as written at
+`fae9c77`, in one go: all 54 runs, with no errors, no provider stop and no `model_error`, so
+nothing was played again. The key's usage grew $0.3574 of the $0.50 cap, and the watchdog
+never paused. 47 minutes in, the machine went into clamshell sleep. The three round-3 runs in
+flight through it ended on the time limit, and the amendment has no rule to replay them, so
+they stay in the file. The held-out set was not read or run. The results are under
+[Ladder at 0.2 on the dev code bugs](evaluation-method.md#ladder-at-02-on-the-dev-code-bugs-amendment-6).
+
 ## Bars
 
 lesson: how close the full ladder gets to the Tier 3 from-start fix rate while granting
