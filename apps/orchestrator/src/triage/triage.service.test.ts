@@ -1,4 +1,5 @@
 import { notifyJobSchema } from '@page/contracts';
+import type { ChoiceAnswer, Decider, DecisionResult } from '@page/model-client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { DecisionsService } from '../decisions/decisions.service.ts';
 import { createTestDeps } from '../db/test-utils.ts';
@@ -225,5 +226,94 @@ describe('TriageService', () => {
     );
     await auto.handle({ v: 1, issueId: issue.id });
     expect(await issues.get(issue.id)).toMatchObject({ status: 'fixing', currentTier: 1 });
+  });
+});
+
+describe('TriageService with jev', () => {
+  const answer = (choice: string, confidence: number): ChoiceAnswer => ({
+    choice,
+    probabilities: { [choice]: confidence },
+    confidence,
+  });
+
+  /** Triage whose jev answers `startTier` with the class and severity given. */
+  function withJev(cls: ChoiceAnswer, startTier: ChoiceAnswer) {
+    const decider: Decider = {
+      decide: <Q extends string>() =>
+        Promise.resolve({
+          ok: true,
+          decision: {
+            model: 'typesafe/jev-1.14',
+            costUsd: 0.0002,
+            answers: { class: cls, severity: answer('high', 0.8), startTier },
+          },
+        } as unknown as DecisionResult<Q>),
+    };
+    const decisions = new DecisionsService(deps.db, null, deps.logger);
+    const service = new TriageService(
+      issues,
+      deps.jobs,
+      new TriageClassifier(null, 1000, decider),
+      // The cap counts every fix this file starts, so it is out of the way here.
+      { ...deps.config, autoStartFix: true, autoStartFixMaxPerHour: 1000 },
+      deps.logger,
+      decisions,
+    );
+    return { service, decisions };
+  }
+
+  let n = 0;
+  async function triaged(service: TriageService) {
+    const { issue } = await issues.report({ fingerprint: `jev-${++n}`, title: 'Hydration failed' });
+    await service.handle({ v: 1, issueId: issue.id });
+    const jobs = await deps.boss.findJobs<FixJob>(FIX_QUEUE, { data: { issueId: issue.id } });
+    return { issue: await issues.get(issue.id), tiers: jobs.map((j) => j.data.tier) };
+  }
+
+  it('starts the first fix at the tier jev picks once it is MIN_JEV_CONFIDENCE sure', async () => {
+    const { service, decisions } = withJev(answer('frontend', 0.9), answer('3', 0.5));
+    const { issue, tiers } = await triaged(service);
+
+    expect(issue).toMatchObject({ status: 'fixing', class: 'frontend', severity: 'high' });
+    expect(issue.currentTier).toBe(3);
+    expect(tiers).toEqual([3]);
+    expect(await decisions.list(issue.id)).toMatchObject([
+      {
+        question: 'triage',
+        model: 'typesafe/jev-1.14',
+        choice: 'frontend / high',
+        probabilities: { frontend: 0.9, 'severity high': 0.8 },
+        // The less sure of the two answers.
+        confidence: 0.8,
+      },
+      { question: 'start_tier', choice: '3', confidence: 0.5 },
+    ]);
+  });
+
+  it('starts at Tier 1 when jev is less sure of its tier, and still logs its pick', async () => {
+    const { service, decisions } = withJev(answer('frontend', 0.9), answer('3', 0.49));
+    const { issue, tiers } = await triaged(service);
+
+    expect(issue.currentTier).toBe(1);
+    expect(tiers).toEqual([1]);
+    expect((await decisions.list(issue.id)).at(-1)).toMatchObject({
+      question: 'start_tier',
+      choice: '3',
+      confidence: 0.49,
+    });
+  });
+
+  it('starts a settings bug at Tier 3, whatever tier jev picks', async () => {
+    const { service, decisions } = withJev(answer('infra-config', 0.8), answer('1', 0.9));
+    const { issue, tiers } = await triaged(service);
+
+    expect(issue).toMatchObject({ class: 'infra-config', currentTier: 3 });
+    expect(tiers).toEqual([3]);
+    // The log keeps the tier the fix started at, with how sure jev was of the class.
+    expect((await decisions.list(issue.id)).at(-1)).toMatchObject({
+      question: 'start_tier',
+      choice: '3',
+      confidence: 0.8,
+    });
   });
 });

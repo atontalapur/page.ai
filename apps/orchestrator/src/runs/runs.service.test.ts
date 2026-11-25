@@ -9,7 +9,13 @@ import { transition, type IssueState } from '../issues/transitions.ts';
 import { createLogger } from '../logger.ts';
 import { FIX_FAILED_QUEUE, FIX_QUEUE, type FixJob } from '../queue/fix-jobs.ts';
 import { RUN_FINISHED_QUEUE } from '../queue/queues.ts';
-import { failureMessage, issueEventFor, RunsService, type RunFinishedJob } from './runs.service.ts';
+import {
+  failureMessage,
+  issueEventFor,
+  MAX_LOST_RUNS_PER_TIER,
+  RunsService,
+  type RunFinishedJob,
+} from './runs.service.ts';
 
 const deps = await createTestDeps();
 afterAll(() => deps.close());
@@ -384,6 +390,76 @@ describe('RunsService.recordLost', () => {
   });
 });
 
+describe('RunsService.retryLost', () => {
+  const startedAt = new Date(at);
+
+  it('writes the lost run as failed and queues the tier again with its note', async () => {
+    const { issue, job } = await fixing();
+
+    expect(await runs.retryLost(issue.id, job.runId, 1, startedAt, escalationNoteFixture)).toEqual({
+      kind: 'applied',
+      event: 'retry',
+    });
+    expect(await runRow(job.runId)).toMatchObject({
+      issue_id: issue.id,
+      tier: 1,
+      status: 'failed',
+      started_at: startedAt,
+    });
+    const retried = await liveJob(issue.id);
+    expect(retried.runId).not.toBe(job.runId);
+    expect(retried).toMatchObject({ tier: 1, escalationNote: escalationNoteFixture });
+    expect(await issues.get(issue.id)).toMatchObject({ status: 'fixing', currentTier: 1 });
+    const row = await deps.db
+      .selectFrom('issues')
+      .select('current_run_id')
+      .where('id', '=', issue.id)
+      .executeTakeFirstOrThrow();
+    expect(row.current_run_id).toBe(retried.runId);
+    const [lost] = await deps.boss.findJobs(FIX_QUEUE, { id: job.runId });
+    expect(lost?.state).toBe('cancelled');
+  });
+
+  it(`fails the issue when a tier loses its daemon ${MAX_LOST_RUNS_PER_TIER} times`, async () => {
+    const { issue } = await fixing();
+    for (let lost = 1; lost <= MAX_LOST_RUNS_PER_TIER; lost += 1) {
+      const job = await liveJob(issue.id);
+      const event = lost < MAX_LOST_RUNS_PER_TIER ? 'retry' : 'fail';
+      expect(await runs.retryLost(issue.id, job.runId, 1, startedAt)).toEqual({
+        kind: 'applied',
+        event,
+      });
+    }
+    expect(await issues.get(issue.id)).toMatchObject({ status: 'failed', currentTier: 1 });
+    expect((await issues.events(issue.id)).at(-1)?.event).toMatchObject({
+      type: 'fail',
+      reason: `The daemon working the Tier 1 run stopped ${MAX_LOST_RUNS_PER_TIER} times; a person takes over.`,
+    });
+  });
+
+  it('leaves the issue to a run_finished job that is still queued', async () => {
+    const { issue, job } = await fixing();
+    await deps.boss.send(RUN_FINISHED_QUEUE, finished(job), { id: job.runId });
+
+    expect(await runs.retryLost(issue.id, job.runId, 1, startedAt)).toEqual({
+      kind: 'result_pending',
+    });
+    expect(await runRow(job.runId)).toBeUndefined();
+    expect((await liveJob(issue.id)).runId).toBe(job.runId);
+  });
+
+  it('leaves a run that is no longer current, or an issue that does not exist', async () => {
+    const { issue, job } = await fixing();
+    await runs.retryLost(issue.id, job.runId, 1, startedAt);
+    // The sweep saw the same run twice, or the daemon came back after the retry.
+    expect(await runs.retryLost(issue.id, job.runId, 1, startedAt)).toEqual({ kind: 'stale' });
+
+    expect(await runs.retryLost(randomUUID(), job.runId, 1, startedAt)).toEqual({
+      kind: 'no_issue',
+    });
+  });
+});
+
 describe('RunsService.recordFailedResult', () => {
   it('fails the issue of a result that could not be recorded', async () => {
     const { issue, job } = await fixing();
@@ -453,6 +529,24 @@ async function stepsFor(runId: string, inputs: string[]) {
 describe('RunsService.forIssue', () => {
   it('throws for an unknown issue', async () => {
     await expect(runs.forIssue(randomUUID())).rejects.toBeInstanceOf(IssueNotFoundError);
+  });
+
+  it('serves no runs for an issue that has not started a fix', async () => {
+    const { issue } = await issues.report({ fingerprint: `runs-${++n}`, title: 'Boom' }, report);
+    expect(await runs.forIssue(issue.id)).toEqual([]);
+  });
+
+  it('shows no start for a run whose fix job failed before the node reported it', async () => {
+    const { issue, job } = await fixing();
+    await runs.recordLost(job, 'could not queue the run result');
+    expect(await runs.forIssue(issue.id)).toEqual([
+      expect.objectContaining({
+        id: job.runId,
+        status: 'failed',
+        startedAt: null,
+        finishedAt: expect.any(String) as string,
+      }),
+    ]);
   });
 
   it('shows the run in hand as queued, then running with its steps in order', async () => {
@@ -538,6 +632,18 @@ describe('RunsService.owner', () => {
       startedAt: at,
     });
     expect(await runs.owner(randomUUID())).toBeUndefined();
+  });
+
+  it('reads a recorded run with no start, from a fix job that failed with no result', async () => {
+    const { issue, job } = await fixing();
+    await runs.recordLost(job, 'could not queue the run result');
+    expect(await runs.owner(job.runId)).toEqual({
+      issueId: issue.id,
+      tier: 1,
+      current: false,
+      recorded: true,
+      startedAt: null,
+    });
   });
 });
 
