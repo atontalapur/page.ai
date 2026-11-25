@@ -4,6 +4,7 @@ import { createTestDeps } from '../db/test-utils.ts';
 import { IssuesService } from '../issues/issues.service.ts';
 import type { Logger } from '../logger.ts';
 import { FIX_QUEUE, type FixJob } from '../queue/fix-jobs.ts';
+import { RUN_FINISHED_QUEUE } from '../queue/queues.ts';
 import { RunsService } from '../runs/runs.service.ts';
 import { Nodes, type NodeSocket } from './nodes.ts';
 import { LOST_AFTER_MS, OrphanSweeper } from './orphan-sweeper.ts';
@@ -93,6 +94,46 @@ describe('OrphanSweeper', () => {
 
     expect(await sweeper.sweep()).toEqual([]);
     expect(await sweeper.sweep(Date.now() + LOST_AFTER_MS)).toEqual([runId]);
+  });
+
+  it('leaves a lost run whose result is already queued, and does not count it', async () => {
+    fakeDate();
+    const nodes = new Nodes(deps.logger);
+    const sweeper = new OrphanSweeper(deps.db, deps.config, deps.logger, nodes, runs);
+    const { issueId, runId } = await claimed();
+    nodes.remove(daemon(nodes, runId));
+    // The daemon queued its result under the run id, then went away. Only the id is read.
+    await deps.boss.send(RUN_FINISHED_QUEUE, { v: 1 }, { id: runId });
+    pastLost();
+
+    expect(await sweeper.sweep()).toEqual([]);
+    const [job] = await deps.boss.findJobs(FIX_QUEUE, { id: runId });
+    expect(job?.state).toBe('active');
+    expect((await issues.get(issueId)).status).toBe('fixing');
+  });
+
+  it('sweeps on a timer from boot, except on the fake adapters, until shutdown', () => {
+    // Only the interval: each sweep is stubbed, so nothing here reads the database.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const booted = (useFakeAdapters: boolean) => {
+      const config = { ...deps.config, useFakeAdapters };
+      const sweeper = new OrphanSweeper(deps.db, config, deps.logger, new Nodes(deps.logger), runs);
+      const sweep = vi.spyOn(sweeper, 'sweep').mockResolvedValue([]);
+      sweeper.onModuleInit();
+      return { sweeper, sweep };
+    };
+    const live = booted(false);
+    const fake = booted(true);
+
+    vi.advanceTimersByTime(60_000);
+    expect(live.sweep).toHaveBeenCalled();
+    expect(fake.sweep).not.toHaveBeenCalled();
+
+    const swept = live.sweep.mock.calls.length;
+    live.sweeper.onModuleDestroy();
+    fake.sweeper.onModuleDestroy();
+    vi.advanceTimersByTime(60_000);
+    expect(live.sweep).toHaveBeenCalledTimes(swept);
   });
 
   it('runs one sweep at a time', async () => {
