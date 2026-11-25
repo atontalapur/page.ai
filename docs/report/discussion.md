@@ -2,7 +2,8 @@
 
 This section reads the [Results](evaluation-method.md#results) against the question the
 evaluation asks, lists what the system can't do yet and the risks it carries, and names the
-next steps the sources already point to. It describes `main` at `b53eb48` (2026-11-23).
+next steps the sources already point to. It describes `main` at `b53eb48` (2026-11-23), plus
+the Amendment 6 run at `fae9c77` (2026-11-24).
 
 ## What the results show
 
@@ -36,6 +37,13 @@ Most dev misses came from the model, not the tiers. Of the 9 dev misses, 6 ended
 gpt-oss-20b pilot fixed 0 of 9 because the model sent the action tags through its tool-call
 channel instead of its reply ([Amendment 2](eval-prereg.md)).
 
+Amendment 6 played the ladder as it stood at `fae9c77`, scoring on at 0.2, on the 18 dev code
+bugs ([Ladder at 0.2 on the dev code bugs](evaluation-method.md#ladder-at-02-on-the-dev-code-bugs-amendment-6)).
+It fixed 42 of 54, against the frozen dev ladder's 51. The machine slept through three round-3
+runs, which ended on the time limit. Each of the other 9 misses ended on `format_errors`,
+where the frozen dev ladder had 1 such attempt in 54 runs. The results files don't keep the
+replies, so the cause is unknown.
+
 ## What the results don't show
 
 Every run in the Results came before confidence escalation. The ladder that runs today also
@@ -45,8 +53,9 @@ scored after the fact. The dev calibration later played the ladder with scoring 
 030 only, and the score doesn't catch 029: the ladder landed a wrong code patch three times
 again, and each scored 1
 ([Confidence calibration (dev)](evaluation-method.md#confidence-calibration-dev)). Whether it
-would catch 013 or 014 is still not known, since the calibration's runs of those bugs held no
-wrong patch.
+would catch 013 or 014 is still not known. The calibration's runs of those bugs held no wrong
+patch, and neither did Amendment 6's ladder on the dev code bugs: all 43 of its submitted
+patches passed `check.sh`, and it fixed 013 and 014 at Tier 1 in every run.
 
 The held-out set doesn't test climbing, since the ladder never climbed there, and it says
 nothing about ops bugs, since 024 was skipped. No run has used the rollback tool. The four
@@ -143,7 +152,11 @@ tier since #193, the value [Amendment 5](eval-prereg.md)'s rule picked from 98 s
 fixes on dev bugs ([Confidence calibration (dev)](evaluation-method.md#confidence-calibration-dev)).
 At 0.2 a code fix escalates only when it scores 0, so the score fires on missing evidence,
 not weak evidence. At 0.3, four working Tier 3 fixes that only saw the bug fail paged a
-person; at 0.2 they land. The weakness shows in the wrong patches. Phase 1's one failing fix,
+person; at 0.2 they land. A score of 0 can still hit a working fix. In Amendment 6, 011 #3's
+Tier 1 patch passed `check.sh` but scored 0, since no test, typecheck or lint passed after its
+last edit and no test failed before its first, so the ladder climbed and Tier 2 fixed the bug
+again. That is 1 false escalation in 42 passing Tier 1 fixes, more than the 1 in 50 Amendment
+5's rule allows. The weakness shows most in the wrong patches. Phase 1's one failing fix,
 a code patch for ops bug 029 that brought its own passing test, scored 0.7, above five working
 fixes, and phase 3's ladder landed three more such patches on 029, each scoring 1. No
 threshold the rule allows catches them. The score doesn't check that the patch touches the
@@ -151,11 +164,11 @@ code in the report's stack, or that the reported error is gone (#174).
 
 ## Next steps
 
-1. Play the ladder at the calibrated threshold on the dev code bugs. Amendment 5's spend cap
-   left its phase 3 with only the two ops bugs, so the ladder that is deployed hasn't been
-   measured on code bugs.
-2. The wrong patches scored as high as working ones, so change the scorer under a later
-   amendment. #174 names what it lacks: a check that the patch touches the code in the stack, and
+1. Find out why the model's replies stop parsing. Each Amendment 6 miss the sleep didn't cause
+   ended on `format_errors`, and the results files don't keep the replies. Keep an attempt's
+   failed replies in the results file first, so the next paid run shows what the model sent.
+2. The wrong patches scored as high as working ones, and one working fix scored 0, so change
+   the scorer under a later amendment. #174 names what it lacks: a check that the patch touches the code in the stack, and
    one that the reported error is gone.
 3. Create the staging Railway project token (#178), so the staging node gets the rollback
    tool, and run one approved rollback of the staging demo app before anyone relies on

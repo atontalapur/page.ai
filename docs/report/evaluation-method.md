@@ -902,7 +902,8 @@ the file flags the scorer for scoring a passing fix 0, as phase 1 did. Tier 1's 
 #### Replies that stopped parsing
 
 10 of the 12 misses ended at some tier on `format_errors`: the model's replies stopped parsing
-as actions three times in a row. 8 were at Tier 1, 7 of those within 19 seconds and 5 steps of
+as actions three times in a row. Every miss outside the three runs the sleep cut into (below)
+is one of them. 8 were at Tier 1, 7 of those within 19 seconds and 5 steps of
 the start. The other 2 were at Tier 2, after Tier 1 ran out of steps or time. The frozen dev
 ladder had 1 `format_errors` attempt in 54 runs. Amendment 5's phase 1, at `45daa76` before
 the command notes, had 5 in tier1-only and 3 in tier3-start. The rise began before the notes,
