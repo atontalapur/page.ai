@@ -636,7 +636,7 @@ describe('runFixJob', () => {
         model: {
           complete: (messages) => {
             prompts.push(messages.map((m) => m.content).join('\n'));
-            return inner.complete();
+            return inner.complete(messages);
           },
         },
       });
@@ -808,9 +808,9 @@ describe('runFixJob', () => {
       /** A ScriptedModel that keeps the task prompt of its first call. */
       class TaskModel extends ScriptedModel {
         task: string | undefined;
-        override complete(messages?: readonly ChatMessage[]) {
-          this.task ??= messages?.[1]?.content;
-          return super.complete();
+        override complete(messages: readonly ChatMessage[]) {
+          this.task ??= messages[1]?.content;
+          return super.complete(messages);
         }
       }
       const person: Approvals = {
@@ -1142,9 +1142,9 @@ describe('runFixJob', () => {
       /** A ScriptedModel that keeps the system prompt of its first call. */
       class PromptedModel extends ScriptedModel {
         system: string | undefined;
-        override complete(messages?: readonly ChatMessage[]) {
-          this.system ??= messages?.[0]?.content;
-          return super.complete();
+        override complete(messages: readonly ChatMessage[]) {
+          this.system ??= messages[0]?.content;
+          return super.complete(messages);
         }
       }
 
@@ -1301,10 +1301,10 @@ describe('messages from the person on call', () => {
   class ListeningModel extends ScriptedModel {
     readonly lastMessages: string[] = [];
     beforeCall: (n: number) => void = () => {};
-    override complete(messages?: readonly ChatMessage[]) {
+    override complete(messages: readonly ChatMessage[]) {
       this.beforeCall(this.calls);
-      this.lastMessages.push(messages?.at(-1)?.content ?? '');
-      return super.complete();
+      this.lastMessages.push(messages.at(-1)?.content ?? '');
+      return super.complete(messages);
     }
   }
 

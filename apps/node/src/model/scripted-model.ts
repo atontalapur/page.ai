@@ -1,5 +1,5 @@
 import { ACTION_TAGS } from '@page/agent';
-import type { CompletionResult, ModelClient } from '@page/model-client';
+import type { ChatMessage, CompletionResult, ModelClient } from '@page/model-client';
 
 const FENCE = '```';
 
@@ -21,8 +21,10 @@ export const FAKE_REPLIES = [
 ];
 
 /**
- * A ModelClient that answers with `replies` in order, at no cost. Once they run out it
- * keeps submitting, so a run under the fake always ends. Counts the calls it gets.
+ * A ModelClient that answers with `replies` in order, at no cost. Each run starts from the
+ * first reply: the next one is picked by how many replies the run's messages already hold,
+ * so the one model a daemon builds under the fakes serves all its runs. Once they run out
+ * it keeps submitting, so a run under the fake always ends. Counts the calls it gets.
  */
 export class ScriptedModel implements ModelClient {
   calls = 0;
@@ -32,8 +34,9 @@ export class ScriptedModel implements ModelClient {
     this.replies = replies;
   }
 
-  complete(): Promise<CompletionResult> {
-    const content = this.replies[this.calls] ?? submitReply();
+  complete(messages: readonly ChatMessage[]): Promise<CompletionResult> {
+    const step = messages.filter((message) => message.role === 'assistant').length;
+    const content = this.replies[step] ?? submitReply();
     this.calls += 1;
     return Promise.resolve({
       ok: true,

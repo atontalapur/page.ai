@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { jobFixtures, nodeEnvFixture } from '@page/contracts/fixtures';
 import {
   FakeDeployer,
@@ -75,6 +76,22 @@ describe('createDaemon', () => {
     expect(a.results.sent).toMatchObject([
       { issueId: jobFixtures.fix.issueId, tier: 1, result: { status: 'succeeded' } },
     ]);
+  });
+
+  it('runs the tests on every run it serves, not only its first', async () => {
+    // One fake model serves the daemon's life, as createAdapters builds it under the fakes.
+    const a = adapters();
+    const daemon = createDaemon(a, pino({ enabled: false }));
+    await daemon.start();
+    const second = { ...jobFixtures.fix, runId: randomUUID() };
+    await a.jobs.deliver(jobFixtures.fix);
+    await a.jobs.deliver(second);
+
+    expect(a.sink.steps.map((step) => [step.runId, step.input])).toEqual([
+      [jobFixtures.fix.runId, 'pnpm --filter @page/demo-app test'],
+      [second.runId, 'pnpm --filter @page/demo-app test'],
+    ]);
+    expect(a.results.sent.map((sent) => sent.result.status)).toEqual(['succeeded', 'succeeded']);
   });
 
   it('stops claiming before it closes the adapters, even if stopping fails', async () => {
