@@ -531,6 +531,24 @@ describe('RunsService.forIssue', () => {
     await expect(runs.forIssue(randomUUID())).rejects.toBeInstanceOf(IssueNotFoundError);
   });
 
+  it('serves no runs for an issue that has not started a fix', async () => {
+    const { issue } = await issues.report({ fingerprint: `runs-${++n}`, title: 'Boom' }, report);
+    expect(await runs.forIssue(issue.id)).toEqual([]);
+  });
+
+  it('shows no start for a run whose fix job failed before the node reported it', async () => {
+    const { issue, job } = await fixing();
+    await runs.recordLost(job, 'could not queue the run result');
+    expect(await runs.forIssue(issue.id)).toEqual([
+      expect.objectContaining({
+        id: job.runId,
+        status: 'failed',
+        startedAt: null,
+        finishedAt: expect.any(String) as string,
+      }),
+    ]);
+  });
+
   it('shows the run in hand as queued, then running with its steps in order', async () => {
     const { issue, job } = await fixing();
     expect(await runs.forIssue(issue.id)).toEqual([
@@ -614,6 +632,18 @@ describe('RunsService.owner', () => {
       startedAt: at,
     });
     expect(await runs.owner(randomUUID())).toBeUndefined();
+  });
+
+  it('reads a recorded run with no start, from a fix job that failed with no result', async () => {
+    const { issue, job } = await fixing();
+    await runs.recordLost(job, 'could not queue the run result');
+    expect(await runs.owner(job.runId)).toEqual({
+      issueId: issue.id,
+      tier: 1,
+      current: false,
+      recorded: true,
+      startedAt: null,
+    });
   });
 });
 
