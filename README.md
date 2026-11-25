@@ -159,10 +159,14 @@ patch at Tier 1 (bugs 013 and 014) and never escalated or paged. On the ops set 
 missed 029 every time: a lower tier submitted a code patch that left the live app broken, so it
 never reached the Tier 3 tools. Confidence escalation is meant to catch misses like these. The
 later dev calibration played the ladder with it on, on 029 and 030 only, and it didn't catch
-029: each wrong patch brought its own passing test and scored 1. Tables, charts and the
-threats to validity are in [evaluation-method.md](docs/report/evaluation-method.md#results),
-and the calibration in
-[Confidence calibration (dev)](docs/report/evaluation-method.md#confidence-calibration-dev).
+029: each wrong patch brought its own passing test and scored 1. Amendment 6 then played it on
+the 18 dev code bugs. It fixed 42 of 54 with no wrong patch, so the catch is still untested
+there, and each miss the machine's sleep didn't cause ended on replies that stopped parsing.
+Tables, charts and the threats to validity are in
+[evaluation-method.md](docs/report/evaluation-method.md#results), the calibration in
+[Confidence calibration (dev)](docs/report/evaluation-method.md#confidence-calibration-dev),
+and Amendment 6 in
+[Ladder at 0.2 on the dev code bugs](docs/report/evaluation-method.md#ladder-at-02-on-the-dev-code-bugs-amendment-6).
 
 ## Getting started
 
